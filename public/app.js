@@ -13,7 +13,6 @@ const REPORT_REASONS = ['广告营销', '不实内容', '人身攻击', '抄袭�
 const state = {
   me: null,
   token: '',
-  mustChangePw: false,   // 服务端判定「还在用初始口令」时为 true，只会被送到改密页
   route: { name: 'feed', id: '' },
   postFrom: '',          // 进详情页之前在哪，用来让「返回」回到原页面
   data: {},
@@ -251,15 +250,6 @@ async function api(path, opts) {
     const err = new Error(data.error || ('请求失败 ' + res.status));
     err.status = res.status;
     err.code = data.code || '';
-    // 后端判定「还在用初始口令」时只放行改密，这里把用户直接送到改密页，
-    // 否则他只会看到一个看不懂的 403。
-    if (err.code === 'MUST_CHANGE_PASSWORD') {
-      state.mustChangePw = true;
-      if (state.route.name !== 'edit') {
-        toast('请先把初始密码换成你自己的', 'err', 'lock');
-        setTimeout(() => { try { go('#/edit'); } catch (e2) {} }, 0);
-      }
-    }
     throw err;
   }
   return data;
@@ -2222,10 +2212,6 @@ function viewEdit() {
 
   return '<div class="card page-head" style="padding:14px 20px">' +
       '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a><div class="sub">编辑资料</div></div>' +
-    (state.mustChangePw
-      ? '<div class="card sec-warn"><b>' + icon('lock') + ' 先把密码换掉</b>' +
-        '<p>这个账号还在用系统给的初始口令，别人也可能知道。改完密码之前，发帖、私信、审核都会先被拦下。</p></div>'
-      : '') +
     '<div class="card edit-card">' +
       '<h3>' + icon('user') + '基本信息</h3>' +
       '<div class="edit-avatar-row">' +
@@ -2993,7 +2979,6 @@ async function changePassword() {
     if (o) o.value = '';
     if (n) n.value = '';
     if (c) c.value = '';
-    state.mustChangePw = false;
     toast('密码已更新，其他设备需要重新登录', 'ok', 'check');
     render();
   } catch (e) { toast(e.message, 'err'); }
@@ -3013,7 +2998,6 @@ async function doLogout() {
   try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
   state.token = '';
   state.me = null;
-  state.mustChangePw = false;
   state.notes = [];
   state.data.unread = 0;
   state.data.unreadMsgs = 0;
@@ -3086,13 +3070,7 @@ async function onAuthSubmit(form) {
     render();
     await loadNotes();
     await loadUnreadMsgs();
-    if (d.mustChangePw) {
-      state.mustChangePw = true;
-      toast('这个账号还在用初始密码，先换一个自己的', 'err', 'lock');
-      go('#/edit');
-    } else {
-      go('#/');
-    }
+    go('#/');
   } catch (e) {
     errBox.innerHTML = '<div class="form-err">' + esc(e.message) + '</div>';
   }
@@ -3651,7 +3629,6 @@ window.addEventListener('scroll', hideSuggest, true);
   try {
     const d = await apiRetry('/api/me', null, 4, 700);
     state.me = d.user;
-    state.mustChangePw = !!d.mustChangePw;
     state.data.bootErr = '';
   } catch (e) {
     if (e.network) {

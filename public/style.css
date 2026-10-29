@@ -2059,27 +2059,6 @@ html.modal-open, body.modal-open { overflow: hidden; }
 .edit-card { padding: 20px 22px 22px; }
 .edit-card + .edit-card { margin-top: 16px; }
 
-/* 初始口令提醒：一条贴边的暖色横幅，比弹窗温和，但一眼能看见 */
-.sec-warn {
-  padding: 14px 18px 15px;
-  border-left: 4px solid var(--brand-2);
-  background: var(--cream);
-}
-.sec-warn b {
-  display: flex;
-  align-items: center;
-  gap: .38em;
-  font-size: 14.5px;
-  font-weight: 900;
-}
-.sec-warn p {
-  margin: 7px 0 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.75;
-  color: var(--ink-3);
-}
-.sec-warn + .edit-card { margin-top: 16px; }
 .edit-card h3 {
   margin: 0 0 16px;
   font-size: 16px;

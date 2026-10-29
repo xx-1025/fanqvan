@@ -6,7 +6,15 @@
 
 ## 2026-10-29
 
-**修：线上写操作一律「跨站请求已被拒绝」**（本轮）
+**取消「必须改密码」**（本轮）
+
+- 删掉服务端的 `mustChangePw` 闸：以前还在用初始口令的账号只放行 `/api/me`、改密、登出、`/api/stats`，其余一律 403 `MUST_CHANGE_PASSWORD`；现在不拦任何请求，登录后照常发帖、私信、审核
+- 前端同步去掉：不再自动跳 `#/edit`、登录后直接进首页、编辑资料页顶部的红色「先把密码换掉」横幅与对应 `.sec-warn` 样式一起删除
+- 改密功能本身保留在编辑资料页，什么时候想换自己换；注册与改密时的密码强度要求（≥8 位、非纯数字、弱口令表、不含用户名）不变
+- 初始口令仍是随机 16 位（只在启动日志打印一次）；弱口令账号启动时仍会被自动重置，只是不再逼着用户改
+- `mustChangePw` 标记保留但只写 `login_weakpw` 日志，不再影响接口
+
+**修：线上写操作一律「跨站请求已被拒绝」**
 
 - 起因：网关（CloudStudio / EdgeOne）转发时把 `Host` 改写成内部地址，而 CSRF 第二层拿它跟浏览器 `Origin` 的 host 对比，同源请求被判成跨站 → 登录、发帖、改密、点赞全部 403
 - 判定改成三层顺序：① `Sec-Fetch-Site`（现代浏览器和 Android WebView 必带，代理改不了）`cross-site` 直接拒、`same-origin`/`none` 放行、`same-site` 放行并记日志；② 没有这个头时比对允许集合（`Host`、`X-Forwarded-Host`、`X-Real-Host`、`X-Original-Host`、`FQ_SITE_HOSTS`）；③ 集合对不上但请求确实从代理进来（带 `X-Forwarded-For`）且没配 `FQ_SITE_HOSTS` → 判不了就放行，交给 Cookie 的 SameSite 与 JSON 格式兜底

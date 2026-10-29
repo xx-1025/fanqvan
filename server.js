@@ -500,7 +500,8 @@ function printInitialCredentials(list, why) {
 /* 老库里可能还留着 123456 / password 这种。启动时扫一遍（每个账号只扫一次，
    用 pwChecked 记账，避免每次启动都跑一堆 scrypt）：
    - 管理员 / 审核员：直接换成随机强口令 —— 高权限账号不能留在弱口令上；
-   - 普通用户：不踢下线，只打 mustChangePw，登录后除了改密什么都干不了。 */
+   - 普通用户：只打一个 mustChangePw 标记（不踢下线、不拦操作），
+     按产品要求不强制用户改密码。 */
 const KNOWN_WEAK = ['123456', '12345678', '123456789', 'password', 'passw0rd', 'admin123', 'fanqvan123', 'abc123', 'qwerty'];
 
 function rotateWeakCredentials() {
@@ -2213,7 +2214,7 @@ async function handleApi(req, res, pathname, query) {
     }
     loginOk(lockKey);
 
-    // 还在用初始/弱口令 → 只给一个「只能改密」的会话
+    // 还在用初始/弱口令 → 只做个标记（写进登录日志），不拦任何操作
     if (!user.pwStrong) {
       const prob = passwordProblem(password, user.username);
       if (prob) user.mustChangePw = true;
@@ -2235,21 +2236,11 @@ async function handleApi(req, res, pathname, query) {
     return json(res, 200, { ok: true });
   }
 
-  /* 还在用初始口令的账号：只放行「看自己 / 改密 / 登出」。
-     这样即使弱口令被人猜到，对方也没法拿这个会话去发帖、私信、审核 —— 
-     唯一能做的就是把密码改成自己的，而改密要先验原密码，卡在这一步。 */
-  if (me && me.mustChangePw) {
-    const allowed = (pathname === '/api/me' && (method === 'GET' || method === 'PATCH')) ||
-      (pathname === '/api/me/password' && method === 'POST') ||
-      (pathname === '/api/auth/logout' && method === 'POST') ||
-      (pathname === '/api/stats' && method === 'GET');
-    if (!allowed) {
-      return json(res, 403, {
-        error: '这个账号还在用初始密码，请先改密再来',
-        code: 'MUST_CHANGE_PASSWORD'
-      });
-    }
-  }
+  /* 以前这里有一道闸：还在用初始口令的账号只放行「看自己 / 改密 / 登出」，
+     其余一律 403 MUST_CHANGE_PASSWORD。按产品要求已取消 —— 不强制换密码，
+     登录后能正常用。密码强度仍然由注册/改密时的 passwordProblem() 把关；
+     初始口令本身是随机 16 位，弱口令账号启动时会被 rotateWeakCredentials() 重置。
+     user.mustChangePw 这个标记保留下来只作状态用（登录日志里能看到），不再拦请求。 */
 
   if (pathname === '/api/me' && method === 'GET') {
     if (!me) return json(res, 401, { error: '未登录' });
