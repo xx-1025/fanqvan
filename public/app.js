@@ -2242,6 +2242,7 @@ function viewEdit() {
       '<h3>' + icon('lock') + '修改密码</h3>' +
       '<div class="field"><label>原密码</label><input id="pw-old" type="password" autocomplete="current-password" placeholder="当前密码"></div>' +
       '<div class="field"><label>新密码</label><input id="pw-new" type="password" autocomplete="new-password" placeholder="至少 8 位，字母 + 数字"></div>' +
+      '<div class="field"><label>再输一遍新密码</label><input id="pw-new2" type="password" autocomplete="new-password" placeholder="确认新密码，两次要一样"></div>' +
       '<button class="btn-primary" data-action="change-password" style="height:40px;margin-top:6px">更新密码</button>' +
     '</div>' +
     appBlock;
@@ -2973,17 +2974,25 @@ async function saveProfile() {
 async function changePassword() {
   const oldPassword = ($('#pw-old') || {}).value || '';
   const newPassword = ($('#pw-new') || {}).value || '';
+  const again = ($('#pw-new2') || {}).value || '';
   // 与服务端同一套规则，先在本地拦一次，省一个来回
   if (newPassword.length < 8) { toast('新密码至少 8 位', 'err'); return; }
   if (!/[a-zA-Z]/.test(newPassword) && !/[^\x00-\x7F]/.test(newPassword)) {
     toast('密码不能是纯数字，掺几个字母', 'err'); return;
   }
+  if (newPassword !== again) {
+    toast('两次输的新密码不一样，再对一遍', 'err');
+    const c = $('#pw-new2');
+    if (c) { c.focus(); c.select(); }
+    return;
+  }
   if (newPassword === oldPassword) { toast('新密码和原密码一样，换一个吧', 'err'); return; }
   try {
     await api('/api/me/password', { method: 'POST', body: { oldPassword, newPassword } });
-    const o = $('#pw-old'), n = $('#pw-new');
+    const o = $('#pw-old'), n = $('#pw-new'), c = $('#pw-new2');
     if (o) o.value = '';
     if (n) n.value = '';
+    if (c) c.value = '';
     state.mustChangePw = false;
     toast('密码已更新，其他设备需要重新登录', 'ok', 'check');
     render();
