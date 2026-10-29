@@ -2014,29 +2014,85 @@ function aiHelpLocal(question, ctx) {
 /* API 路由                                                             */
 /* ------------------------------------------------------------------ */
 
+/* ---------- 本站来源判定（CSRF 第二层用） ----------
+   线上前面有网关（CloudStudio / EdgeOne），转发进来的 Host 会被改写成内部地址，
+   拿它跟浏览器 Origin 里的 host 一比，连同源请求都会被判成跨站 —— 结果就是
+   线上所有写操作（登录、发帖、改密）一律 403。所以判定顺序改成：
+   1) Sec-Fetch-Site：现代浏览器（含 Android WebView）必带，且不受代理改写影响。
+      cross-site 直接拒，same-origin / none 放行，same-site 放行但记日志。
+   2) 没有这个头（老内核、curl、原生客户端）→ 比对 host 允许集合：
+      Host、X-Forwarded-Host、X-Real-Host、X-Original-Host、FQ_SITE_HOSTS。
+   3) 集合里只有内网/回环地址（说明确实在代理后面、又拿不到转发头）→ 判不了就
+      放行，交给 Cookie 的 SameSite 与 JSON 格式这两层兜底，别把自家人拦在门外。
+   4) 连 Origin 和 Referer 都没有 → 放行，交给鉴权兜底。 */
+
+function hostSetOf(req) {
+  const set = new Set();
+  const add = (raw) => {
+    String(raw || '').split(',').forEach((part) => {
+      let h = part.trim().toLowerCase();
+      if (!h) return;
+      if (h.includes('://')) { try { h = new URL(h).host; } catch (e) { return; } }
+      h = h.replace(/\.$/, '');
+      set.add(h);
+      set.add(h.replace(/:\d+$/, ''));
+    });
+  };
+  add(req.headers.host);
+  add(req.headers['x-forwarded-host']);
+  add(req.headers['x-real-host']);
+  add(req.headers['x-original-host']);
+  add(process.env.FQ_SITE_HOSTS);
+  return set;
+}
+
+/* 返回 true = 确认是「别的网站借用户的浏览器发来的」；info 用来记日志 */
+function csrfCrossSite(req, info) {
+  const sfs = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  if (sfs) {
+    if (sfs === 'cross-site') return true;
+    if (sfs === 'same-site' && info) info.sameSite = true;
+    return false;
+  }
+  const src = String(req.headers.origin || req.headers.referer || '');
+  if (!src) return false;
+  let host = '';
+  try { host = new URL(src).host.toLowerCase().replace(/\.$/, ''); } catch (e) { return true; }
+  const hosts = hostSetOf(req);
+  if (hosts.has(host) || hosts.has(host.replace(/:\d+$/, ''))) return false;
+  // 走到这里 = Origin 跟本机 Host 对不上。两种可能：
+  //   a) 真的跨站；
+  //   b) 部署在网关后面，Host 被改写成内部地址，浏览器的 Origin 才是对外的。
+  // 只有「这个请求确实是从代理转发进来的」（带 X-Forwarded-For）才按 b) 放行；
+  // 直连的请求没有这一层，照旧拒。列在 FQ_SITE_HOSTS 里的域名永远严格比对。
+  const viaProxy = String(req.headers['x-forwarded-for'] || '').split(',').pop().trim().length > 0;
+  const configured = String(process.env.FQ_SITE_HOSTS || '').trim().length > 0;
+  if (viaProxy && !configured) { if (info) info.unverified = host; return false; }
+  return true;
+}
+
 async function handleApi(req, res, pathname, query) {
   const method = req.method;
   const ip = clientIp(req);
 
   /* ============ 跨站请求防护（CSRF）============
-     三层：Cookie 的 SameSite=Lax（第一层）、Origin/Referer 必须同站（第二层）、
+     三层：Cookie 的 SameSite=Lax（第一层）、来源判定（第二层）、
      有 body 的写请求必须是 application/json（第三层）。
      为什么还要第二三层：SameSite 依赖浏览器实现，老内核 / 代理改写 / 客户端
      手动构造都可能退化；而浏览器跨站「简单请求」只能发 text/plain、表单这类
      格式，卡死 Content-Type 就把 sendBeacon 和隐藏表单全堵住了。 */
   if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
-    const host = String(req.headers.host || '').toLowerCase();
-    const sameHost = (v) => {
-      if (!v) return null;                 // 没有来源信息（curl / 原生客户端）→ 交给鉴权兜底
-      try { return new URL(v).host.toLowerCase() === host; } catch { return false; }
-    };
-    const origin = String(req.headers.origin || '');
-    const referer = String(req.headers.referer || '');
-    const fromHere = origin ? sameHost(origin) : sameHost(referer);
-    if (fromHere === false) {
-      secLog('csrf_block', req, { from: origin || referer, path: pathname });
+    const info = {};
+    if (csrfCrossSite(req, info)) {
+      secLog('csrf_block', req, {
+        from: String(req.headers.origin || req.headers.referer || '').slice(0, 120),
+        sfs: String(req.headers['sec-fetch-site'] || ''),
+        path: pathname
+      });
       return json(res, 403, { error: '跨站请求已被拒绝' });
     }
+    if (info.sameSite) secLog('csrf_samesite', req, { path: pathname });
+    if (info.unverified) secLog('csrf_unverified', req, { from: info.unverified, path: pathname });
     const hasBody = Number(req.headers['content-length'] || 0) > 0 ||
       String(req.headers['transfer-encoding'] || '').length > 0;
     if (hasBody) {

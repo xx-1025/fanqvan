@@ -6,7 +6,14 @@
 
 ## 2026-10-29
 
-**改密码要输两遍**（本轮）
+**修：线上写操作一律「跨站请求已被拒绝」**（本轮）
+
+- 起因：网关（CloudStudio / EdgeOne）转发时把 `Host` 改写成内部地址，而 CSRF 第二层拿它跟浏览器 `Origin` 的 host 对比，同源请求被判成跨站 → 登录、发帖、改密、点赞全部 403
+- 判定改成三层顺序：① `Sec-Fetch-Site`（现代浏览器和 Android WebView 必带，代理改不了）`cross-site` 直接拒、`same-origin`/`none` 放行、`same-site` 放行并记日志；② 没有这个头时比对允许集合（`Host`、`X-Forwarded-Host`、`X-Real-Host`、`X-Original-Host`、`FQ_SITE_HOSTS`）；③ 集合对不上但请求确实从代理进来（带 `X-Forwarded-For`）且没配 `FQ_SITE_HOSTS` → 判不了就放行，交给 Cookie 的 SameSite 与 JSON 格式兜底
+- 直连请求照旧严：陌生 `Origin` 403、`Origin: null` 403、非 JSON 写请求 415
+- 新增 `tmp/csrf-proxy.mjs`（17 项，用原生 http 显式改写 Host 复现线上形态，含注册 → 发帖 → 改密端到端）
+
+**改密码要输两遍**
 
 - 「修改密码」里新增「再输一遍新密码」，两次不一致直接拦下并把光标放回确认框，不再一点就提交
 - 拦截顺序：长度 → 不能纯数字 → 两次一致 → 不能与原密码相同；一致后才发请求
