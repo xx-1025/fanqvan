@@ -1,0 +1,13 @@
+{
+  "name": "fanquan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "饭圈 - 好好做饭的人都在这里（微博风格的美食社区，含发帖与审核流程）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

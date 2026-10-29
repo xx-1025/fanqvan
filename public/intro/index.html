@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="js" data-mode="user" data-page-node-id="OuGsA84DSXZj0tuf4Af0Fg">
+<head data-page-node-id="qQE96ZkNxLwnXUHaICbwcz">
+<meta charset="UTF-8" data-page-node-id="KWhcGBjahPEPzKF1ltQXrG">
+<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="Al9LugKUJl3M8aXlj49InP">
+<title>饭圈 · 好好做饭的人都在这里</title>
+<meta name="description" content="饭圈 —— 一个会做饭的人聚在一起、互相评优的美食社区。发帖审核、人工评优、私信转发、图片九宫格。" data-page-node-id="udJP4VQriQiOyAj8DHbfoc">
+<style>
+/* =========================================================
+   饭圈 · 介绍页
+   沿用主站 Q 版设计系统：粗描边 + 硬阴影 + 奶油暖色 + 大圆角
+   ========================================================= */
+:root{
+  --ink:#40291b; --ink-2:#7a5c48; --ink-3:#a8896f;
+  --paper:#fff; --cream:#fff8ee; --bg:#ffeacd;
+  --brand:#ff8a3d; --brand-2:#f2682a; --brand-soft:#fff0e0;
+  --yellow:#ffd166; --green:#6fcf7f; --red:#ff6b6b; --blue:#6bb8f0; --pink:#ff9ebb;
+  --line:#f3e2cc; --line-2:#f7ecdd;
+  --r:22px; --r-sm:14px; --r-xs:10px; --pill:999px;
+  --bw:2.5px;
+  --sh:3px 3px 0 var(--ink); --sh-lg:5px 5px 0 var(--ink); --sh-sm:2px 2px 0 var(--ink);
+  --wrap:1120px;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0; color:var(--ink); background-color:var(--bg);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+  font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+/* 背景：跟主站同一套食材插画墙纸 + 暖色柔光（简化版） */
+body::before{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background-image:
+    radial-gradient(980px 760px at 2% -14%, rgba(255,209,102,.22), rgba(255,209,102,0) 72%),
+    radial-gradient(820px 660px at 102% 6%, rgba(255,138,61,.10), rgba(255,138,61,0) 70%),
+    radial-gradient(900px 780px at 96% 106%, rgba(255,158,187,.12), rgba(255,158,187,0) 72%),
+    radial-gradient(760px 660px at -4% 94%, rgba(107,184,240,.10), rgba(107,184,240,0) 70%),
+    linear-gradient(180deg,#fff4e6 0%,#ffeed6 48%,#ffe6c4 100%);
+}
+/* 整页食材水印（单层大 tile，跟主站同一张图案） */
+body::after{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340' viewBox='0 0 340 340'%3E%3Cg opacity='0.16'%3E%3Cg transform='translate(70 70) rotate(-8) translate(-32 -32)'%3E%3Ccircle cx='32' cy='37' r='19' fill='%23ff6b6b' stroke='%2340291b' stroke-width='3.2'/%3E%3Cpath d='M32 18c-2.2-4.6-5.6-6.4-10.4-6.4 1 4.2 2.6 6.6 5.4 8.2' fill='%236fcf7f' stroke='%2340291b' stroke-width='3'/%3E%3Cpath d='M32 18c2.2-4.6 5.6-6.4 10.4-6.4-1 4.2-2.6 6.6-5.4 8.2' fill='%236fcf7f' stroke='%2340291b' stroke-width='3'/%3E%3C/g%3E%3Cg transform='translate(250 90) rotate(12) translate(-32 -32)'%3E%3Ccircle cx='28' cy='36' r='17' fill='%238a6647' stroke='%2340291b' stroke-width='3.2'/%3E%3Cpath d='M43 21l8-8' stroke='%2340291b' stroke-width='7' stroke-linecap='round'/%3E%3Ccircle cx='28' cy='36' r='11.5' fill='%23fff8ee' stroke='%2340291b' stroke-width='3'/%3E%3Ccircle cx='28' cy='36' r='5' fill='%23ffd166' stroke='%2340291b' stroke-width='3'/%3E%3C/g%3E%3Cg transform='translate(120 245) rotate(-14) translate(-32 -32)'%3E%3Cpath d='M30 21c1.6 0 3.4 1.4 3.4 3.4 0 3.4-4.4 9.4-8.6 15.4-2 2.8-3.4 4.6-4.8 4.6-2 0-3.6-1.6-3.6-3.4 0-1.4 1.2-3 3.6-5.6C25 31 26.6 25.8 27.4 23c.5-1.5 1.2-2 2.6-2Z' fill='%23ff8a3d' stroke='%2340291b' stroke-width='3.2'/%3E%3Cpath d='M30.6 20.6c-.6-3.2-.2-5.8 1.6-8.2M29.4 21.6c-2.6-2-4.2-4-4.8-6.8M33 23.6c2.6-1.4 4.4-3 5.4-5.6' fill='none' stroke='%236fcf7f' stroke-width='3' stroke-linecap='round'/%3E%3C/g%3E%3Cg transform='translate(268 250) rotate(9) translate(-32 -32)'%3E%3Cellipse cx='36' cy='33' rx='17' ry='12' fill='%237fb8f0' stroke='%2340291b' stroke-width='3.2'/%3E%3Cpath d='M20 33l-9-8v16Z' fill='%237fb8f0' stroke='%2340291b' stroke-width='3.2'/%3E%3Ccircle cx='43' cy='29' r='2.4' fill='%2340291b'/%3E%3C/g%3E%3Cg transform='translate(180 165) rotate(-6) translate(-32 -32)'%3E%3Ccircle cx='32' cy='33' r='18' fill='%23ffd166' stroke='%2340291b' stroke-width='3.2'/%3E%3Cpath d='M32 33v-13M32 33l12-7M32 33l12 9M32 33l-12 9M32 33l-12-7' fill='none' stroke='%2340291b' stroke-width='2.4' stroke-opacity='.45' stroke-linecap='round'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-size:340px 340px;
+}
+a{color:inherit;}
+.ic{width:1.18em;height:1.18em;display:inline-block;vertical-align:-.18em;flex:none;}
+
+/* ---------- 通用 ---------- */
+.wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px;}
+.sec{padding:88px 0;}
+.sec-head{max-width:660px;margin:0 auto 46px;text-align:center;}
+.kicker{
+  display:inline-flex;align-items:center;gap:7px;background:var(--paper);
+  border:var(--bw) solid var(--ink);border-radius:var(--pill);padding:5px 15px;
+  font-size:12.5px;font-weight:800;letter-spacing:.4px;box-shadow:var(--sh-sm);
+  text-transform:uppercase;
+}
+h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
+.sec-head h2{font-size:clamp(26px,4vw,38px);font-weight:900;margin:16px 0 12px;}
+.sec-head p{margin:0;color:var(--ink-2);font-size:15.5px;}
+.muted{color:var(--ink-2);}
+
+/* 卡片 */
+.card{
+  background:var(--paper);border:var(--bw) solid var(--ink);border-radius:var(--r);
+  box-shadow:var(--sh);
+}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;border:var(--bw) solid var(--ink);
+  border-radius:var(--pill);padding:11px 22px;font:inherit;font-weight:800;font-size:14.5px;
+  cursor:pointer;background:var(--paper);color:var(--ink);box-shadow:var(--sh);
+  text-decoration:none;transition:transform .12s,box-shadow .12s,background .12s;
+  -webkit-tap-highlight-color:transparent;
+}
+.btn:hover{transform:translate(2px,2px);box-shadow:var(--sh-sm);}
+.btn:active{transform:translate(3px,3px);box-shadow:none;}
+.btn-primary{background:var(--brand);color:#fff;text-shadow:0 1px 0 rgba(64,41,27,.25);}
+.btn-primary:hover{background:var(--brand-2);}
+
+/* ---------- 用户版 / 开发版 切换 ---------- */
+.mode-switch{
+  display:inline-flex;background:var(--cream);border:var(--bw) solid var(--ink);
+  border-radius:var(--pill);padding:4px;gap:4px;box-shadow:var(--sh-sm);
+}
+.mode-switch button{
+  border:none;background:none;font:inherit;font-weight:900;font-size:13.5px;
+  padding:8px 20px;border-radius:var(--pill);cursor:pointer;color:var(--ink-2);
+  transition:background .16s,color .16s;white-space:nowrap;
+}
+.mode-switch button.on{background:var(--brand);color:#fff;text-shadow:0 1px 0 rgba(64,41,27,.25);}
+.mode-switch button:not(.on):hover{background:#fff;color:var(--ink);}
+/* 开发版锁：默认只给一个"锁"按钮，输对激活码才长出真正的切换器 */
+.mode-switch.is-locked{
+  background:transparent;border:none;box-shadow:none;padding:0;gap:0;
+}
+.mode-switch.is-locked .mode-btn-dev{display:none;}
+.mode-lock{
+  display:none;align-items:center;gap:7px;background:var(--cream);border:var(--bw) solid var(--ink);
+  border-radius:var(--pill);padding:8px 17px;font:inherit;font-weight:900;font-size:13.5px;
+  color:var(--ink-2);cursor:pointer;box-shadow:var(--sh-sm);white-space:nowrap;
+  transition:background .16s,color .16s;
+}
+.mode-switch.is-locked .mode-lock{display:inline-flex;}
+.mode-lock:hover{background:#fff;color:var(--ink);}
+.mode-lock .ic{width:1.1em;height:1.1em;}
+/* 解锁后给「开发版」按钮一个很淡的提示点 */
+.mode-switch.is-unlocked .mode-btn-dev::after{
+  content:"";display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--green);margin-left:6px;vertical-align:middle;
+}
+.mode-bar{
+  display:flex;align-items:center;justify-content:center;gap:14px;
+  padding:18px 24px 0;flex-wrap:wrap;
+}
+.mode-hint{font-size:13px;color:var(--ink-3);font-weight:700;}
+html[data-mode="user"] [data-only="dev"],
+html[data-mode="dev"] [data-only="user"]{display:none !important;}
+/* 没解锁时，就算 URL 写死 #dev / data-mode=dev 也不给看内容 */
+html[data-mode="dev"]:not([data-dev-unlocked]) [data-only="dev"]{display:none !important;}
+
+/* ---------- 激活码弹窗 ---------- */
+.lock-mask{
+  position:fixed;inset:0;z-index:60;background:rgba(64,41,27,.42);
+  display:grid;place-items:center;padding:22px;
+  opacity:0;transition:opacity .18s;
+}
+.lock-mask.show{opacity:1;}
+.lock-box{
+  width:min(400px,100%);background:var(--paper);border:var(--bw) solid var(--ink);
+  border-radius:calc(var(--r) + 4px);box-shadow:var(--sh-lg);padding:28px 26px 24px;
+  transform:translateY(12px) scale(.97);transition:transform .22s cubic-bezier(.2,.8,.3,1);
+  /* 关键：网格子项默认 min-width:auto，内容（那排输入框+按钮）撑得住就会顶破容器。
+     钉死 min-width:0 让 width:min(400px,100%) 真正生效，窄屏才不会溢出。 */
+  min-width:0;
+}
+.lock-mask.show .lock-box{transform:none;}
+.lock-ic{
+  width:52px;height:52px;border-radius:16px;border:var(--bw) solid var(--ink);
+  background:var(--cream);display:grid;place-items:center;box-shadow:var(--sh-sm);margin-bottom:14px;
+}
+.lock-ic .ic{width:26px;height:26px;}
+.lock-box h3{font-size:19px;font-weight:900;margin:0 0 6px;}
+.lock-box p{margin:0 0 18px;font-size:13.5px;color:var(--ink-2);}
+.lock-field{display:flex;gap:10px;}
+.lock-input{
+  flex:1 1 auto;min-width:0;font:inherit;font-weight:800;font-size:15px;
+  padding:11px 15px;border:var(--bw) solid var(--ink);border-radius:var(--r-sm);
+  background:var(--cream);color:var(--ink);letter-spacing:1px;
+}
+.lock-input:focus{outline:none;border-color:var(--brand);background:#fff;}
+/* 按钮别顶着不缩：窄屏时允许压缩，否则会把输入框挤没、把弹窗撑破 */
+.lock-field .btn{flex:0 0 auto;min-width:0;padding:11px 18px;}
+.lock-err{
+  display:none;margin-top:11px;font-size:13px;font-weight:800;color:var(--red);
+  align-items:center;gap:6px;
+}
+.lock-err.show{display:flex;}
+.lock-err .ic{width:1.1em;height:1.1em;}
+.lock-box.shake{animation:lock-shake .4s;}
+@keyframes lock-shake{
+  0%,100%{transform:translateX(0);}
+  20%{transform:translateX(-9px);}
+  40%{transform:translateX(8px);}
+  60%{transform:translateX(-5px);}
+  80%{transform:translateX(3px);}
+}
+.lock-foot{
+  margin-top:16px;font-size:12px;color:var(--ink-3);font-weight:700;
+  display:flex;align-items:center;gap:6px;
+}
+.lock-foot .ic{width:1.05em;height:1.05em;}
+@media(prefers-reduced-motion:reduce){
+  .lock-mask,.lock-box{transition:none;}
+  .lock-box.shake{animation:none;}
+}
+@media(max-width:400px){
+  .lock-mask{padding:14px;}
+  .lock-box{padding:24px 20px 20px;}
+}
+/* 解锁成功的小提示 */
+.float-toast{
+  position:fixed;left:50%;bottom:30px;z-index:70;
+  display:inline-flex;align-items:center;gap:8px;
+  background:#3f9f57;color:#fff;border:var(--bw) solid var(--ink);
+  border-radius:var(--pill);padding:10px 20px;font-size:13.5px;font-weight:900;
+  box-shadow:var(--sh);white-space:nowrap;
+  opacity:0;transform:translate(-50%,14px);
+  transition:opacity .22s,transform .28s cubic-bezier(.2,.8,.3,1);
+}
+.float-toast.show{opacity:1;transform:translate(-50%,0);}
+.float-toast .ic{width:1.05em;height:1.05em;}
+
+/* 用户版 Hero 与开发版 Hero 共用容器，但正文不同 */
+.dev-hero{background:linear-gradient(160deg,#40291b,#5a3b28);color:#fff7ec;}
+.dev-hero .hl{color:var(--yellow);}
+.dev-hero .hl::after{background:var(--brand);opacity:.85;}
+.dev-hero p.lead{color:#f0ddc9;}
+
+/* 保障 / 审核 相关卡片 */
+.guard{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;}
+.guard-item{
+  display:flex;gap:15px;padding:20px 22px;background:var(--paper);
+  border:var(--bw) solid var(--ink);border-radius:var(--r);box-shadow:var(--sh);
+}
+.guard-ic{
+  width:44px;height:44px;border-radius:13px;border:var(--bw) solid var(--ink);
+  display:grid;place-items:center;font-size:20px;flex:none;box-shadow:var(--sh-sm);
+}
+.guard-item h3{font-size:16px;font-weight:900;margin-bottom:5px;}
+.guard-item p{margin:0;font-size:13.5px;color:var(--ink-2);}
+@media(max-width:760px){ .guard{grid-template-columns:1fr;} }
+
+/* 代码块 / 接口表 */
+.codebox{
+  background:#2b1a10;color:#ffe9cf;border:var(--bw) solid var(--ink);
+  border-radius:var(--r-sm);padding:16px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:13px;line-height:1.75;overflow-x:auto;box-shadow:var(--sh);
+}
+.codebox .k{color:#ffb27a;}
+.codebox .s{color:#a8e6a0;}
+.codebox .c{color:#a8896f;}
+.codebox .m{color:#ffd166;font-weight:700;}
+.apitable{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;}
+.apitable th,.apitable td{padding:10px 13px;border-bottom:2px solid var(--line-2);text-align:left;vertical-align:top;}
+.apitable th{font-size:12px;font-weight:900;color:var(--ink-3);letter-spacing:.4px;background:var(--cream);}
+.apitable td:first-child{white-space:nowrap;}
+.apitable code{
+  background:var(--cream);border:1.5px solid var(--line);border-radius:6px;
+  padding:1px 7px;font-size:12.5px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace;
+}
+.verb{display:inline-block;border-radius:6px;padding:1px 7px;font-size:11.5px;font-weight:900;color:#fff;}
+.verb.get{background:#4a8fd4;} .verb.post{background:#3f9f57;}
+.verb.patch{background:#e0a020;} .verb.del{background:#d94a58;}
+.tablewrap{background:var(--paper);border:var(--bw) solid var(--ink);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;}
+.tablewrap .scroll{overflow-x:auto;}
+
+/* ---------- 顶栏 ---------- */
+.top{
+  position:sticky;top:0;z-index:50;background:rgba(255,248,238,.88);
+  backdrop-filter:blur(10px);border-bottom:2px solid var(--line);
+}
+.top-in{max-width:var(--wrap);margin:0 auto;padding:11px 24px;display:flex;align-items:center;gap:14px;}
+.logo{display:flex;align-items:center;gap:10px;font-weight:900;font-size:18px;text-decoration:none;}
+.logo-mark{
+  width:36px;height:36px;border-radius:12px;background:var(--brand);
+  border:var(--bw) solid var(--ink);box-shadow:var(--sh-sm);overflow:hidden;
+  display:grid;place-items:center;flex:none;
+}
+.logo-mark img{width:100%;height:100%;object-fit:cover;}
+.logo em{font-style:normal;font-size:11.5px;font-weight:700;color:var(--ink-3);display:block;margin-top:-3px;}
+.top-nav{margin-left:auto;display:flex;align-items:center;gap:6px;}
+.top-nav a{
+  text-decoration:none;font-weight:800;font-size:13.5px;color:var(--ink-2);
+  padding:7px 13px;border-radius:var(--pill);transition:background .15s,color .15s;
+}
+.top-nav a:hover{background:var(--brand-soft);color:var(--ink);}
+.top-cta{margin-left:8px;}
+@media(max-width:720px){ .top-nav a{display:none;} }
+
+/* ---------- Hero ---------- */
+.hero{padding:76px 0 64px;position:relative;}
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center;}
+.hero h1{font-size:clamp(34px,6.2vw,62px);font-weight:900;letter-spacing:-1.5px;}
+.hero h1 .hl{position:relative;color:var(--brand-2);white-space:nowrap;}
+.hero h1 .hl::after{
+  content:"";position:absolute;left:-2px;right:-2px;bottom:4px;height:12px;
+  background:var(--yellow);z-index:-1;border-radius:6px;opacity:.7;
+}
+.hero p.lead{font-size:17px;color:var(--ink-2);margin:20px 0 0;max-width:520px;}
+.hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px;}
+.hero-note{margin-top:18px;font-size:13px;color:var(--ink-3);display:flex;align-items:center;gap:7px;}
+.stats{display:flex;gap:26px;margin-top:34px;flex-wrap:wrap;}
+.stat b{display:block;font-size:26px;font-weight:900;}
+.stat span{font-size:12.5px;color:var(--ink-3);font-weight:700;}
+
+/* Hero 右侧：漂浮的美食卡片 */
+.hero-visual{position:relative;min-height:400px;}
+.food-float{
+  position:absolute;border:var(--bw) solid var(--ink);border-radius:var(--r);
+  background:var(--paper);box-shadow:var(--sh-lg);overflow:hidden;
+}
+.food-float .cap{
+  position:absolute;left:0;right:0;bottom:0;padding:9px 12px;font-size:12px;font-weight:800;
+  background:linear-gradient(transparent,rgba(64,41,27,.82));color:#fff;
+}
+.food-float img{width:100%;height:100%;object-fit:cover;display:block;}
+.f1{width:290px;height:210px;top:6px;right:14px;transform:rotate(4deg);animation:fl 7s ease-in-out infinite;}
+.f2{width:214px;height:158px;bottom:52px;left:0;transform:rotate(-5deg);animation:fl 8.5s ease-in-out infinite -2s;}
+.f3{
+  width:132px;height:132px;right:26px;bottom:6px;transform:rotate(7deg);
+  animation:fl 6.5s ease-in-out infinite -4s;display:grid;place-items:center;background:var(--cream);
+}
+@keyframes fl{0%,100%{translate:0 0;}50%{translate:0 -14px;}}
+.badge-float{
+  position:absolute;top:-6px;left:44%;background:var(--green);color:#fff;
+  border:var(--bw) solid var(--ink);border-radius:var(--pill);padding:6px 14px;
+  font-size:12.5px;font-weight:900;box-shadow:var(--sh-sm);z-index:3;
+  animation:fl 5.5s ease-in-out infinite -1s;
+}
+@media(max-width:900px){
+  .hero-grid{grid-template-columns:1fr;gap:40px;}
+  .hero-visual{min-height:340px;max-width:460px;}
+}
+
+/* ---------- 滚动进场 ---------- */
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .6s ease,transform .6s cubic-bezier(.2,.8,.3,1);}
+.reveal.in{opacity:1;transform:none;}
+/* 没有 IntersectionObserver 或脚本没跑起来时，内容必须照样可见（不能留白） */
+.no-io .reveal,html:not(.js) .reveal{opacity:1;transform:none;}
+@media(prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none;}
+  .f1,.f2,.f3,.badge-float{animation:none;}
+  html{scroll-behavior:auto;}
+}
+
+/* ---------- 功能网格 ---------- */
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+.feat{
+  padding:26px 24px;background:var(--paper);border:var(--bw) solid var(--ink);
+  border-radius:var(--r);box-shadow:var(--sh);
+  transition:transform .18s,box-shadow .18s;
+}
+.feat:hover{transform:translate(-2px,-3px);box-shadow:var(--sh-lg);}
+.feat-ic{
+  width:50px;height:50px;border-radius:15px;border:var(--bw) solid var(--ink);
+  display:grid;place-items:center;box-shadow:var(--sh-sm);margin-bottom:15px;font-size:24px;
+}
+.feat h3{font-size:17.5px;font-weight:900;margin-bottom:7px;}
+.feat p{margin:0;font-size:14px;color:var(--ink-2);}
+@media(max-width:900px){ .feats{grid-template-columns:repeat(2,1fr);} }
+@media(max-width:600px){ .feats{grid-template-columns:1fr;} }
+
+/* ---------- 动手玩 ---------- */
+.demo-row{
+  display:grid;grid-template-columns:280px minmax(0,1fr);gap:34px;align-items:start;
+  padding:30px 0;border-top:2px dashed var(--line);
+}
+.demo-row:first-child{border-top:none;padding-top:8px;}
+.demo-side{position:sticky;top:84px;}
+.demo-num{
+  display:inline-grid;place-items:center;width:42px;height:42px;border-radius:13px;
+  background:var(--brand);color:#fff;font-weight:900;font-size:16px;
+  border:var(--bw) solid var(--ink);box-shadow:var(--sh-sm);margin-bottom:12px;
+  text-shadow:0 1px 0 rgba(64,41,27,.25);
+}
+.demo-side h3{font-size:20px;font-weight:900;margin-bottom:8px;}
+.demo-side p{font-size:14px;margin:0;}
+.demo-main{min-width:0;}
+@media(max-width:840px){
+  .demo-row{grid-template-columns:1fr;gap:18px;}
+  .demo-side{position:static;}
+}
+
+/* 帖子卡 */
+.post-card{padding:18px 20px;position:relative;}
+.post-head{display:flex;align-items:center;gap:11px;margin-bottom:11px;}
+.post-head b{font-size:14.5px;display:block;}
+.av{
+  width:40px;height:40px;border-radius:12px;border:var(--bw) solid var(--ink);flex:none;
+  display:grid;place-items:center;font-weight:900;color:#fff;font-size:16px;
+  text-shadow:0 1px 0 rgba(64,41,27,.28);
+}
+.av-sub{font-size:12px;color:var(--ink-3);font-weight:700;}
+.chip-ok{
+  margin-left:auto;background:#e9f7ec;color:#3f9f57;border:2px solid #3f9f57;
+  border-radius:var(--pill);padding:3px 11px;font-size:11.5px;font-weight:900;
+}
+.post-text{margin:0 0 11px;font-size:14.5px;}
+.tags{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px;}
+.tags span{color:var(--brand-2);font-weight:800;font-size:13px;}
+.post-bar{display:flex;gap:4px;flex-wrap:wrap;border-top:2px solid var(--line-2);padding-top:11px;}
+.act{
+  display:inline-flex;align-items:center;gap:6px;background:none;border:none;font:inherit;
+  font-size:12.5px;font-weight:800;color:var(--ink-2);cursor:pointer;
+  padding:6px 11px;border-radius:var(--pill);transition:background .15s,color .15s;
+}
+.act:hover{background:var(--brand-soft);color:var(--ink);}
+.act b{font-weight:900;}
+.act.like.on{color:#e8543f;}
+.cmt-box{border-top:2px solid var(--line-2);margin-top:11px;padding-top:11px;}
+.cmt{font-size:13.5px;padding:6px 10px;background:var(--cream);border-radius:10px;margin-bottom:7px;}
+.cmt b{color:var(--brand-2);}
+@keyframes pop-in{from{opacity:0;transform:translateY(-6px) scale(.96);}to{opacity:1;transform:none;}}
+.cmt.new{animation:pop-in .32s cubic-bezier(.2,.9,.3,1.2);}
+.cmt-input{display:flex;gap:8px;margin-top:9px;}
+.cmt-input input{
+  flex:1;min-width:0;border:var(--bw) solid var(--ink);border-radius:var(--pill);
+  padding:8px 15px;font:inherit;font-size:13.5px;background:var(--cream);outline:none;
+}
+.cmt-input input:focus{background:#fff;box-shadow:var(--sh-sm);}
+
+/* 点赞粒子 */
+.heart-pop{position:fixed;pointer-events:none;font-size:22px;z-index:99;animation:hp .8s ease-out forwards;}
+@keyframes hp{0%{opacity:1;transform:translateY(0) scale(.6);}100%{opacity:0;transform:translateY(-60px) scale(1.25);}}
+
+/* 发布栏 */
+.composer-demo{padding:18px 20px;}
+.composer-demo textarea{
+  width:100%;border:var(--bw) solid var(--ink);border-radius:var(--r-sm);
+  padding:12px 15px;font:inherit;font-size:14.5px;background:var(--cream);
+  outline:none;resize:vertical;min-height:58px;
+}
+.composer-demo textarea:focus{background:#fff;box-shadow:var(--sh-sm);}
+.grid9{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:12px;}
+.tile-cell{
+  position:relative;aspect-ratio:1;border-radius:var(--r-xs);overflow:hidden;
+  border:var(--bw) solid var(--ink);display:grid;place-items:center;color:#fff;
+  font-size:34px;animation:pop-in .3s cubic-bezier(.2,.9,.3,1.2);
+}
+.tile-cell .del{
+  position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:50%;
+  background:var(--ink);color:#fff;border:none;cursor:pointer;font-size:13px;
+  line-height:1;display:grid;place-items:center;opacity:.9;
+}
+.tile-cell .del:hover{background:#000;}
+.pub-foot{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;}
+.pub-chip{
+  background:var(--cream);border:2px solid var(--line);border-radius:var(--pill);
+  padding:5px 13px;font-size:12.5px;font-weight:800;color:var(--ink-2);
+}
+.pub-chip.warn{background:#fff0e0;border-color:var(--brand);color:var(--brand-2);}
+@media(max-width:560px){ .grid9{grid-template-columns:repeat(3,1fr);} }
+
+/* 审核卡 */
+.review-demo{padding:20px 22px;}
+.rv-head{display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:2px solid var(--line-2);}
+.rv-head b{font-size:16.5px;font-weight:900;}
+.rv-badge{
+  margin-left:auto;background:#fff3d6;color:#c8860f;border:2px solid #e0a020;
+  border-radius:var(--pill);padding:3px 12px;font-size:12px;font-weight:900;
+}
+.rv-badge.done{background:#e9f7ec;color:#3f9f57;border-color:#3f9f57;}
+.rv-item{display:flex;gap:16px;align-items:center;padding:16px 0;flex-wrap:wrap;}
+.rv-body{flex:1;min-width:200px;}
+.rv-body b{font-size:15px;}
+.tg{color:var(--brand-2);font-weight:800;font-size:13px;margin-left:6px;}
+.rv-acts{display:flex;gap:9px;}
+.rv-result:empty{display:none;}
+.rv-result{margin-top:6px;padding:12px 15px;border-radius:var(--r-sm);font-weight:800;font-size:14px;animation:pop-in .3s;}
+.rv-result.ok{background:#e9f7ec;color:#3f9f57;border:2px solid #3f9f57;}
+.rv-result.no{background:#ffeef0;color:#d94a58;border:2px solid #d94a58;}
+
+/* ---------- 转发面板 ---------- */
+.share-mask{
+  position:fixed;inset:0;background:rgba(64,41,27,.45);z-index:120;
+  display:grid;place-items:center;padding:22px;animation:pop-in .22s;
+}
+.share-panel{
+  width:100%;max-width:400px;background:var(--paper);border:var(--bw) solid var(--ink);
+  border-radius:calc(var(--r) + 4px);box-shadow:var(--sh-lg);padding:24px 22px;
+  animation:pop-in .3s cubic-bezier(.2,.9,.3,1.2);
+}
+.share-title{font-size:19px;font-weight:900;}
+.share-sub{font-size:13px;color:var(--ink-3);margin:4px 0 16px;}
+.share-list{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;overscroll-behavior:contain;}
+.share-row{
+  display:flex;align-items:center;gap:12px;background:var(--cream);border:2px solid var(--ink);
+  border-radius:var(--r-sm);padding:9px 13px;cursor:pointer;font:inherit;text-align:left;
+  transition:transform .12s,box-shadow .12s,background .12s;
+}
+.share-row:hover{background:#fff;transform:translate(1px,1px);box-shadow:var(--sh-sm);}
+.s-av{
+  width:38px;height:38px;border-radius:12px;border:2px solid var(--ink);flex:none;
+  display:grid;place-items:center;font-size:19px;background:#fff;
+}
+.s-txt{flex:1;min-width:0;}
+.s-txt b{display:block;font-size:14.5px;}
+.s-txt em{font-style:normal;font-size:12px;color:var(--ink-3);font-weight:700;}
+.s-go{
+  background:var(--brand);color:#fff;border:2px solid var(--ink);border-radius:var(--pill);
+  padding:5px 13px;font-size:12.5px;font-weight:900;flex:none;
+}
+.share-close{width:100%;justify-content:center;margin-top:16px;}
+
+/* toast */
+.toast-slot{min-height:0;}
+.toast{
+  display:inline-flex;align-items:center;gap:8px;margin-top:12px;
+  background:var(--ink);color:#fff;border-radius:var(--pill);padding:9px 17px;
+  font-size:13.5px;font-weight:800;box-shadow:var(--sh);animation:pop-in .3s;
+}
+.toast.ok{background:#3f9f57;}
+
+/* ---------- 怎么运作 ---------- */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:0;position:relative;margin-top:10px;}
+.flow-step{text-align:center;padding:0 14px;position:relative;}
+.flow-dot{
+  width:64px;height:64px;margin:0 auto 16px;border-radius:20px;background:var(--paper);
+  border:var(--bw) solid var(--ink);box-shadow:var(--sh);display:grid;place-items:center;
+  font-size:28px;position:relative;z-index:2;
+}
+.flow-step h3{font-size:16px;font-weight:900;margin-bottom:6px;}
+.flow-step p{font-size:13.5px;color:var(--ink-2);margin:0;}
+.flow-step:not(:last-child)::after{
+  content:"";position:absolute;top:32px;left:calc(50% + 40px);width:calc(100% - 80px);
+  height:3px;background:repeating-linear-gradient(90deg,var(--ink-3) 0 8px,transparent 8px 16px);
+  z-index:1;
+}
+@media(max-width:840px){
+  .flow{grid-template-columns:1fr;gap:26px;}
+  .flow-step:not(:last-child)::after{
+    top:auto;bottom:-22px;left:50%;width:3px;height:16px;
+    transform:translateX(-50%);
+    background:repeating-linear-gradient(180deg,var(--ink-3) 0 6px,transparent 6px 12px);
+  }
+}
+
+/* ---------- CTA + 页脚 ---------- */
+/* 注意：`.cta-band` 必须写成 `margin:20px auto 0`。
+   它是 `.wrap cta-band` 两个 class 同时挂，而这条规则写在 `.wrap{margin:0 auto}` 之后，
+   同优先级「后者胜」，写成 `margin:20px 0 0` 会把 `.wrap` 的水平居中一起干掉 —— 整块贴到左边。 */
+.cta-band{margin:20px auto 0;}
+.cta-inner{
+  background:linear-gradient(135deg,#ff9d55 0%,#ff8a3d 42%,#f2682a 100%);
+  border:var(--bw) solid var(--ink);border-radius:calc(var(--r) + 6px);
+  box-shadow:var(--sh-lg);padding:56px 44px 52px;text-align:center;position:relative;overflow:hidden;
+}
+/* 双色柔光：暖黄在左上、奶油白在右下，压住大面积的纯橙，别让整块显得廉价 */
+.cta-inner::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(520px 320px at 4% -18%, rgba(255,209,102,.55), rgba(255,209,102,0) 66%),
+    radial-gradient(460px 330px at 104% 112%, rgba(255,255,255,.30), rgba(255,255,255,0) 68%),
+    radial-gradient(400px 300px at 88% -10%, rgba(255,120,60,.45), rgba(255,120,60,0) 70%);
+}
+/* 装饰：虚线圈，替代原来两个"灰白大饼" */
+.cta-inner::after{
+  content:"";position:absolute;width:210px;height:210px;border-radius:50%;
+  border:2.5px dashed rgba(255,255,255,.30);
+  top:-72px;right:-52px;pointer-events:none;
+}
+.cta-inner>*{position:relative;z-index:1;}
+.cta-eyebrow{
+  display:inline-flex;align-items:center;gap:7px;
+  background:rgba(255,255,255,.94);color:var(--ink);
+  border:2px solid var(--ink);border-radius:var(--pill);padding:5px 15px;
+  font-size:12.5px;font-weight:900;box-shadow:var(--sh-sm);margin-bottom:20px;
+}
+.cta-inner h2{
+  font-size:clamp(25px,4.2vw,36px);font-weight:900;color:#fff;letter-spacing:-.6px;
+  text-shadow:0 2px 0 rgba(140,58,14,.34);margin:0;
+}
+.cta-inner p{color:#fff;opacity:.97;font-size:16px;margin:14px auto 30px;max-width:460px;}
+.cta-inner .btn{
+  background:var(--paper);box-shadow:0 4px 0 var(--ink);border-width:2.5px;
+  font-size:15.5px;padding:11px 26px;transition:transform .15s,box-shadow .15s;
+}
+.cta-inner .btn:hover{transform:translate(0,-2px);box-shadow:0 6px 0 var(--ink);}
+.cta-inner .btn:active{transform:translate(0,2px);box-shadow:0 2px 0 var(--ink);}
+/* 底部一行"小卖点"，把按钮下方的空白填得有意义 */
+.cta-foot{
+  margin-top:26px;display:flex;gap:8px 18px;justify-content:center;flex-wrap:wrap;
+  font-size:12.5px;font-weight:800;color:rgba(255,255,255,.92);
+}
+.cta-foot span{display:inline-flex;align-items:center;gap:5px;}
+.cta-foot .ic{width:1.05em;height:1.05em;}
+/* 开发版 CTA：深棕底 + 品牌橙光，跟开发版深色 Hero 一套 */
+.cta-dark{background:linear-gradient(135deg,#4a2f1f 0%,#40291b 52%,#2b1a10 100%);}
+.cta-dark::before{
+  background:
+    radial-gradient(520px 320px at 2% -16%, rgba(255,138,61,.38), rgba(255,138,61,0) 66%),
+    radial-gradient(460px 330px at 102% 108%, rgba(255,209,102,.20), rgba(255,209,102,0) 68%),
+    radial-gradient(380px 280px at 92% -12%, rgba(107,184,240,.16), rgba(107,184,240,0) 70%);
+}
+.cta-dark::after{border-color:rgba(255,209,102,.34);}
+.cta-dark .cta-eyebrow{background:rgba(255,255,255,.10);color:#ffe3c6;border-color:rgba(255,255,255,.42);}
+.cta-dark h2{text-shadow:0 2px 0 rgba(0,0,0,.42);}
+.cta-dark .btn{background:var(--brand);color:#fff;box-shadow:0 4px 0 #1c1009;}
+.cta-dark .btn:hover{box-shadow:0 6px 0 #1c1009;}
+.cta-dark .btn:active{box-shadow:0 2px 0 #1c1009;}
+.foot{padding:40px 0 50px;text-align:center;color:var(--ink-3);font-size:13px;}
+.foot b{color:var(--ink-2);}
+@media(max-width:640px){
+  .sec{padding:60px 0;}
+  .wrap{padding:0 18px;}
+  .cta-inner{padding:38px 22px;}
+  .hero{padding:48px 0 40px;}
+}
+</style>
+</head>
+<body data-page-node-id="R2ubQraGD2AztH5igvkvmk">
+
+<!-- ========== 顶栏 ========== -->
+<header class="top" data-page-node-id="CPf2Eb6fCAwM0on1U8Suz7">
+  <div class="top-in" data-page-node-id="piDVlTXO3jnbTJuBU2P8ig">
+    <a class="logo" href="#top" data-page-node-id="5UFPFKmCniFZktvh17Sg0W">
+      <span class="logo-mark" data-page-node-id="HHbXbD9seF5f1RdDnpfLox"><img src="/assets/mascot.webp" alt="饭圈" onerror="this.style.display='none'" data-page-node-id="wx1CGCV66YEbDBHIIzAF6B"></span>
+      <span data-page-node-id="8FOwKwJE6uZdRQrCbvN4VB"><b style="font-size:19px" data-page-node-id="Ued8ypTg3nannU33CRR6gH">饭圈</b><em data-page-node-id="QkPl8ogFdJLGaeIFKx00wW">好好做饭的人都在这里</em></span>
+    </a>
+    <div class="mode-switch is-locked" id="mode-switch" role="tablist" aria-label="切换介绍版本" data-page-node-id="g9OslOCcFWmhfOhjwVshkS">
+      <button class="mode-btn-dev" data-mode-btn="dev" role="tab" aria-selected="false" data-page-node-id="7DLvF8Wnd9fc71OCWcMALQ">🛠 开发版</button>
+      <button class="mode-btn-user" data-mode-btn="user" role="tab" aria-selected="true" data-page-node-id="J9q3zQ1F7POBTYiCAG0X3u">👤 用户版</button>
+      <button class="mode-lock" id="mode-lock" type="button" data-page-node-id="4VNatkcTbAnU7eyCpYoCwK">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="9vcw5EB4mc3YUh7VEtAgtW"><rect x="4" y="10.5" width="16" height="10" rx="2.5" data-page-node-id="fS3pNV2LvatJQwDLI6jaQH"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" data-page-node-id="X3x4dBVQ2fKOob6fvpWNlD"/></svg>
+        开发版
+      </button>
+    </div>
+    <nav class="top-nav" data-page-node-id="BnxaUBNZksILSHQ214F9SO">
+      <a href="#features" data-only="user" data-page-node-id="tQvetm1Grs8z7YJF4SpTUv">能干什么</a>
+      <a href="#play" data-only="user" data-page-node-id="36nUFQc8u9t7gWxLBUv7JN">动手玩</a>
+      <a href="#flow" data-only="user" data-page-node-id="hPgkBY74NF4jJWoCQ78dDz">怎么运作</a>
+      <a href="#guard" data-only="dev" data-page-node-id="fDvGVz47kWPFZFtUqjBKFx">怎么保障</a>
+      <a href="#api" data-only="dev" data-page-node-id="NmpencyQRnISzHxQRizWqF">接口一览</a>
+      <a href="#run" data-only="dev" data-page-node-id="AFCOkX2R8lDD9IAosLRjHC">怎么跑起来</a>
+      <a class="btn btn-primary top-cta" id="top-enter" href="/" data-page-node-id="nNOIgZ6vs8qla54gtGEuGe">进入饭圈
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="kBNQDHpepNRfGwlNBZ3xuu"><path d="M5 12h13M13 6l6 6-6 6" data-page-node-id="SG6C07oKfFwGnan7xx15An"/></svg>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main id="top" data-page-node-id="OTQBcLDcGuG6ikJOIUVZK0">
+
+<!-- ========== 用户版 Hero ========== -->
+<section class="hero wrap" data-only="user" data-page-node-id="zOIk05V0IJdbEzXvh04Jpk">
+  <div class="hero-grid" data-page-node-id="75Q3JqOcsecav3GXC9nAxF">
+    <div data-page-node-id="Kev11sNf1Pwm5cgF8XQeYT">
+      <span class="kicker" data-page-node-id="y9XaHIyq2OIOJJm1i89rwS">🍳 美食社区 · 人人能上手</span>
+      <h1 data-page-node-id="YUG1cUPvGBedaG9krJUSf2">把你那口<span class="hl" data-page-node-id="VaYYXWKBe1O4T8xiZs3JSa">绝活</span><br data-page-node-id="MlSkHVW9xaMqnIvsKWkEtH">端给懂的人看</h1>
+      <p class="lead" data-page-node-id="6cgxS4SNcUSYFgFF9W3R16">
+        发一道菜、写清火候和配比，剩下的交给饭圈：真人审核后公开，做得好的会被评优挂上墙。
+        没有算法刷屏——只有一锅好菜和一群识货的人。
+      </p>
+      <div class="hero-actions" data-page-node-id="QQ35Ml5LAELW6jSyAI2XKS">
+        <a class="btn btn-primary" href="#play" data-page-node-id="fBpauOh10ajSjZLY2L069y">先动手玩玩看
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="VhmqYFcYx5c25wmOobkEu4"><path d="M8 5l11 7-11 7z" data-page-node-id="AuA3v1eMJE9LnJmakDRXhi"/></svg>
+        </a>
+        <a class="btn" href="#features" data-page-node-id="9ACG1eYE0PlDRnETizo1qR">它好玩在哪</a>
+      </div>
+      <div class="hero-note" data-page-node-id="zO8onWTv3go2HNhAQFxgAo">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="b4GdmsQetQXRLhIOZNjmfx"><path d="M12 22s8-4.5 8-11V5l-8-3-8 3v6c0 6.5 8 11 8 11Z" data-page-node-id="QyTEhlvj7DL2QNTprf0YDR"/><path d="M9 12l2 2 4-4" data-page-node-id="dVme1fzUnCgrC89vkrLxby"/></svg>
+        发布先审后发 · 优秀作品人工评优 · 名单隐私保护
+      </div>
+      <div class="stats" data-page-node-id="6CS5p25lJcoAZKps8zSgmD">
+        <div class="stat" data-page-node-id="GmekgpOllWXrlY1L3f7PJR"><b data-count="99" data-plus="1" data-page-node-id="AizcA5RNjZluVXfUKpV2KX">0</b><span data-page-node-id="BUsvEfIZ1JBKWe5dbV7FKI">菜品分类</span></div>
+        <div class="stat" data-page-node-id="WQjBAAhhcyvV6746Ew4Tjq"><b data-count="99" data-plus="1" data-page-node-id="O2AyfrfKSoVgERctdBspSs">0</b><span data-page-node-id="QPpp4lqWgy6mRP3oAfoq2g">优秀作品</span></div>
+        <div class="stat" data-page-node-id="o8zPCkVemFyFWpJoaUwqHl"><b data-count="100" data-suffix="%" data-page-node-id="MoLgTG5FRWUhvBw2zQUN2k">0</b><span data-page-node-id="dqmey7yET75YBGkRBzQzIn">人工审核</span></div>
+      </div>
+    </div>
+
+    <div class="hero-visual" data-page-node-id="SHKPiRZWqb4wRaT7JFApR0">
+      <span class="badge-float" data-page-node-id="PtECDAdQzNXqXuw9FwbG54">✓ 已通过审核</span>
+      <div class="food-float f1" data-page-node-id="RoNMOBenqrHIBMmUuuYmYY">
+        <div style="height:100%;background:linear-gradient(135deg,#ffb27a,#ff8a3d);display:grid;place-items:center;font-size:64px" data-page-node-id="9Z07smBYcnKZ4ufkvGcp4h">🍖</div>
+        <div class="cap" data-page-node-id="C6lnKPMhLsusgSl3pAWIjH">老张头 · 红烧肉 · 火候三个数</div>
+      </div>
+      <div class="food-float f2" data-page-node-id="vb1fLzFLAYUMagaPTBWKnR">
+        <div style="height:100%;background:linear-gradient(135deg,#ffe6a8,#ffd166);display:grid;place-items:center;font-size:48px" data-page-node-id="eL4iMyPtNAsQgptVgaTtZV">🍰</div>
+        <div class="cap" data-page-node-id="SBrdco0PX1ibTLNJLNrMEi">戚风 160℃ 稳住</div>
+      </div>
+      <div class="food-float f3" data-page-node-id="pmdzCIl1BbAZEPxVIofmGJ">
+        <svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#f2682a" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="aceq1HYvFmCjQ1zMlqVKax"><circle cx="12" cy="15" r="6" data-page-node-id="KqeErgUqwsuP7FCCqzJxxg"/><path d="M12 9V4M8.5 6.5 12 9l3.5-2.5M4 21h16" data-page-node-id="ElREq2zsCJDX0kwmlhGvMP"/></svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 能干什么 ========== -->
+<section class="sec wrap" id="features" data-only="user" data-page-node-id="70lWvxh4NAXfa0AmCE0a5l">
+  <div class="sec-head reveal" data-page-node-id="qZNBE3oGWmfkL1LH48y1yQ">
+    <span class="kicker" data-page-node-id="N6P2q4mlswVfPfxl9o89Xq">✨ 能干什么</span>
+    <h2 data-page-node-id="9nLFD5FIJZ6ThnXUE8eYnI">不只是一块发帖板</h2>
+    <p data-page-node-id="vdEWnOQRcAdNpGAJGCFZwV">从发一道菜到被评上「优秀饭帖」，每个环节都做扎实了。</p>
+  </div>
+
+  <div class="feats" data-page-node-id="8L1dpvhrrpi3RJz6pCBF4H">
+    <div class="feat reveal" data-page-node-id="4mDBH49vu6pl9W3ZxSRIst">
+      <div class="feat-ic" style="background:var(--brand-soft)" data-page-node-id="XcaGNwlogQRfGGatk5Fyo0">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#f2682a" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="LqRxLkACFlkMqNus5q3vv4"><path d="M12 5v14M5 12h14" data-page-node-id="GaI4lnNj98FIG3rmgh4IBE"/></svg>
+      </div>
+      <h3 data-page-node-id="CtfbeaBRVdSVIchRH9RTQf">发一道菜</h3>
+      <p data-page-node-id="zFplnyJ5cywLySUfAtkrov">正文写清配比与火候，最多配 <b data-page-node-id="FGHS7UEmN7vbMCUYhx7Sq2">9 张图</b>九宫格。上传前自动压缩，长边限 1280，稳。</p>
+    </div>
+    <div class="feat reveal" data-page-node-id="iJiAxrgeULJZrBicBZRqUq">
+      <div class="feat-ic" style="background:var(--brand-soft)" data-page-node-id="TouMySqklLWYfytpR16NPg">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#f2682a" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="vjr91688aw04lzRELxcsk7"><path d="M12 22s8-4.5 8-11V5l-8-3-8 3v6c0 6.5 8 11 8 11Z" data-page-node-id="9Iq4LgziUThbOlSVsmZqUn"/><path d="M9 12l2 2 4-4" data-page-node-id="9YCAyOSjIWjzdEr26pdgJo"/></svg>
+      </div>
+      <h3 data-page-node-id="omkLU08UJ6WNVDE2TVBMCS">先审后发</h3>
+      <p data-page-node-id="zzpHTPjQCvewpWgLidVHjn">内容是<b data-page-node-id="YqoK2ohGW7CLithgMzaB5A">人工审核</b>后才公开。审核员有独立的审核中心，逐条通过或驳回并给出理由。</p>
+    </div>
+    <div class="feat reveal" data-page-node-id="NwafNcUbzdyuiRcla3xIrC">
+      <div class="feat-ic" style="background:#fff3d6" data-page-node-id="hY5kQa8AxdSAqBPC2vvqX1">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#e0a020" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="hzQ5f5QcRl4a0UVGkd0jtJ"><circle cx="12" cy="9" r="5" data-page-node-id="QmYRwY5Ya8I4oSL1ouG0of"/><path d="M8.5 13.5 7 22l5-2.5L17 22l-1.5-8.5" data-page-node-id="LBUNgHIjKFWqH2YD1x8jk0"/></svg>
+      </div>
+      <h3 data-page-node-id="fVNhPE4U3AUKJmuP21CM3f">优秀饭帖</h3>
+      <p data-page-node-id="Cpoecg1Hh2ov4C4300qbpx">审核员/管理员可以给别人的好作品<b data-page-node-id="wDKcI46CoX4aNiW7RZRr32">评优</b>，右栏「优秀饭帖」即时上墙，作者还会收到通知。</p>
+    </div>
+    <div class="feat reveal" data-page-node-id="jxhzFdZn3D4j4HHDHpBzc9">
+      <div class="feat-ic" style="background:#e9f7ec" data-page-node-id="OEP0cIQRrJUGw9lZsul1MO">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#3f9f57" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="z7FiS6MwCxKyXHfFVxGjja"><path d="M4 5h16v10H8l-4 4V5Z" data-page-node-id="aZn51p5ATkhWrg6hhOfLuu"/><path d="M8 9h8M8 12h5" data-page-node-id="RptOARhXpxiQLW9oFUhbUa"/></svg>
+      </div>
+      <h3 data-page-node-id="YoKecbRlDuXZcQDB8QGqns">转发给厨友</h3>
+      <p data-page-node-id="Y4vBnI40ercCLBgi451AWu">看到好菜可以<b data-page-node-id="5FK6PbhnFeEIgLVxAYpQ5N">转发进私信</b>——对方收到一张带摘要的卡片，点进去就是原帖，比截图体面。</p>
+    </div>
+    <div class="feat reveal" data-page-node-id="8B2J4ykrApnOkiLtt90GPl">
+      <div class="feat-ic" style="background:#eef5ff" data-page-node-id="XyP25zGLBKQrXDotj5Ms1b">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#4a8fd4" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="N3lAnUt7cDgytTnZfsX3zW"><circle cx="9" cy="8" r="3.4" data-page-node-id="STCKCWVZ592R6tLfGauq9U"/><path d="M3 20c0-3.4 2.7-6 6-6s6 2.6 6 6" data-page-node-id="aFC4z2RzNZ0mC4QEaBzD7U"/><path d="M17 8.5a3 3 0 1 0 0-5.9M18 14c2 .7 3.4 2.4 3.4 4.6" data-page-node-id="M4uF2zcTZviHK6G8tOYt32"/></svg>
+      </div>
+      <h3 data-page-node-id="Hlk3hY9CzFjPVGV1Nl69OF">关注与隐私</h3>
+      <p data-page-node-id="8cUsiKnEgtkC6MJQZ2Ab30">关注喜欢的厨友、看 ta 的新菜。但<b data-page-node-id="loAr3Gfs0Az5LbHuIncoWe">粉丝和关注名单是私密的</b>——别人只看得到数字，看不到是谁。</p>
+    </div>
+    <div class="feat reveal" data-page-node-id="eR5ZWDRyfr0yCSPtXOBWM5">
+      <div class="feat-ic" style="background:#ffeef3" data-page-node-id="wi3NRIWjmUAawftS17Pw94">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#e05a86" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="b4M5qQ1MuI0dQ6DTCOrOcm"><path d="M12 3 4 7v5c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V7l-8-4Z" data-page-node-id="DCRyHkRvNAt9A2MKEdl7Nn"/><path d="M12 8v5M12 16.5v.01" data-page-node-id="ejBlbVnoZWc9hEIQENfrae"/></svg>
+      </div>
+      <h3 data-page-node-id="DKih4FHNQQH6He3kMsFek6">举报与治理</h3>
+      <p data-page-node-id="oECAmEAL67Pw7gwl4rJFId">帖子可被举报，管理员在后台处理：驳回、下架、封禁用户，一条链路闭环。</p>
+    </div>
+    <div class="feat reveal" data-page-node-id="RTRk49oyaZzvS32FutAF97">
+      <div class="feat-ic" style="background:var(--brand-soft)" data-page-node-id="KYO89AY87kQyGltdwLM7HJ">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#f2682a" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="lQdgO7VfRowYdF7g7pK82e"><path d="M3 12h4l2-5 3 10 2-5h7" data-page-node-id="EJFlHUqCzeWy2U3Hu0CWtU"/></svg>
+      </div>
+      <h3 data-page-node-id="J3BqR3vdAJEkhd8UxKqF44">热门话题</h3>
+      <p data-page-node-id="SUnqkli6qPHZcDoSmh8LyJ">按<b data-page-node-id="JbBCP5WWtqqxpMTvqVHxRo">今日 / 近 7 天 / 全部</b>统计话题热度，什么菜最近火一目了然。</p>
+    </div>
+    <div class="feat reveal" data-page-node-id="siCKgd2xzHNFV9zgpj0ysI">
+      <div class="feat-ic" style="background:#fff3d6" data-page-node-id="Yx30zCCDSfPeedz2vvgf8P">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#e0a020" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="gJlLkFNOa2AwibEl2v11dJ"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" data-page-node-id="dbEsS1TeAdG9oi8SOWVjOk"/><circle cx="12" cy="12" r="3.4" data-page-node-id="BGKMXXHG0mg3mxfZGbHz7O"/></svg>
+      </div>
+      <h3 data-page-node-id="ibhGdNmIelrwz1eCrW8azG">三种身份</h3>
+      <p data-page-node-id="tY1falQ1y3AAEczR5l8Aj1">普通厨友发帖互动；<b data-page-node-id="QQWpRdPEgaT8Cz6GJ7KLpE">审核员</b>把关内容；<b data-page-node-id="TcXDTAQmPATWHe5D5dvIOo">管理员</b>管人管事。申请审核员走审批流。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 动手玩 ========== -->
+<section class="sec wrap" id="play" style="padding-top:24px" data-only="user" data-page-node-id="8Jg1dnhw2po3OclIUVirCK">
+  <div class="sec-head reveal" data-page-node-id="CYK04Hh1B5RHRocIixhwzI">
+    <span class="kicker" data-page-node-id="BllRT7l1JseH0ovZXz1hvj">🎮 动手玩</span>
+    <h2 data-page-node-id="p7smLNkrzpPoznGZkWzDKa">随手点点，都是真功能</h2>
+    <p data-page-node-id="CWoiEuCL8T9X3dyojHrG6d">下面这几个都是站内真实交互的复刻，直接点。</p>
+  </div>
+
+  <!-- ① 点赞 + 评优 -->
+  <div class="demo-row reveal" data-page-node-id="YC5vOsiWERae5s5sJZX8YT">
+    <div class="demo-side" data-page-node-id="ckw6msH8DvTE7O2yox5fAn">
+      <span class="demo-num" data-page-node-id="iObOaxdBWmkuCqcUcf4R8d">01</span>
+      <h3 data-page-node-id="NZHPGYC8KwQvvdH0QY22Ud">点赞 &amp; 评论</h3>
+      <p class="muted" data-page-node-id="4W1ELnmBURDOyw6C3LX0jS">帖子底栏五个动作：转发 / 评论 / 点赞 / 评优 / 删除。点一下小红心试试，还能发条评论。</p>
+    </div>
+    <div class="demo-main" data-page-node-id="wmm3ZNhXU87KOrtlDHDLSs">
+      <div class="card post-card" id="demo-post" data-page-node-id="VyH0j2x02HDLwDpwtrnges">
+        <div class="post-head" data-page-node-id="zrtM7l0FZaOJCYTXrSXoXi">
+          <div class="av" style="background:linear-gradient(135deg,#ffd166,#ff8a3d)" data-page-node-id="pW070LoPyoHIEp1OoLMnva">张</div>
+          <div data-page-node-id="QHHnO6BHyUvbqK1y7RUZIu">
+            <b data-page-node-id="fMOqXQZYjlkAAAbDZ7EW4P">老张头</b>
+            <span class="av-sub" data-page-node-id="IAxp4ccfDDumYN2yDVp8av">@laozhang · 家常菜三十年</span>
+          </div>
+          <span class="chip-ok" data-page-node-id="oSWi7MRsgvLn2HJSgHYAf2">已通过</span>
+        </div>
+        <p class="post-text" data-page-node-id="xJmcDFDyDHkTnAyK80eNtg">今天这锅红烧肉，火候终于对了。<br data-page-node-id="W26wQI4AlQQ0btV1NufCrI">记住三个数字：五花肉 500g、冰糖 20g、小火 40 分钟。糖色炒到枣红立刻下肉，晚一秒就发苦。</p>
+        <div class="tags" data-page-node-id="UJU2I1EPEvJ1P6lkossfVk"><span data-page-node-id="qmn86iEfO1IKcqCQW8Ch1s">#家常菜#</span><span data-page-node-id="BRa5s7oUSqXbDTnqgF6IbP">#红烧肉#</span></div>
+        <div class="post-bar" data-page-node-id="9lHjyt1O0l23HHU8Ge6Are">
+          <button class="act" data-d="share" data-page-node-id="4M7Ss1peal4ooPGNJcDbpH">🔄 转发</button>
+          <button class="act" data-d="comment" data-page-node-id="ETp5oa7PRcwby8HUnYWeJv">💬 评论 <b id="cmt-n" data-page-node-id="lN8IgzBMoXD3t8NH2SLebi">2</b></button>
+          <button class="act like" id="like-btn" data-d="like" data-page-node-id="EMK08MEOEZdO6rMsj8wWY8">🤍 点赞 <b id="like-n" data-page-node-id="hVlKXePOSFpereHWuFvDBK">3</b></button>
+          <button class="act" data-d="feature" data-page-node-id="LaJiXDJxvLyzW6m7FIyFwV">🏅 评优</button>
+        </div>
+        <div class="cmt-box" id="cmt-box" data-page-node-id="VfxNPrcHfOhn0tFyhGyjVk">
+          <div class="cmt" data-page-node-id="OvXajgqW6Ac4srKzzDm4UV"><b data-page-node-id="fNGfcYK0vsef77GZhSGQOG">小美</b> 看着就香！明天就试</div>
+          <div class="cmt" data-page-node-id="NnGW6Jmb4RTfaO4P7DJprS"><b data-page-node-id="C29vXFyCmCf259mXxrrHnT">阿猎</b> 原来糖色一红就要下肉，我说怎么老发苦</div>
+          <div class="cmt-input" data-page-node-id="yiJSBfhoeLQvBfuujhWHHK">
+            <input id="cmt-input" placeholder="说点什么…（真的能发）" maxlength="60" data-page-node-id="HgqSoVySg8cKwk5KNQ4dat">
+            <button class="btn btn-primary" id="cmt-send" style="padding:8px 16px;font-size:13.5px" data-page-node-id="rx8TkQAbOCjEHSCphrVwda">发送</button>
+          </div>
+        </div>
+      </div>
+      <div class="toast-slot" id="toast-1" data-page-node-id="MmwIMshQyoCwYsOJpi80Vd"></div>
+    </div>
+  </div>
+
+  <!-- ② 发帖 + 九宫格 -->
+  <div class="demo-row reveal" data-page-node-id="MBlL9ghvOIYvYE0xcLaT7c">
+    <div class="demo-side" data-page-node-id="50WDythF7Y09mBKYjWl19o">
+      <span class="demo-num" data-page-node-id="Apcq6ppsqqAdYKIPXUBZ58">02</span>
+      <h3 data-page-node-id="bmhbDXs0eeiyGUH7J5rmFF">发帖 &amp; 九宫格</h3>
+      <p class="muted" data-page-node-id="ZEzykWGcXOoyM1FfIVg4vz">最多 9 张图。点下面的「+」加图，超过 9 张会自动提示；点图上的角标可以删掉。</p>
+    </div>
+    <div class="demo-main" data-page-node-id="8f55KENDvX4bMpjWZnTIk6">
+      <div class="card composer-demo" data-page-node-id="v8RolCLYygXHocUdSoAAAA">
+        <textarea id="pub-text" rows="2" placeholder="今天做了什么好菜？（点下面的加号配图）"></textarea>
+        <div class="grid9" id="grid9" data-page-node-id="C7TEBkyzSvhuMsuiOBqmtB"></div>
+        <div class="pub-foot" data-page-node-id="6CDUy5B6zsEOMMPfCT3h0N">
+          <button class="btn" id="add-img" data-page-node-id="YVuWEt0G5BnDKtD5jXWU2n">＋ 加图</button>
+          <span class="pub-chip" id="pub-chip" data-page-node-id="ABgqfkEPtuKWJASncmG0xm">图片 0/9</span>
+          <button class="btn btn-primary" id="pub-btn" style="margin-left:auto" data-page-node-id="gillXpiiecvEbmXUpMeEv1">发布新菜</button>
+        </div>
+      </div>
+      <div class="toast-slot" id="toast-2" data-page-node-id="554CnW94AW2DO7B1U6bZfD"></div>
+    </div>
+  </div>
+
+  <!-- ③ 审核流 -->
+  <div class="demo-row reveal" data-page-node-id="nwKjS0G0fzRmKQgsru9wYz">
+    <div class="demo-side" data-page-node-id="5Glw1AshnQpwWfc8RWTnY0">
+      <span class="demo-num" data-page-node-id="XqOwsJdkEYcByfdGZRyChu">03</span>
+      <h3 data-page-node-id="i9spXIhOdW8EFjPqguskr9">审核流转</h3>
+      <p class="muted" data-page-node-id="tmLXYDGnu5Z6Ol8DgkNKR3">发出去先落在「待审核」。你是审核员，通过或驳回它——驳回可以写理由。</p>
+    </div>
+    <div class="demo-main" data-page-node-id="ArciX3iqSGCUExLMZVVjA5">
+      <div class="card review-demo" data-page-node-id="olAOpgKUxRongXJBHYcvpP">
+        <div class="rv-head" data-page-node-id="u4lUhFEMYXmHme2zdIjEi1">
+          <b data-page-node-id="QSBdgHClsz0BG7HG3EGvmP">审核中心</b>
+          <span class="rv-badge" id="rv-badge" data-page-node-id="fa633TylDuNniLkuV0GGMZ">待审核 1</span>
+        </div>
+        <div class="rv-item" data-page-node-id="iI81EIvGJb4QKXLPqEpaDY">
+          <div class="rv-body" data-page-node-id="84DTT5fYCA8gb4SeuG9myv">
+            <b data-page-node-id="23fSXsqR0KLHH2cvkFbm9D">深夜路边摊的炒饭</b>
+            <p class="muted" style="margin:4px 0 0" data-page-node-id="oF0a5qEGVMRmHzF4c75uuc">灵魂其实是那一勺猪油 + 最后沿锅边淋的一圈生抽。<span class="tg" data-page-node-id="dJyFDOX2AMDdZZSGxrj3BM">#街边小吃#</span></p>
+          </div>
+          <div class="rv-acts" data-page-node-id="tFni1VhCdMwEwr0fwZIMCO">
+            <button class="btn" data-rv="reject" data-page-node-id="Bb2oZ6e4FjGDHFknJHUFus">驳回</button>
+            <button class="btn btn-primary" data-rv="approve" data-page-node-id="kB8iQKToQPTPsPxOARkrqN">通过</button>
+          </div>
+        </div>
+        <div class="rv-result" id="rv-result" data-page-node-id="AmLX8xHh83nN2udeBw0zjW"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 怎么运作 ========== -->
+<section class="sec wrap" id="flow" style="padding-top:20px" data-only="user" data-page-node-id="tAKZbEcUMWMhySQNaxwizf">
+  <div class="sec-head reveal" data-page-node-id="TGWTJeiWTzgNjeWYYNSXkf">
+    <span class="kicker" data-page-node-id="hDb0vSKWwGHBL00geKZNjR">🧭 怎么运作</span>
+    <h2 data-page-node-id="1bBonOdpu8s8XV9HdoAeJy">一道菜的四步</h2>
+    <p data-page-node-id="dzba5ZQTqCNGtcQEVc9jAL">从下锅到上墙，每一步都有人负责。</p>
+  </div>
+  <div class="flow" data-page-node-id="YoGIK7PcliAkh4rZHVC4nN">
+    <div class="flow-step reveal" data-page-node-id="xREWZVR0ZOJ8SWpj6abWkL">
+      <div class="flow-dot" data-page-node-id="RMYGCETF4AE6dUmzSrVtsd">📝</div>
+      <h3 data-page-node-id="B3d9c79m3h75aXezwPfLnx">1 · 发布</h3>
+      <p data-page-node-id="3JlMKHfccEB2iFLTcRuO8I">写好配比火候、配上图，提交。</p>
+    </div>
+    <div class="flow-step reveal" data-page-node-id="Cp65Y2XdTEVAAVp2qZTNjZ">
+      <div class="flow-dot" data-page-node-id="26gRAlDhrPGZUQkpMhVYEv">🔍</div>
+      <h3 data-page-node-id="iKLorxWzIvqsGmI82RULgD">2 · 审核</h3>
+      <p data-page-node-id="IJpWBcUNsy4EWztyXcZZPA">内容进审核中心，真人逐条把关。</p>
+    </div>
+    <div class="flow-step reveal" data-page-node-id="gOkZ1yxT30H5KT23bZKGMy">
+      <div class="flow-dot" data-page-node-id="RABjearUeqiSk3i3qjPAGF">🎉</div>
+      <h3 data-page-node-id="pOEgICSAVdQLpI5C564Y7L">3 · 公开</h3>
+      <p data-page-node-id="FA7m7cBn9vCFi5RB3U1WCP">通过后进首页，厨友们点赞评论。</p>
+    </div>
+    <div class="flow-step reveal" data-page-node-id="5Rwe7Mb8mPwmx8Fojm8ZGi">
+      <div class="flow-dot" data-page-node-id="BZG03fLU09PndJqW6AhOm1">🏅</div>
+      <h3 data-page-node-id="Jcs5oP7rbDaHNnbCwXS7ud">4 · 评优</h3>
+      <p data-page-node-id="zRyon4cDBf4UC4qbCAv96n">够好的被评上「优秀饭帖」，挂上墙。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CTA ========== -->
+<section class="wrap cta-band" data-only="user" data-page-node-id="aZRR2fPMR1xiZBsYYJiPoU">
+  <div class="cta-inner reveal" data-page-node-id="osuJm1iymn9Dktud38XOhM">
+    <span class="cta-eyebrow" data-page-node-id="ZZIPjEbmTTdONKjxgz0EVG">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="EGwZd3CVyupISG4T1pkb0C"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" data-page-node-id="unl6HcNg5YCgxeBJ97dxJa"/></svg>
+      发布先审后发 · 优秀作品人工评优
+    </span>
+    <h2 data-page-node-id="SCfyokKQoLA0HUDC2MVBO5">下一锅好菜，端上来吧</h2>
+    <p data-page-node-id="l1WncTMBYpE7lkHUkw2tjx">不管是一碗蛋炒饭，还是一次成功的戚风。</p>
+    <a class="btn" id="cta-btn" href="/" data-page-node-id="FCo4M4ebSM9EdZLbVn02Sr">进站逛逛
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="BmwuPHPMtGU1p9Mkfbb6FW"><path d="M5 12h13M13 6l6 6-6 6" data-page-node-id="un0G8eFJfrnWE6nuKDBQVg"/></svg>
+    </a>
+    <div class="cta-foot" data-page-node-id="PjDkhvG1ZpHgFwWEu7G8md">
+      <span data-page-node-id="i42Tia5ctGCkBmTnFTLlnN">免费注册</span>
+      <span data-page-node-id="hmutNdY1U6EXfVrQvkBY6n">·</span>
+      <span data-page-node-id="hULUdxHL6L03i8lrK3Uhb0">真人审核</span>
+      <span data-page-node-id="BPiuyAXQdKzzRYq1LBbeiy">·</span>
+      <span data-page-node-id="I5BCvKTowPvdipPIGcRm2k">名单保密</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 开发版 Hero ========== -->
+<section class="wrap" data-only="dev" style="padding-top:30px" data-page-node-id="hYEpwFdLznbaCY7zVUNXSn">
+  <div class="card dev-hero" style="padding:48px 44px;border-radius:calc(var(--r) + 6px)" data-page-node-id="2zm1Xe0AorDpN25alTQJTQ">
+    <span class="kicker" style="background:rgba(255,255,255,.14);color:#fff;border-color:#fff" data-page-node-id="Sm32FeJpbI4wxNIlw0A9VU">🛠 开发版 · 它是怎么被造出来的</span>
+    <h1 style="font-size:clamp(30px,5vw,50px);margin:20px 0 0" data-page-node-id="HvO7HrXXV3zTvFkGSI1VTK">一个<span class="hl" data-page-node-id="ufNR5JvMSf9mEauTg0vAat">零依赖</span>的全栈社区<br data-page-node-id="OgcCXK6nyqB6EFB42Eucmw">跑在单文件 Node 上</h1>
+    <p class="lead" style="font-size:16.5px;max-width:640px;margin-top:18px" data-page-node-id="qQBM59EjKB98718diVUyTb">
+      没有框架、没有构建工具、没有数据库服务。一个 <b data-page-node-id="SkXJwwKJ2kYGCZObIYF5rH">server.js</b> 提供 JSON 接口，
+      一份 <b data-page-node-id="sUPA16F0LZ7eHHgjGL8WS1">db.json</b> 落盘，前端是一个原生 hash 路由 SPA。下面讲清楚：<b data-page-node-id="oeYfbqpIrfQkB5BRH8S9VR">怎么保障安全</b>、<b data-page-node-id="2K8DndDKgpAGEDBhkWaki2">审核怎么流转</b>、
+      以及每个接口长什么样。
+    </p>
+    <div class="stats" style="margin-top:30px" data-page-node-id="PT1y6FrX7PE5CzNkwlPnif">
+      <div class="stat" data-page-node-id="djAMldJzFuSwC0GHQkDxEr"><b style="color:#fff" data-page-node-id="Q9OuAIs6hvE5O2tOcg1Tv4">0</b><span style="color:#e0c9b0" data-page-node-id="8E69EQYwa5HZJFbWBMi9pz">第三方依赖</span></div>
+      <div class="stat" data-page-node-id="siUNq4Zf2Le04tudJToVI4"><b style="color:#fff" data-page-node-id="KJs0O4EDiawuDJEHNF1CbR">1</b><span style="color:#e0c9b0" data-page-node-id="k267e34PINqR7hsJqw7vNj">个后端文件</span></div>
+      <div class="stat" data-page-node-id="cb9CS4PRwUCYM5jzLGTCCQ"><b style="color:#fff" data-page-node-id="mk7eVKuCn4aVLF4DTOOQm2">3</b><span style="color:#e0c9b0" data-page-node-id="iqlZd56khzSN7CWknlthas">角色权限层</span></div>
+      <div class="stat" data-page-node-id="nXhFvA1uK8Jps26Ve21VWA"><b style="color:#fff" data-page-node-id="5Arb0I04bkAFsibfhpwniS">scrypt</b><span style="color:#e0c9b0" data-page-node-id="16u0VkbXWIBpAzaemm15QL">密码哈希</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 怎么保障 ========== -->
+<section class="sec wrap" id="guard" data-only="dev" data-page-node-id="8EFVQC310sFueFMGjECVUh">
+  <div class="sec-head reveal" data-page-node-id="4DNRcnnsH9NK1mNLUtsKGQ">
+    <span class="kicker" data-page-node-id="5Ipj6cCYfnNTuFqop6AJ8p">🛡 怎么保障</span>
+    <h2 data-page-node-id="FU2kaFGl7EbD5JXrgZ39Ce">安全与治理，逐条落地</h2>
+    <p data-page-node-id="Jfr1VgF33d6wRbzxKfLzh4">每一道防线都在后端拦截，不靠前端「藏起来」。</p>
+  </div>
+  <div class="guard" data-page-node-id="pMgRQUBD4juNRnbrXKuz5K">
+    <div class="guard-item reveal" data-page-node-id="9o6HsaPmqYruS5T8B2spEk">
+      <div class="guard-ic" style="background:var(--brand-soft)" data-page-node-id="8XUOHDXmSjSNWZguBw06g9">🔑</div>
+      <div data-page-node-id="gRrcmgvP5gTpHrdePLP2Mo"><h3 data-page-node-id="5i6ihwoQh7CzJc5XcKYGIn">密码哈希 · scrypt</h3><p data-page-node-id="19olJr1lfI2DGvj1WS2eXI">密码不落明文，<code data-page-node-id="QqxWpvZuzVeaBrhUN0CjTc">scrypt</code> + 随机盐存哈希，校验用 <b data-page-node-id="dzwZGMzwmORDstNK52hYYd">定长比较</b>防时序攻击。登录态走 <code data-page-node-id="O7xgqHhvi95aGIYBwdsubq">HttpOnly</code> 之外的 Cookie 令牌 <code data-page-node-id="8NhyATq7ppZeh8pVMDmgHS">fq_token</code>，boot 时清理本地残留。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="cTp1xqa7NkBj7fV7sobQtV">
+      <div class="guard-ic" style="background:#eef5ff" data-page-node-id="uGSHZFwZOmoNVpCEqOCu84">🚪</div>
+      <div data-page-node-id="WdlpaH6iQ7mqVKfknmrFde"><h3 data-page-node-id="b9nbBocTIddNOcSlYuiR0y">接口按角色分层</h3><p data-page-node-id="y6Pbc2EBPurBiFalrVjuAj">每个写接口先查身份：普通用户 / <b data-page-node-id="vhvI0mZtYHBvRtJ3pGKy2b">审核员</b>（`rankOf ≥ 1`）/ <b data-page-node-id="A5X7oPnNO4wHJLX9Eerxm9">管理员</b>。未登录返 <code data-page-node-id="RfO0QZKT3NjnZOzaF1xP1O">401</code>、越权返 <code data-page-node-id="Dn344DZkRfCdP6LlxDR20Z">403</code>，一律在写库之前 return。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="nFidIRhUoxELIKY3z2mMsW">
+      <div class="guard-ic" style="background:#e9f7ec" data-page-node-id="nf2U75uhgFHYOlfenuehSm">📝</div>
+      <div data-page-node-id="Li1OGApMXZjDeSxyrKToo0"><h3 data-page-node-id="4LcCFtyPUqgiRCkXHFw4ZL">先审后发</h3><p data-page-node-id="pvkzP04UidqwOzbBRKD7UA">新帖 <code data-page-node-id="nFmtyrt6m3wkPEb13xtXSn">status='pending'</code>，只有审核通过才进公共列表。转发私信也只放行 <code data-page-node-id="nkeHNx6aujFjE3mB3vBLTm">approved</code> 或本人作品，堵住「借私信绕过审核」。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="61NQiKB4DAlIAhyUXfEcYK">
+      <div class="guard-ic" style="background:#fff3d6" data-page-node-id="XUB526lhHFTr3V3ly0R7Wv">🔒</div>
+      <div data-page-node-id="bDvpdG1y9mNWDbnUrK9R0n"><h3 data-page-node-id="CLCzVpeB08o0uJFXNIOWxj">隐私只在后端拦</h3><p data-page-node-id="rFEZIKswfceNdQWz7JmvYc">粉丝 / 关注名单对他人返回 <code data-page-node-id="1Oq2QV2WiGAyg2WC0dDsON">null</code>——只藏前端等于假隐私。举报、封禁、下架都由管理员闭环处理。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="dqMZBvEr5hyTu95zq2cvJI">
+      <div class="guard-ic" style="background:#ffeef3" data-page-node-id="HisAxrlJFUkzcUzKcLAw2f">🖼</div>
+      <div data-page-node-id="V5zTKSNFc5zZkpNjGme6dX"><h3 data-page-node-id="bEk6DHjxOKU7mW3kvHFM7W">上传双重限制</h3><p data-page-node-id="X7fWzuTl1htHDJBRVYDQHp">生成文件名（<code data-page-node-id="uojIrTUejN8rBKtkUMhlNc">rid(10)+ext</code>）杜绝路径注入，白名单 png/jpg/gif/webp，单张 <b data-page-node-id="oURmYMKHJedA3TYqz6IGy3">5MB</b>；前端先压到长边 1280 再传。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="m0YBL6Mjau3j2qHRYhpX6w">
+      <div class="guard-ic" style="background:#f0ecff" data-page-node-id="4RBjnNul3E0wWNBbgHJWm1">🧱</div>
+      <div data-page-node-id="GCbcSDhcFg7C29xqIur7gD"><h3 data-page-node-id="9BpOIIWtyVQh57YMGAWuMI">静态服务防穿越</h3><p data-page-node-id="AAk0hmkTQiWGgxUWiNHR1k">静态路径 <code data-page-node-id="gVWvXAk4RfRwW3aUUym6p0">path.normalize</code> 后强制校验必须落在 <code data-page-node-id="EXbdYAmSn4ydmAZNudgRDp">public/</code> 内，越界直接 <code data-page-node-id="WXUCdA40oZ1lmaTOSCx1Df">403</code>；目录路径自动补 <code data-page-node-id="x51ictvhewyswKc4E28vhs">index.html</code>。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 审核怎么流转 ========== -->
+<section class="sec wrap" data-only="dev" style="padding-top:20px" data-page-node-id="jFcB7LvBfvt96gwOtaHqWO">
+  <div class="sec-head reveal" data-page-node-id="6m9IYCuOB0GSYYq2xaufqN">
+    <span class="kicker" data-page-node-id="06gkEKiHQ6FA6Rs5OM8ehi">⚙️ 审核流水线</span>
+    <h2 data-page-node-id="uXDwYH5FHrcBGgUQxN1mJK">一条内容的一生</h2>
+    <p data-page-node-id="3iudHtnXGbXWBndjk9SLdB">状态机很简单，但每一跳都有权限校验。</p>
+  </div>
+  <div class="tablewrap reveal" data-page-node-id="PCLtqH31cszZquMAs0eOjf">
+    <div class="scroll" data-page-node-id="SKLt6gHIdwNWBM7V7c4ixv">
+      <table class="apitable" data-page-node-id="QFxRkRtjZyZMmrkY6a1WAx">
+        <thead data-page-node-id="E6nGFZZDmZStDriYY0RooS"><tr data-page-node-id="IwgUkZ2MfdnxClBYheSVQA"><th data-page-node-id="FfP8aLcADhV9bCy7zkZNII">阶段</th><th data-page-node-id="JuC85FZWFP0gY3Vslns9Uq">触发者</th><th data-page-node-id="ULZeS1N3Odh4iHWiZd7X4U">动作</th><th data-page-node-id="tfeybgaIgLr4NZUFE58CZA">状态变化</th></tr></thead>
+        <tbody data-page-node-id="OALoUHuIBltD0EUZx0dgMb">
+          <tr data-page-node-id="9aOFFnpBsIcdbF3hhXvuUw"><td data-page-node-id="PIcYugQ0dqZ7gSgiBr0g6W">① 发布</td><td data-page-node-id="8hDpaHBu02LZNfF2drMo7Y">任意登录用户</td><td data-page-node-id="DkOYuPqdj9F7VaR6qPFYHs"><span class="verb post" data-page-node-id="cDS9eWywgryI5QwshGLXXN">POST</span> <code data-page-node-id="2VVGVk0lZjidKFWVTxiK2z">/api/posts</code></td><td data-page-node-id="IJonBdV8uVaGW3HHzzxcpY"><code data-page-node-id="aVVVkMHAcIWvWzJsHXJCsM">pending</code>（管理员/审核员发帖直通 <code data-page-node-id="MnzCaSOMnkwhz6RImwuLmz">approved</code>）</td></tr>
+          <tr data-page-node-id="Xp6Uo893sSWxpFEtFmTZP2"><td data-page-node-id="TfRmBO2Si65WXfvKKjn00F">② 待审队列</td><td data-page-node-id="EnGY8Up5IvCNDA6DYHNTZh">审核员 / 管理员</td><td data-page-node-id="WnZlsanxo8uQyafylBauNS"><span class="verb get" data-page-node-id="5Qpz0mCQzVeoqg9ZI8e5Yq">GET</span> <code data-page-node-id="OsZi6Gt07hzdvxQaWKdZ4K">/api/posts?scope=pending</code></td><td data-page-node-id="XEYF5o3fFFQcObTCE35U2E">拿到待审列表</td></tr>
+          <tr data-page-node-id="8kU5i1RPFK4XdheKasnUhQ"><td data-page-node-id="AGfmBxBp5AaACnrlVJjyBj">③ 通过</td><td data-page-node-id="V7ahkCUCDGqvBYAZxzgpMo">审核员 / 管理员</td><td data-page-node-id="kfIxufRg1DegK7oGM4xDCC"><span class="verb post" data-page-node-id="UHBYNvSMBSalVtiN8X2lVD">POST</span> <code data-page-node-id="BkusYiPxFgoG5MrXAr2F08">/api/review</code> <code data-page-node-id="tS8TD5tCyOmBvnFkFNsmpr">{action:'approve'}</code></td><td data-page-node-id="Rmg6qjJ1ZB5fJDlRB3nanY"><code data-page-node-id="YUa6PmtE3z38F7t6LkYtBz">pending → approved</code>，公开可见</td></tr>
+          <tr data-page-node-id="Hn64E4qE5OLiZYC775xQa4"><td data-page-node-id="0d1sgsJGGAblUg6a3F6Gm6">④ 驳回</td><td data-page-node-id="YVc3FDGu6h8lGW69N6KrCg">审核员 / 管理员</td><td data-page-node-id="lJohWDCS2ehGqPBcumOBhg"><span class="verb post" data-page-node-id="LEqGFzYAHCOQ5qeKZDz7zT">POST</span> <code data-page-node-id="lAFU1wuNmiXrXKR8KEH0lh">/api/review</code> <code data-page-node-id="R0ZUhlJTTUDxr9P9OisNDl">{action:'reject', reason}</code></td><td data-page-node-id="djbit9HmFWDTcQIgDAkpHU"><code data-page-node-id="NjZPxAE9qhNYLIU50sCiS5">pending → rejected</code>，<b data-page-node-id="OyM7HzhN58DiED2tM9oHaX">自动清掉 featured</b></td></tr>
+          <tr data-page-node-id="lKrM2EZOvKh920zPI2DMUt"><td data-page-node-id="qxLIN3zYdRbXb0Rzs40Uby">⑤ 评优</td><td data-page-node-id="BWmxKgH2GHcjijoBudXpeW">审核员 / 管理员</td><td data-page-node-id="yzxP5lGPd9AgIT48FfW0a5"><span class="verb post" data-page-node-id="zDZBzFcaVRQqSXIVSF9IKi">POST</span> <code data-page-node-id="iFZV4OyFWi12HzGwvihYqK">/api/posts/:id/feature</code></td><td data-page-node-id="cYBUuKRsU7by1skHXWnDgh"><code data-page-node-id="XdS9ozUbkykXiEJXiJ2e5E">featured</code> 开关，进右栏「优秀饭帖」</td></tr>
+          <tr data-page-node-id="jR6VZO8GpfoPlcqpHaIsIB"><td data-page-node-id="TFi5uAI187AbJWI2q3XnuN">⑥ 举报处理</td><td data-page-node-id="EHm3XJCYBxlg8qze4jiUJc">管理员</td><td data-page-node-id="bbGSyUyqZWzX5xGhMMyiBk"><span class="verb post" data-page-node-id="MQCFkdUO1BByTPvrcmU9sM">POST</span> <code data-page-node-id="YL0AIDOWI6P7WZ4rNjGC5o">/api/reports</code></td><td data-page-node-id="FCpqa4rEA1dA6S5Eex4KBY"><code data-page-node-id="xKQzFRAkWRDITP1SmBnOhp">dismiss / remove / ban</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="muted reveal" style="text-align:center;margin-top:16px;font-size:13.5px" data-page-node-id="4G4QDL8TgIXMaGm33AOlI1">
+    三道闸管着「评优」：<b data-page-node-id="MgoOMNmMlHzODG0xcDxO1R">必须是审核员/管理员</b> · <b data-page-node-id="39ovrIloEwfFQcEV4KySyC">不能给自己评</b> · <b data-page-node-id="lBP4cVYZwSFA6NO8tyIyEG">必须是已通过的作品</b>。
+  </p>
+</section>
+
+<!-- ========== 接口一览 ========== -->
+<section class="sec wrap" id="api" data-only="dev" style="padding-top:20px" data-page-node-id="TuHlfqBv1iUi9A1xLDmZj0">
+  <div class="sec-head reveal" data-page-node-id="jiggY4KZcleevhYdeNaEW8">
+    <span class="kicker" data-page-node-id="Pjwe97jjQJ0GUEVErbCJCt">🔌 接口一览</span>
+    <h2 data-page-node-id="vtHYX9mq6hwLWe1ClCJ1x1">所有 API，一张表看完</h2>
+    <p data-page-node-id="CPjqFznEe8fxXUeYnhhPp4">统一 JSON；登录态走 Cookie。写接口都做了角色校验。</p>
+  </div>
+  <div class="tablewrap reveal" data-page-node-id="y6F8Rd0EYl5hZAFzXXidSD">
+    <div class="scroll" data-page-node-id="koSofTk0vZ8XS6fibaAH8D">
+      <table class="apitable" data-page-node-id="DHwqwiBuDVijVtlzHG3XiQ">
+        <thead data-page-node-id="8HpLUNldMDBFUg5H55ZBG5"><tr data-page-node-id="TzbwbruJ4SUP4ucQg4sUOM"><th data-page-node-id="fkXZLpTlrvbiQUBLQug8ls">方法</th><th data-page-node-id="8ADOtYAKulweNLewdZGrcF">路径</th><th data-page-node-id="2k17RBZOXjKe2N5pl4zORK">作用</th><th data-page-node-id="ZR1w0E6cMkH5xpQRYeD2oy">权限</th></tr></thead>
+        <tbody data-page-node-id="FsTonLjDZu92QLa3Ps0Z16">
+          <tr data-page-node-id="Sn5w7XEaYfo3SXJHECY8sD"><td data-page-node-id="hqKSEled0YuBEf1hpQu120"><span class="verb post" data-page-node-id="hgiPBmlOg8SYwkKabu2b7x">POST</span></td><td data-page-node-id="HaKvVO6TDCHZ95ziWzmKW5"><code data-page-node-id="5W74DMsH56StPEJMaBNi1J">/api/auth/register</code></td><td data-page-node-id="9yNEzmN02Z4TzUWoGGOi46">注册并登录</td><td data-page-node-id="vCmFLiKXJRs1qojk7EEaey">公开</td></tr>
+          <tr data-page-node-id="VGbm1sDaskF2nbw4Krclq3"><td data-page-node-id="VaLgIZiaGsJLhYmriaz5ZI"><span class="verb post" data-page-node-id="SGS4DCHsVnRVyeIuxfUPUS">POST</span></td><td data-page-node-id="8TbPlgGwWVcCH7qYCEKSoJ"><code data-page-node-id="eHXtd4GwvRFn20uISAbHlM">/api/auth/login</code></td><td data-page-node-id="dk3cKBWU0b2cg4ieB7Lu4E">登录，下发 <code data-page-node-id="G7CZe8FWSWbZYefGmEsFRY">fq_token</code></td><td data-page-node-id="hqAL1xQGQLB6SrLYWJBG6C">公开</td></tr>
+          <tr data-page-node-id="i67Qx5ALeCDpvaHxMMAhjO"><td data-page-node-id="tHtJgbWcksoX0zuefd1Blf"><span class="verb post" data-page-node-id="t1sKhXCA0nLUEmf0UCQkk5">POST</span></td><td data-page-node-id="PgFHX9uOLgKUC2qzRTuc4H"><code data-page-node-id="zf6hwhKdXGAioHbOknKaRR">/api/auth/logout</code></td><td data-page-node-id="KxEyPXIvtv1nCHMshqYwu1">登出</td><td data-page-node-id="gCqjsr6r5MA6RGBHfDOzjJ">登录</td></tr>
+          <tr data-page-node-id="32XEV3nq5FP9wwFBIfgVoa"><td data-page-node-id="UCn9pvksDUt0Bj8YiAe8xr"><span class="verb get" data-page-node-id="MbjieDwAsCD8viqKutejl3">GET</span></td><td data-page-node-id="8o6bdtULaz0dv9oTkZ1VMH"><code data-page-node-id="L3ZkljprNWpvFjuSqmnasu">/api/me</code></td><td data-page-node-id="zQ9W3OkqdYPDHoGqVyZqBe">当前用户信息</td><td data-page-node-id="q7coerlSlSIJFCXbBi1ux1">登录</td></tr>
+          <tr data-page-node-id="BSq46EghQlxRLmYLDIgxar"><td data-page-node-id="yhQuoaIXiy9fmzm4p3SFUh"><span class="verb patch" data-page-node-id="P1K9zqgXahHEhrA3AYFSff">PATCH</span></td><td data-page-node-id="JEHap4BojQ73TvMu90Fj9m"><code data-page-node-id="cyViapoRDYIOfL9fWR5Ah6">/api/me</code></td><td data-page-node-id="gMR7mjzfYllaf1p8HeX3Sc">改昵称 / 签名 / 头像</td><td data-page-node-id="64JXR2BGzAlI1OPPsMpJCM">本人</td></tr>
+          <tr data-page-node-id="7UEX5a7jgCfsQ7Forkmlya"><td data-page-node-id="KirS5HXsAb4QcQ5AGGDGEd"><span class="verb post" data-page-node-id="t2ZKjfhzqEtDUCU5GkZDen">POST</span></td><td data-page-node-id="pE5xNgszfEWyCPZ4kS8yeJ"><code data-page-node-id="o1XoyvggufYe8kPnppywOK">/api/me/password</code></td><td data-page-node-id="HMsHp3r8PhNqQIEBJDfwxx">改密码（校验旧密码）</td><td data-page-node-id="4pTS5xyE14cvuNhU50eiC2">本人</td></tr>
+          <tr data-page-node-id="D0Af4bOXEAO6SmaaUaLhKu"><td data-page-node-id="jGCXb3N2rzaB7TmVbbNtRT"><span class="verb post" data-page-node-id="iShWi24YMLOB7a7nD0oEsY">POST</span></td><td data-page-node-id="wEqE40LBsmaU0QFwQlAQJL"><code data-page-node-id="AWU3GfSWnc9fOgBF1rHmZr">/api/me/apply-reviewer</code></td><td data-page-node-id="cbt0ruJXzaktI6YkBzkmup">申请成为审核员</td><td data-page-node-id="mrn5wrKe8sSlCoPI4FPyLy">登录</td></tr>
+          <tr data-page-node-id="bWh4W0bvmNIbaPSMW5cJLr"><td data-page-node-id="6jUpfLDT6pWNgzDhbOE7Zc"><span class="verb get" data-page-node-id="Ef2Jr4jOAtUXbedtp1MWQC">GET</span></td><td data-page-node-id="mp73g0TMU7qT6rwdDVqFoS"><code data-page-node-id="8a63RMuaTXNdaCnwi5WFjX">/api/posts</code></td><td data-page-node-id="cpB92Ruzi6KUoKlIyDj5UQ">列表：feed / following / mine / pending…</td><td data-page-node-id="ms8dm00iiVEkX55WcdQa3F">部分需登录</td></tr>
+          <tr data-page-node-id="mWV0e6VacKmHEsyhCzxYqe"><td data-page-node-id="K2xmrXsXJMo3Gi5hvPYaox"><span class="verb post" data-page-node-id="Huvb1B0AtQYYmFoZPcfbM0">POST</span></td><td data-page-node-id="ZCXydapC6RK3VG78VMwU6z"><code data-page-node-id="ZgqYEL8kk5Kyx4Mrm85bEu">/api/posts</code></td><td data-page-node-id="6ztvkAupbIojbjeCdixfCx">发帖（进待审）</td><td data-page-node-id="5p6hMDQZAPyuiel2tE3M6e">登录</td></tr>
+          <tr data-page-node-id="xoHYy0mUKYzOqbXwGj9Wx0"><td data-page-node-id="XQpNMk5lhBAHXzQUun2zPW"><span class="verb get" data-page-node-id="eacRsIfiMvPCC9DhuM6Usm">GET</span><span class="verb del" style="margin-left:4px" data-page-node-id="io3icEls2ONGeKb0J48hH9">DEL</span></td><td data-page-node-id="AGuI6gqgUBnrectpRAUj5U"><code data-page-node-id="yCUvwrTmlCSDR7ReLJ9tlz">/api/posts/:id</code></td><td data-page-node-id="9stkLwLGx4jAqEyzRCZTds">看详情 / 删帖</td><td data-page-node-id="tl5MyNZpAOmC8BPblAT5nu">作者或管理员</td></tr>
+          <tr data-page-node-id="m1gyRwupzv1QsQ5M94BRAP"><td data-page-node-id="Y5SOG5B658ycOm5luYSZBr"><span class="verb post" data-page-node-id="TDW50sY2K3b8govTIba7LX">POST</span></td><td data-page-node-id="HfgOaEQYcFFhAmMHUmqiXw"><code data-page-node-id="ZSVVJ1Ev0aa0PYQGYoCTUx">/api/posts/:id/like</code></td><td data-page-node-id="pcAa6Dbn562Qdq3Qh5pQI4">点赞开关</td><td data-page-node-id="Mvh0E9V4vL17qOFtKDbxRi">登录</td></tr>
+          <tr data-page-node-id="CG08ecCPmQipj3aVuKY6Vs"><td data-page-node-id="T6fdibUCIT0tdTCBT0oCwi"><span class="verb post" data-page-node-id="5BONenskBwaS7vAa5yhPuR">POST</span></td><td data-page-node-id="VtltuQvZbYBuoKHsfMkavk"><code data-page-node-id="d2wnJbwiDkwNAHdUcIvwtm">/api/posts/:id/comments</code></td><td data-page-node-id="2QGakEZAc5TlmLU3wg78ZG">发评论</td><td data-page-node-id="4cBsQYN8fgJhChoTNIA1FO">登录</td></tr>
+          <tr data-page-node-id="wGV4YIgCWtAKNmV9bE5Sql"><td data-page-node-id="s9SMGsjrKISZ78SjQPvMQA"><span class="verb post" data-page-node-id="fm2dXDOYw8G2E0RRVgIhp4">POST</span></td><td data-page-node-id="bdyzOEsjRnfgeWXFxt8WZ3"><code data-page-node-id="iU7jIU4alwLTumfM1Ugm2Q">/api/posts/:id/feature</code></td><td data-page-node-id="fJbr88zB6ENGr10z43LYKh">评优（开关式）</td><td data-page-node-id="gDa1vg0chZY021ySwKzXNs">审核员+ / 不能自评</td></tr>
+          <tr data-page-node-id="rwwYzNqkztCBgh7VWbJTCw"><td data-page-node-id="53oIckZCcO8c1ZDVjm4aL8"><span class="verb post" data-page-node-id="NNcMwcIQuRzGMo1rEgYkK9">POST</span></td><td data-page-node-id="uZp22oS52BfKfTkcbExeyV"><code data-page-node-id="zW6rwIzf14hXs6qhTHTmfL">/api/posts/:id/report</code></td><td data-page-node-id="RFHSCn8Vdn1UlINiWwRGT2">举报</td><td data-page-node-id="yTghp1CKyAIKRp6tyNQcO4">登录</td></tr>
+          <tr data-page-node-id="a7zWH9x4QqsPfsYXa5519J"><td data-page-node-id="POvAYzX0lJavp5ZfLApZ94"><span class="verb post" data-page-node-id="XdTX4zeyhLFLuwNoXSRkE5">POST</span></td><td data-page-node-id="Gm0CJ908NBdosjeVjSNtia"><code data-page-node-id="SGKfsL0uqA6cIVg9bOdmMi">/api/review</code></td><td data-page-node-id="LiK5yCYuRFsqPuZB8Ggnlh">审核：通过 / 驳回</td><td data-page-node-id="KSHGrAwIktpBp2zRqILyy5">审核员+</td></tr>
+          <tr data-page-node-id="E2ubOsMPSGQJN7cFyqOZD2"><td data-page-node-id="c1DT1NOrJFdsBU7AoQCdDn"><span class="verb get" data-page-node-id="HudBU89qFAtzvjzNrJI7yY">GET</span></td><td data-page-node-id="h4Tz7BuMDbMWo6r9J76OXJ"><code data-page-node-id="zw505C0AUi4wvd4p1Zf4JA">/api/reports</code> · <code data-page-node-id="46ANAt4KgkQTvNS1LMG0gV">/api/applications</code> · <code data-page-node-id="eVBiXQ5DMp6YzNWgVRBXAT">/api/admin/users</code></td><td data-page-node-id="z9btJJLG2IjySVwWV3ZwgH">举报 / 审核员申请 / 用户管理</td><td data-page-node-id="XEmvbZNlzcYhEs6rrBL2rF">管理员</td></tr>
+          <tr data-page-node-id="dX8rd0XDwDoOJvoL9lBq0z"><td data-page-node-id="go6U9qQM8hW5VtItSZgKTy"><span class="verb get" data-page-node-id="KXfTac4r9KyLI6Tt1Hr9qE">GET</span></td><td data-page-node-id="k1i8f40Og7WEXKssCKTB6K"><code data-page-node-id="Ti6v6dz9HcqG6dNzLYgO1F">/api/users/:id</code></td><td data-page-node-id="TLji4RCYOnbHmwTdZJ9pAe">主页（非本人隐藏名单）</td><td data-page-node-id="zceB2uIBQckilasZAwxndf">公开</td></tr>
+          <tr data-page-node-id="qSDDWJJA9FViFM328CpXyy"><td data-page-node-id="KotqHbWnslbEDtG79DA1WD"><span class="verb post" data-page-node-id="GwcKoJ4xWYCJShepDZ7Y9J">POST</span></td><td data-page-node-id="KxwYuY7dc3VUlxN5zcGTRg"><code data-page-node-id="9iZkFxCTsChQAMWKdBXDN6">/api/users/:id/follow</code></td><td data-page-node-id="MFKYHTbMedrv9P6gFAAHgT">关注开关</td><td data-page-node-id="Uh43oFdHoNBtYRASo5OBgC">登录</td></tr>
+          <tr data-page-node-id="XwC9LDdUrdIPKIuuoVbDuQ"><td data-page-node-id="otlBg6EwTke9VsE0rGWpdE"><span class="verb get" data-page-node-id="gVgMJbVmygH6j3GjBzTKex">GET</span></td><td data-page-node-id="7HBaVr8m1TElq31tgVg1bR"><code data-page-node-id="Ip1qD6PjTK63X5iaORAngC">/api/hot</code></td><td data-page-node-id="mvHPAUcUCJftF6pSikBf2t">热门话题 + 优秀饭帖</td><td data-page-node-id="Sz7HP08uEEpqCatkbTmL86">公开</td></tr>
+          <tr data-page-node-id="p4ODnMDZ3AqjbPVPvk2a57"><td data-page-node-id="d6nAWztHDkonLoUlMY57Cr"><span class="verb get" data-page-node-id="cnqdbSVXVrxmAZOgGIrjgu">GET</span></td><td data-page-node-id="AACQbWcYUBSGMb0k4d0cnD"><code data-page-node-id="VCZ8wzMiZTJpxu3dy8NJ12">/api/conversations</code> · <code data-page-node-id="MrLCRaAnpruIT1NKWeOHGn">/api/messages/:peerId</code></td><td data-page-node-id="YUbaVNvh9pNxBmOtui5Wif">私信会话 / 收发</td><td data-page-node-id="B0VOZvnPADwWmDSfKB84lB">登录</td></tr>
+          <tr data-page-node-id="VvgOPiD1QQv2dtajilPy0t"><td data-page-node-id="B72009tzHxLTgGKqL4KnKD"><span class="verb post" data-page-node-id="BOX1eiK9ftXYC8c5pVQUAz">POST</span></td><td data-page-node-id="77KWwQ3Si7xWr0Lz5r9rCP"><code data-page-node-id="wIlPKIZZ5E6Mt5Q6VfeHZG">/api/upload</code></td><td data-page-node-id="in6uAOqI2DESAvXMZyoE9W">上传图片（≤5MB）</td><td data-page-node-id="FbSmFKXuwaIbbs5MhrEK3L">登录</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 怎么跑起来 ========== -->
+<section class="sec wrap" id="run" data-only="dev" style="padding-top:20px" data-page-node-id="NB5hGjuiT1PHg7qL1FkLLR">
+  <div class="sec-head reveal" data-page-node-id="6iITWEdSxRiFHB5N5NOYCL">
+    <span class="kicker" data-page-node-id="96jSGBeRdvnNxDfRAnrQfK">🚀 怎么跑起来</span>
+    <h2 data-page-node-id="gNXUlQhjvvPR5oHQK3hRlt">三步，零安装</h2>
+    <p data-page-node-id="o7QMSUMrlHVhE8I2569wGi">只要一台装了 Node 18+ 的机器。</p>
+  </div>
+  <div class="codebox reveal" data-page-node-id="yF4Zcim8atlrhxAXKQLzym">
+<span class="c" data-page-node-id="NTQ4X9ftZZZKEMtt4vDJL7"># ① 直接启动（默认 3000 端口，自动生成 data/db.json）</span>
+<span class="k" data-page-node-id="cKebGvT1SK37R2Dcq4DMCe">node</span> server.js
+
+<span class="c" data-page-node-id="0FwWdCzlrS84wNLOuq7I5v"># ② 想换端口、或指定另一份数据文件（不改动真实数据）</span>
+<span class="m" data-page-node-id="WkiCQbgDtV2aU0Etb4BC2C">PORT</span>=<span class="s" data-page-node-id="oV26gEnYMVIzgOpYw8KPDA">8080</span> <span class="m" data-page-node-id="gNjMF98gWDdWXgVlDj0pIP">FQ_DB</span>=<span class="s" data-page-node-id="o63kd2UR2t9xxCmZ8adrtA">./data/test-db.json</span> <span class="k" data-page-node-id="B4LFMCbKDVSufPm9ZHuULG">node</span> server.js
+
+<span class="c" data-page-node-id="i6HIFQdOpEFfugkvkgtGjh"># ③ 打开浏览器</span>
+<span class="c" data-page-node-id="wvHKKmjGGrXctdJ3cnJLC3">#   http://localhost:3000/</span>        <span class="c" data-page-node-id="8IlPjfNiCJq1k1Vm4D9T7h">→ 社区首页</span>
+<span class="c" data-page-node-id="N5To9rFJ6kWrUgoF5djDqA">#   http://localhost:3000/intro/</span>    <span class="c" data-page-node-id="2HyuKlBbA0lx8oQEKhFvqQ">→ 本介绍页</span>
+  </div>
+  <div class="guard" style="margin-top:22px" data-page-node-id="0w3xXLlndW70l8Zxnv2Llt">
+    <div class="guard-item reveal" data-page-node-id="d1oAGTuxNd51qwDn8pcGOA">
+      <div class="guard-ic" style="background:var(--brand-soft)" data-page-node-id="8pX62NxMxQylkfU8gQLMRy">📦</div>
+      <div data-page-node-id="0NGGa6tW45hgzmVyq4ZegQ"><h3 data-page-node-id="YJp0nkVinGaTdRYgdYIQmu">依赖：零</h3><p data-page-node-id="D0jqZJWTTmx59XoFCioKCn"><code data-page-node-id="ttRILeGnemKVWZwMEkofL5">package.json</code> 里没有任何 dependencies，用 Node 内置 <code data-page-node-id="6z69YIznUsJAVq8QelGBaP">http</code> / <code data-page-node-id="GXdIFqtHF0SwEHxE81Xor5">fs</code> / <code data-page-node-id="lCwedzCHKuxPmuSeJVdBnu">crypto</code> 手写全部逻辑。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="yKLts3cqdGUc9K56YAJmBB">
+      <div class="guard-ic" style="background:#eef5ff" data-page-node-id="HIl2rqlJOrnznHGTrsNyOI">💾</div>
+      <div data-page-node-id="a8Ks48ubmsfhG20dqS7O2F"><h3 data-page-node-id="SvRA6G6J8aR23ud8K27brK">存储：一个 JSON 文件</h3><p data-page-node-id="Zb96gBx1MGNCEyi3cJExmo">写入走「先写临时文件再 rename」，避免半截数据；每次改动会留 <code data-page-node-id="8Ogl8PILvcRvCRM8UKLdRJ">db.backup-*.json</code> 备份。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="r8UJCnRLmjUH8pWOpWMURy">
+      <div class="guard-ic" style="background:#e9f7ec" data-page-node-id="w67QW3PM7uCuI12uHIikGC">🎨</div>
+      <div data-page-node-id="MKQOWYDhWuVkd0CIY9r9nL"><h3 data-page-node-id="rIMMjESpXwBdBkwQ1MdIHg">前端：单文件 SPA</h3><p data-page-node-id="uvAZqVaUbLi0IvxaKceoED"><code data-page-node-id="77SCKS4f5OPvbH97XCKSCs">app.js</code> 一份 hash 路由 + 全量渲染；要局部更新就只改对应容器，保住输入焦点。</p></div>
+    </div>
+    <div class="guard-item reveal" data-page-node-id="m7vpa9FefLWidHmgrnJio7">
+      <div class="guard-ic" style="background:#fff3d6" data-page-node-id="OqDqzy5a53IzdPLASn4VEy">🧪</div>
+      <div data-page-node-id="V43RO1jpStsiaaGunxwfHA"><h3 data-page-node-id="xOzOhPtIyv8AB2pmVMobKC">验证：无头浏览器</h3><p data-page-node-id="bFkzqy8hC1QJd4g62IqyCr">用本机 Edge + CDP 做端到端冒烟，看截图验布局，不装 Playwright。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 开发版 CTA ========== -->
+<section class="wrap cta-band" data-only="dev" data-page-node-id="leNUp5BLNeqpOvVPJBK3H3">
+  <div class="cta-inner cta-dark reveal" data-page-node-id="zSroyhkhA16PvW4oltI0iT">
+    <span class="cta-eyebrow" data-page-node-id="pUdCpsNLyQy8coFOx2s2GY">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="jkTe5oDChTUo79vAwCakp5"><path d="M9 18l-6-6 6-6M15 6l6 6-6 6" data-page-node-id="tgj4k8GveDpn4AlljlRQBa"/></svg>
+      线上版本随时可进
+    </span>
+    <h2 data-page-node-id="sY1vX9fbpHUbhKeBv3E13n">想看看它跑起来的样子？</h2>
+    <p data-page-node-id="OPmamAejc7LaNBA86E3EBk">不用装环境，点一下就能进。代码结构、接口、审核流转，上面都写清楚了。</p>
+    <a class="btn enter-site" href="/" data-page-node-id="WOxQAoZNCWFtFPJoljcDul">进入饭圈
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="mCEVAsVuHMK7O9HDqkxyzY"><path d="M5 12h13M13 6l6 6-6 6" data-page-node-id="c96MBCGDuCa7AaIB08WzfE"/></svg>
+    </a>
+    <div class="cta-foot" data-page-node-id="vyQQlg1xkEp9zAiSM76gn5">
+      <span data-page-node-id="yzxFkXegR9esAjl2aOBbxy">零依赖</span>
+      <span data-page-node-id="Jf2QA5drrsa9m4J3ZSj8Se">·</span>
+      <span data-page-node-id="Jky3z0ZpF0BumdCbOHCSF6">21 个接口</span>
+      <span data-page-node-id="RZrOMdt0pZGvoqEFr4hifO">·</span>
+      <span data-page-node-id="5aDalYyhQTpBXyTFWmij6B">3 层权限</span>
+    </div>
+  </div>
+</section>
+
+<footer class="foot wrap" data-page-node-id="ATc8ZsqF9zA3AEbhpbZcJP">
+  <p data-page-node-id="YY5hWu5p1zFeQYfEAxqDI9"><b data-page-node-id="3C5wVV06isqnmSeyrVCml4">饭圈</b> · 好好做饭的人都在这里</p>
+  <p style="margin-top:4px" data-page-node-id="FSk0OwaPhZKhOGDnInzUgl">人工审核 · 优秀饭帖 · 隐私优先 &nbsp;|&nbsp; 一个认真对待每道菜的地方</p>
+</footer>
+
+</main>
+
+<script src="/intro/intro.js"></script>
+
+</body>
+</html>
