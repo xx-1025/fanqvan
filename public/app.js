@@ -39,6 +39,7 @@ const state = {
   reviewTab: 'pending',
   reviewMode: 'posts',
   authTab: 'login',
+  captcha: { id: '', img: '' },   // 登录验证码：{ id 给后端对账, img 是 data-URI 的 PNG 图 }
   openComments: {},
   loading: false,
   list: { scope: 'feed', userId: 0, offset: 0, hasMore: false, total: 0, loadingMore: false },
@@ -2236,6 +2237,27 @@ function viewEdit() {
 
 /* -------- 登录注册 -------- */
 
+/* 验证码：进登录页自动拉一张；拉失败就留着占位，点图重试。
+   刷新时只改 <img> 的 src，不整页重绘 —— 重绘会把用户已经打好的账号密码清空。 */
+async function loadCaptcha(silent) {
+  try {
+    const d = await api('/api/captcha');
+    if (!d || !d.id) return;
+    state.captcha = { id: d.id, img: d.img };
+    const img = $('#cap-img');
+    if (img) img.src = d.img;
+    const hint = $('#cap-hint');
+    if (hint) { hint.className = 'field-hint'; hint.textContent = '不区分大小写 · 看不清就点图片换一张'; }
+  } catch (e) {
+    if (!silent) toast('验证码没刷出来，点图片再试一次', 'err');
+  }
+}
+
+function ensureCaptcha() {
+  if (state.authTab !== 'login') return;
+  if (!state.captcha.img) loadCaptcha(true);
+}
+
 function viewLogin() {
   const isLogin = state.authTab === 'login';
   return '<div class="auth-page"><div class="auth-box">' +
@@ -2252,6 +2274,14 @@ function viewLogin() {
           ? '<div class="field"><label>昵称</label><input name="nickname" placeholder="大家怎么称呼你"></div>' : '') +
         '<div class="field"><label>密码</label>' +
           '<input name="password" type="password" placeholder="至少 8 位，字母 + 数字" autocomplete="' + (isLogin ? 'current-password' : 'new-password') + '"></div>' +
+        (isLogin
+          ? '<div class="field"><label>验证码</label>' +
+            '<div class="cap-row">' +
+              '<input name="captcha" id="cap-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="照图输入 4 个字符">' +
+              '<img id="cap-img" class="cap-img" alt="验证码" title="看不清？点一下换一张" data-action="reload-captcha" src="' + esc(state.captcha.img) + '">' +
+            '</div>' +
+            '<div class="field-hint" id="cap-hint">不区分大小写 · 看不清就点图片换一张</div></div>'
+          : '') +
         (!isLogin
           ? '<div class="field"><label>确认密码</label>' +
             '<input name="confirm" type="password" placeholder="再输入一次密码" autocomplete="new-password">' +
@@ -2485,6 +2515,7 @@ function render() {
 
   if (state.route.name === 'login') {
     app.innerHTML = viewLogin();
+    ensureCaptcha();
   } else {
     // 私信页用更宽的布局变体：三栏时聊天区只剩 ~230px，气泡一长就折成好几行。
     // 聊天时右栏（热门话题/优秀饭帖）也用不上，一并收起来换横向空间。
@@ -3038,8 +3069,17 @@ async function onAuthSubmit(form) {
   const password = String(fd.get('password') || '');
   const nickname = String(fd.get('nickname') || '').trim();
   const confirmPw = String(fd.get('confirm') || '');
+  const captchaCode = String(fd.get('captcha') || '').trim();
   const errBox = $('#auth-err');
   errBox.innerHTML = '';
+
+  // 登录必须先过图形验证码：先本地拦一道，省得白跑一次接口还把图作废
+  if (isLogin && !captchaCode) {
+    errBox.innerHTML = '<div class="form-err">请照着图片填一下验证码</div>';
+    const el = form.querySelector('input[name=captcha]');
+    if (el) el.focus();
+    return;
+  }
 
   // 注册必须两次输入一致：先本地拦一道，给出明确原因，别让用户白提交一次
   if (!isLogin) {
@@ -3061,9 +3101,10 @@ async function onAuthSubmit(form) {
 
   try {
     const d = isLogin
-      ? await api('/api/auth/login', { method: 'POST', body: { username, password } })
+      ? await api('/api/auth/login', { method: 'POST', body: { username, password, captchaId: state.captcha.id, captchaCode } })
       : await api('/api/auth/register', { method: 'POST', body: { username, nickname, password } });
     state.me = d.user;
+    state.captcha = { id: '', img: '' };   // 下次进登录页重新拉图
     localStorage.removeItem('fq_token');
     toast((isLogin ? '欢迎回来，' : '欢迎加入饭圈，') + d.user.nickname, 'ok', 'check');
     state.loading = true;
@@ -3073,6 +3114,13 @@ async function onAuthSubmit(form) {
     go('#/');
   } catch (e) {
     errBox.innerHTML = '<div class="form-err">' + esc(e.message) + '</div>';
+    if (isLogin) {
+      /* 验证码是一次性的：不管这次是「码错」还是「密码错」，那张图都已经作废了，
+         必须换一张，否则用户再点一次登录只会一直失败、还以为是密码记错了。 */
+      const el = form.querySelector('input[name=captcha]');
+      if (el) { el.value = ''; el.focus(); }
+      loadCaptcha(true);
+    }
   }
 }
 
@@ -3430,6 +3478,19 @@ document.addEventListener('click', (e) => {
     case 'auth-tab': {
       state.authTab = el.getAttribute('data-tab');
       render();
+      break;
+    }
+    case 'reload-captcha': {
+      const img = $('#cap-img');
+      if (img) img.classList.add('cap-loading');
+      const input = $('#cap-code');
+      if (input) input.value = '';
+      loadCaptcha(false).then(() => {
+        const i2 = $('#cap-img');
+        if (i2) i2.classList.remove('cap-loading');
+        const c2 = $('#cap-code');
+        if (c2) c2.focus();
+      });
       break;
     }
     case 'rm-image': {

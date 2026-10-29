@@ -1259,6 +1259,36 @@ img { display: block; }
 .field input:focus { background: #fff; box-shadow: var(--sh-sm); transform: translate(-1px, -1px); }
 .field input::placeholder { color: var(--ink-3); font-weight: 500; }
 
+/* 登录验证码：左边输框、右边一张可点的图，高度跟其他输入框对齐
+   （图是服务端现画的 PNG，132×52 那种点阵字，缩到 46px 高正好） */
+.cap-row { display: flex; gap: 10px; align-items: stretch; }
+.cap-row input {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+}
+.cap-img {
+  flex: 0 0 auto;
+  width: 126px;
+  height: 46px;
+  object-fit: contain;   /* 用 cover 会把最右边那个字符裁掉一角，宁可留白 */
+  border-radius: var(--r-sm);
+  border: var(--bw) solid var(--ink);
+  background: var(--cream);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: .15s;
+}
+.cap-img:active { transform: scale(.97); }
+.cap-img.cap-loading { opacity: .4; }
+@media (max-width: 360px) {
+  .cap-img { width: 108px; }
+}
+
 /* 注册时「密码 / 确认密码」的一致性反馈 */
 .field-hint {
   min-height: 17px;

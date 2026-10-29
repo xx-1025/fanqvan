@@ -14,6 +14,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { monitorEventLoopDelay } = require('perf_hooks');
 
 const fsp = fs.promises;
@@ -253,6 +254,12 @@ const AVATARS = [
   '/assets/av-ramen.webp'
 ];
 
+/* 首次建库时生成的高权限口令，交给 ensureBootstrap 打印一次。
+   为什么要在这里生成：以前 seed 把 admin/reviewer 也设成 123456，靠「启动时把弱口令
+   换成随机的」兜底 —— 那个兜底会捎带上真实用户的账号（他们再也登不进去）。
+   现在反过来了：**建库那一刻就随机**，之后任何账号的口令都不再被服务器偷偷改掉。 */
+const SEED_CREDS = [];
+
 function seed() {
   const d = {
     users: [], posts: [], notifications: [], reports: [], applications: [],
@@ -261,10 +268,10 @@ function seed() {
   const nid = () => d.seq++;
   const t = nowMs();
 
-  const mkUser = (username, nickname, role, bio, daysAgo, avatar) => {
+  const mkUser = (username, nickname, role, bio, daysAgo, avatar, pw) => {
     const u = {
       id: nid(), username, nickname,
-      password: makePw('123456'),
+      password: makePw(pw || '123456'),
       role, bio, avatar: avatar || AVATARS[0],
       follows: [], banned: false,
       createdAt: t - daysAgo * 24 * H
@@ -273,8 +280,16 @@ function seed() {
     return u;
   };
 
-  const admin = mkUser('admin', '饭圈小管家', 'admin', '官方管理员 · 维护饭圈秩序 🍳', 60, '/assets/av-egg.webp');
-  const guard = mkUser('reviewer', '值班审核员', 'reviewer', '每天巡一遍审核队列，看到好菜谱就走不动路', 45, '/assets/av-tomato.webp');
+  // 演示账号保持 123456，方便本地试；两个高权限账号用随机口令，只打印这一次
+  const adminPw = bootPassword('admin');
+  const guardPw = bootPassword('reviewer');
+  SEED_CREDS.push(['admin', adminPw], ['reviewer', guardPw]);
+
+  const admin = mkUser('admin', '饭圈小管家', 'admin', '官方管理员 · 维护饭圈秩序 🍳', 60, '/assets/av-egg.webp', adminPw);
+  const guard = mkUser('reviewer', '值班审核员', 'reviewer', '每天巡一遍审核队列，看到好菜谱就走不动路', 45, '/assets/av-tomato.webp', guardPw);
+  // 系统生成的口令：只做标记（登录日志里能看到），不拦任何操作
+  admin.mustChangePw = true;
+  guard.mustChangePw = true;
   const zhang = mkUser('laozhang', '老张头', 'user', '家常菜三十年，红烧肉是招牌', 35, '/assets/av-ramen.webp');
   const mei = mkUser('xiaomei', '小美厨房', 'user', '烘焙 / 甜点 / 记录每一次翻车与成功', 30, '/assets/av-onigiri.webp');
   const hunter = mkUser('hunter', '美食猎人', 'user', '走遍全国的街边小吃', 20, '/assets/av-onigiri.webp');
@@ -465,6 +480,7 @@ function ensureBootstrap() {
   }
   if (changed) saveNow();
   if (fresh.length) printInitialCredentials(fresh, '新建');
+  if (SEED_CREDS.length) printInitialCredentials(SEED_CREDS.splice(0), '首次建库');
   rotateWeakCredentials();
 }
 
@@ -498,34 +514,35 @@ function printInitialCredentials(list, why) {
 }
 
 /* 老库里可能还留着 123456 / password 这种。启动时扫一遍（每个账号只扫一次，
-   用 pwChecked 记账，避免每次启动都跑一堆 scrypt）：
-   - 管理员 / 审核员：直接换成随机强口令 —— 高权限账号不能留在弱口令上；
-   - 普通用户：只打一个 mustChangePw 标记（不踢下线、不拦操作），
-     按产品要求不强制用户改密码。 */
+   用 pwChecked 记账，避免每次启动都跑一堆 scrypt）。
+   **只做标记，绝不改口令。**
+   以前这里会把 admin / 审核员的口令直接换成随机 16 位，后果是本人再也登不进去 ——
+   新口令只打印在那一次的启动日志里，本地没留存就彻底找不回（真实踩过）。
+   产品要求「密码不严格」：登录永远认用户原来设的那个口令，
+   强度规则只在**注册**和**主动改密**时检查。 */
 const KNOWN_WEAK = ['123456', '12345678', '123456789', 'password', 'passw0rd', 'admin123', 'fanqvan123', 'abc123', 'qwerty'];
 
 function rotateWeakCredentials() {
-  const hit = [];
   let changed = false;
+  let weak = 0;
+  const highRisk = [];
   for (const u of db.users) {
     if (!u.password || u.password.indexOf(':') < 0) continue;
     if (u.pwChecked) continue;
     u.pwChecked = true;
     changed = true;
-    const weak = KNOWN_WEAK.some((p) => verifyPw(p, u.password));
-    if (!weak) continue;
-    if (rankOf(u) >= 1) {
-      const np = randPassword(16);
-      u.password = makePw(np);
-      u.pwStrong = true;
-      u.mustChangePw = true;
-      hit.push([u.username, np]);
-    } else {
-      u.mustChangePw = true;
-    }
+    if (!KNOWN_WEAK.some((p) => verifyPw(p, u.password))) continue;
+    u.mustChangePw = true;      // 只留个标记，登录日志里能看到，不拦任何操作
+    weak++;
+    if (rankOf(u) >= 1) highRisk.push(u.username);
   }
   if (changed) saveDB();
-  if (hit.length) printInitialCredentials(hit, '仍在使用弱口令的');
+  if (weak) console.log('[security] 有 ' + weak + ' 个账号还在用常见弱口令（不强制改，建议自己换掉）');
+  if (highRisk.length) {
+    console.warn('[security] 高权限账号仍在用常见弱口令：' + highRisk.join(', ') +
+      ' —— 服务器不会自动改（改了本人就登不进来）。请自己到「编辑资料」改掉，' +
+      '或在 ai.config.json 里用 userPasswords 一次性重置。');
+  }
 }
 
 let saveTimer = null;
@@ -559,7 +576,7 @@ applyPasswordResetFromConfig();
 /* 忘了管理员口令时的应急通道。
    在 ai.config.json 里加一行 "adminPassword": "想用的新口令"，重启 / 重新部署后
    就会把 admin 的口令换成它，并**立刻把这一行从文件里删掉** —— 明文只在磁盘上
-   活到这一次启动。（reviewerPassword 同理。）
+   活到这一次启动。（reviewerPassword 同理；任意账号用 userPasswords 映射。）
    为什么要这个：admin 的口令是首次建号时随机生成的，只打印在那一次的启动日志里，
    连库里都只有哈希；忘了就再也拿不回来，只能靠这条通道重置。
    ai.config.json 在 .gitignore 里，不会进公开仓库。 */
@@ -572,15 +589,35 @@ function applyPasswordResetFromConfig() {
   } catch (e) { return; }
   const pairs = [['adminPassword', 'admin'], ['reviewerPassword', 'reviewer']];
   const done = [];
+  /* 任意账号：{"userPasswords": {"laozhang": "123456"}}。
+     显式指定就不套强度规则 —— 这是管理员手动干预，不是用户自己设密码，
+     而且「老账号回不去」正是这条通道要解决的问题。只挡空口令和超长。 */
+  const map = (cfg.userPasswords && typeof cfg.userPasswords === 'object') ? cfg.userPasswords : null;
+  const wanted = [];
   for (const [key, username] of pairs) {
     const pw = String(cfg[key] || '').trim();
-    if (!pw) continue;
+    if (pw) wanted.push([username, pw, true]);
+  }
+  if (map) {
+    for (const [username, raw] of Object.entries(map)) {
+      const pw = String(raw || '');
+      if (!pw || pw.length < 4 || pw.length > 64 || /\s/.test(pw)) {
+        console.warn('[security] userPasswords 里的 ' + username + ' 口令不合规（4-64 位、不含空格），跳过');
+        continue;
+      }
+      wanted.push([username, pw, false]);
+    }
+  }
+  for (const [username, pw, strict] of wanted) {
     const user = db.users.find((u) => u.username === username);
     if (!user) continue;
-    const problem = passwordProblem(pw, username);
-    if (problem) { console.warn(`[security] ai.config.json 里的 ${key} 不合规：${problem}`); continue; }
+    if (strict) {
+      const problem = passwordProblem(pw, username);
+      if (problem) { console.warn('[security] ai.config.json 里 ' + username + ' 的口令不合规：' + problem); continue; }
+    }
     user.password = makePw(pw);
     user.pwStrong = true;
+    user.pwChecked = true;
     user.pwResetAt = nowMs();
     delete user.mustChangePw;
     dropUserSessions(user.id);          // 换完口令，其他设备一律下线
@@ -589,8 +626,9 @@ function applyPasswordResetFromConfig() {
   if (!done.length) return;
   saveNow();
   for (const [key] of pairs) delete cfg[key];
+  delete cfg.userPasswords;
   try { fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2) + '\n', 'utf8'); } catch (e) { /* 只读目录就算了 */ }
-  console.log(`[security] 已按 ai.config.json 重置口令：${done.join(', ')}（文件里的明文已清除）`);
+  console.log('[security] 已按 ai.config.json 重置口令：' + done.join(', ') + '（文件里的明文已清除）');
   secLog('pw_reset_by_config', null, { users: done.join(',') });
 }
 
@@ -2086,6 +2124,195 @@ function hostSetOf(req) {
   return set;
 }
 
+/* ============ 图形验证码（零依赖：手写 PNG + 5×7 点阵字体）============
+   为什么自己画：项目不装任何三方包，也不想为一个验证码引 canvas。
+   PNG 只要 zlib.deflate 加三个 chunk，几十行就够。
+   为什么画成位图而不是 SVG：SVG 里如果用 <text> 写字符，谁看源码谁就拿到答案，
+   等于没做验证码；画成像素点阵，源码里只剩一堆矩形坐标。 */
+
+/* off   = 完全跳过校验（只给自动化测试用，见 tmp/*.mjs）
+   debug = 正常校验，但接口额外回传答案（给无头浏览器测试用）
+   两个都靠环境变量开，默认全关；.env 里刻意不写，免得部署时被一起传上去。 */
+const CAPTCHA_MODE = String(process.env.FQ_CAPTCHA || '').trim().toLowerCase();
+const CAPTCHA_ON = CAPTCHA_MODE !== 'off';
+
+const CAPTCHA_FONT = {
+  A: '01110/10001/10001/11111/10001/10001/10001',
+  B: '11110/10001/10001/11110/10001/10001/11110',
+  C: '01111/10000/10000/10000/10000/10000/01111',
+  D: '11110/10001/10001/10001/10001/10001/11110',
+  E: '11111/10000/10000/11110/10000/10000/11111',
+  F: '11111/10000/10000/11110/10000/10000/10000',
+  G: '01111/10000/10000/10111/10001/10001/01111',
+  H: '10001/10001/10001/11111/10001/10001/10001',
+  J: '00111/00010/00010/00010/00010/10010/01100',
+  K: '10001/10010/10100/11000/10100/10010/10001',
+  L: '10000/10000/10000/10000/10000/10000/11111',
+  M: '10001/11011/10101/10101/10001/10001/10001',
+  N: '10001/11001/10101/10011/10001/10001/10001',
+  P: '11110/10001/10001/11110/10000/10000/10000',
+  Q: '01110/10001/10001/10001/10101/10010/01101',
+  R: '11110/10001/10001/11110/10100/10010/10001',
+  S: '01111/10000/10000/01110/00001/00001/11110',
+  T: '11111/00100/00100/00100/00100/00100/00100',
+  U: '10001/10001/10001/10001/10001/10001/01110',
+  V: '10001/10001/10001/10001/10001/01010/00100',
+  W: '10001/10001/10001/10101/10101/11011/10001',
+  X: '10001/10001/01010/00100/01010/10001/10001',
+  Y: '10001/10001/01010/00100/00100/00100/00100',
+  Z: '11111/00001/00010/00100/01000/10000/11111',
+  2: '01110/10001/00001/00110/01000/10000/11111',
+  3: '11110/00001/00001/01110/00001/00001/11110',
+  4: '00010/00110/01010/10010/11111/00010/00010',
+  5: '11111/10000/11110/00001/00001/10001/01110',
+  6: '00110/01000/10000/11110/10001/10001/01110',
+  7: '11111/00001/00010/00100/01000/01000/01000',
+  8: '01110/10001/10001/01110/10001/10001/01110',
+  9: '01110/10001/10001/01111/00001/00010/01100'
+};
+/* 去掉了 I / O / 0 / 1：5×7 点阵里 I 和 1、O 和 0 几乎分不出来。
+   用户认错一次就要重来，为这点理论安全性换来真实挫败感不值。 */
+const CAPTCHA_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+const CRC_TABLE = (() => {
+  const t = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body), 0);
+  return Buffer.concat([len, body, crc]);
+}
+function encodePng(w, h, rgb) {
+  const stride = w * 3;
+  const raw = Buffer.alloc((stride + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (stride + 1)] = 0;                       // 每行的 filter 字节
+    rgb.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;   // 8bit RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
+    pngChunk('IEND', Buffer.alloc(0))
+  ]);
+}
+
+const CAPTCHA_W = 148, CAPTCHA_H = 54, CAPTCHA_LEN = 4;
+
+function captchaPng(code) {
+  const w = CAPTCHA_W, h = CAPTCHA_H;
+  const px = Buffer.alloc(w * h * 3);
+  const put = (x, y, r, g, b) => {
+    x = x | 0; y = y | 0;
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = (y * w + x) * 3;
+    px[i] = r; px[i + 1] = g; px[i + 2] = b;
+  };
+  const rnd = (a, b) => a + crypto.randomInt(Math.max(1, b - a + 1));
+
+  // 米黄底 + 逐像素噪点：纯色底一阈值就二值化干净了，加点噪声反而更抗机器
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const n = rnd(-5, 5);
+      put(x, y, 250 + n, 245 + n, 233 + n);
+    }
+  }
+
+  // 干扰折线 ×2：颜色压淡，别糊住字
+  for (let l = 0; l < 2; l++) {
+    let x = rnd(0, 8), y = rnd(6, h - 6);
+    const cr = rnd(130, 200), cg = rnd(130, 195), cb = rnd(130, 195);
+    while (x < w) {
+      put(x, y, cr, cg, cb);
+      put(x, y + 1, cr, cg, cb);
+      x++;
+      y += rnd(-1, 1);
+      if (y < 4) y = 4;
+      if (y > h - 5) y = h - 5;
+    }
+  }
+
+  // 四个字符：各自随机上下漂移 + 斜切。斜切让「按列切分」这类简易识别失效
+  const DOT = 5, GAP = 8, PAD = 8;
+  const cw = 5 * DOT, ch = 7 * DOT;
+  const left = Math.max(0, Math.floor((w - (PAD * 2 + cw * CAPTCHA_LEN + GAP * (CAPTCHA_LEN - 1))) / 2));
+  for (let i = 0; i < code.length; i++) {
+    const rows = (CAPTCHA_FONT[code[i]] || '').split('/');
+    if (rows.length !== 7) continue;
+    const ox = left + PAD + i * (cw + GAP);
+    const oy = Math.floor((h - ch) / 2) + rnd(-2, 2);
+    const skew = (crypto.randomInt(45) - 22) / 100;    // -0.22 ~ +0.22，再大就认不出了
+    const cr = rnd(40, 90), cg = rnd(45, 95), cb = rnd(60, 115);
+    for (let r = 0; r < 7; r++) {
+      const shift = Math.round((r - 3) * skew * DOT);
+      for (let c = 0; c < 5; c++) {
+        if (rows[r][c] !== '1') continue;
+        const bx = ox + c * DOT + shift, by = oy + r * DOT;
+        for (let dy = 0; dy < DOT; dy++) {
+          for (let dx = 0; dx < DOT; dx++) {
+            const edge = (dx === 0 || dy === 0 || dx === DOT - 1 || dy === DOT - 1);
+            const k = edge ? 0.8 : 1;                  // 边缘压暗一点，笔画不至于糊成一片
+            put(bx + dx, by + dy, (cr * k) | 0, (cg * k) | 0, (cb * k) | 0);
+          }
+        }
+      }
+    }
+  }
+
+  // 噪点：一半深一半浅，干扰「找连通块」再切割的思路
+  for (let i = 0; i < 130; i++) {
+    const x = rnd(0, w - 1), y = rnd(0, h - 1);
+    if (crypto.randomInt(2)) put(x, y, rnd(60, 130), rnd(60, 130), rnd(60, 130));
+    else put(x, y, rnd(150, 215), rnd(150, 215), rnd(150, 215));
+  }
+  return encodePng(w, h, px);
+}
+
+const captchaStore = new Map();          // id -> { code, exp }
+const CAPTCHA_TTL = 5 * 60 * 1000;       // 5 分钟，够慢吞吞地输
+const CAPTCHA_MAX = 3000;                // 表本身也不能被撑爆
+
+function issueCaptcha() {
+  const now = Date.now();
+  if (captchaStore.size >= CAPTCHA_MAX) {
+    for (const [k, v] of captchaStore) {
+      if (v.exp < now || captchaStore.size >= CAPTCHA_MAX) captchaStore.delete(k);
+    }
+  }
+  let code = '';
+  for (let i = 0; i < CAPTCHA_LEN; i++) code += CAPTCHA_CHARS[crypto.randomInt(CAPTCHA_CHARS.length)];
+  const id = crypto.randomBytes(9).toString('base64url');
+  captchaStore.set(id, { code, exp: now + CAPTCHA_TTL });
+  return { id, code };
+}
+
+/* 一次性：不管对错都作废。错一次就得换一张，
+   暴力猜测的收益是 0，而且每猜一次都得多拉一次图。 */
+function consumeCaptcha(id, input) {
+  const key = String(id || '');
+  if (!key) return false;
+  const rec = captchaStore.get(key);
+  if (!rec) return false;
+  captchaStore.delete(key);
+  if (rec.exp < Date.now()) return false;
+  return rec.code === String(input || '').trim().toUpperCase();
+}
+
 /* 返回 true = 确认是「别的网站借用户的浏览器发来的」；info 用来记日志 */
 function csrfCrossSite(req, info) {
   const sfs = String(req.headers['sec-fetch-site'] || '').toLowerCase();
@@ -2160,6 +2387,18 @@ async function handleApi(req, res, pathname, query) {
     return json(res, 429, { error: '请求太频繁了，请稍后再试' });
   }
 
+  /* ============ 图形验证码 ============ */
+  if (pathname === '/api/captcha' && method === 'GET') {
+    if (!rateLimit('cap:' + ip, 60, 60 * 1000)) {
+      res.setHeader('Retry-After', '10');
+      return json(res, 429, { error: '刷新太快了，歇一下再试' });
+    }
+    const c = issueCaptcha();
+    const out = { id: c.id, img: 'data:image/png;base64,' + captchaPng(c.code).toString('base64') };
+    if (CAPTCHA_MODE === 'debug') out.code = c.code;   // 只给自动化测试用
+    return json(res, 200, out);
+  }
+
   /* ============ 认证 ============ */
 
   if (pathname === '/api/auth/register' && method === 'POST') {
@@ -2215,6 +2454,14 @@ async function handleApi(req, res, pathname, query) {
     const password = String(b.password || '');
     // 超长口令在 scrypt 里很贵，先掐掉（不影响正常登录，最长 72 位）
     if (password.length > MAX_PW + 16) return json(res, 401, { error: '用户ID或密码不对' });
+
+    /* 图形验证码：先验码、再算密码。放在哈希之前，被刷的时候省掉最贵的那一步。
+       验证码错**不**记进「密码错 8 次锁定」—— 否则别人拿错验证码故意打 8 次，
+       就能把某个账号锁 10 分钟，等于白送一个拒绝服务。 */
+    if (CAPTCHA_ON && !consumeCaptcha(b.captchaId, b.captchaCode)) {
+      secLog('captcha_fail', req, { username });
+      return json(res, 400, { error: '验证码不对，换一张重新输', code: 'CAPTCHA_FAIL' });
+    }
 
     const ukey = username.toLowerCase();
     /* 锁定粒度 = IP + 账号。以前只按账号锁，攻击者随便打 8 次错密码
