@@ -48,7 +48,8 @@ const fsp = fs.promises;
     const cfg = JSON.parse(fs.readFileSync(f, 'utf8'));
     const map = {
       key: 'FQ_AI_KEY', base: 'FQ_AI_BASE', model: 'FQ_AI_MODEL',
-      thinking: 'FQ_AI_THINKING', timeout: 'FQ_AI_TIMEOUT'
+      thinking: 'FQ_AI_THINKING', timeout: 'FQ_AI_TIMEOUT',
+      allowLocal: 'FQ_AI_ALLOW_LOCAL'
     };
     for (const k of Object.keys(map)) {
       const v = cfg[k];
@@ -1555,7 +1556,8 @@ async function aiComposeByModel(text, seed) {
   if (!out) return null;
   bad = aiPolishCheck(text, out);
   if (bad.length) {
-    console.log('  ✎  两遍都不合格，改用本地整理：' + bad.slice(0, 3).join('、'));
+    console.log('  ✎  两遍都不合格，交给调用方回话：' + bad.slice(0, 3).join('、'));
+    aiLastReason = 'shape';
     return null;
   }
   return out;
@@ -1564,9 +1566,8 @@ async function aiComposeByModel(text, seed) {
 /* ------------------------------------------------------------------ */
 /* 本机模型（Ollama）                                                   */
 /*                                                                     */
-/* 这就是「自己家的 key」：模型跑在你自己的电脑上，不用注册、不用付费、   */
-/* 也没有任何 key 可泄漏。部署到云端时 127.0.0.1 上没有 Ollama，探测会   */
-/* 在 1.2 秒内失败并自动跳过，线上仍走模板引擎，不会卡住发布。          */
+/* **仅开发测试用**：本地跑一个小模型，断网也能调通提示词和形状解析。     */
+/* 线上不启用（`aiLocalAllowed()` 默认 false），接口直接回「维护中」。     */
 /* ------------------------------------------------------------------ */
 
 const AI_OLLAMA_URL = String(process.env.FQ_OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/+$/, '');
@@ -1601,6 +1602,8 @@ async function aiOllamaModel() {
 /* 启动后偷偷跑一句话，把权重加载进内存：
    否则用户第一次点「AI 润色」要等 50~60 秒（冷启动），热了才 3~8 秒。 */
 function aiWarmup() {
+  // 线上不跑本机模型（只认云端），预热只在开发测试时做
+  if (!aiLocalAllowed()) return;
   // 配了云端 key 就直接走云端，不用再拉本机模型占内存
   if (process.env.FQ_AI_KEY || process.env.AI_API_KEY) return;
   aiOllamaModel().then((model) => {
@@ -1650,8 +1653,76 @@ const COOK_HELP_SYSTEM = [
   '只输出 JSON：{"answer":"..."}'
 ].join('\n');
 
-/* 通用调用：先云端（有 key），再本机 Ollama；返回 { raw, provider } 或 null。
+/* 通用调用：先云端；返回 { raw, provider } 或 null。
+   本机 Ollama 只有 FQ_AI_ALLOW_LOCAL=1（开发测试）时才会被当成第二级。
    steps / help 需要不同的提示词，所以不复用写死提示词的 aiComposeModel。 */
+/* ------------------------------------------------------------------ */
+/* 线上只用云端：模型拿不到就直说「维护中」                              */
+/*                                                                     */
+/* 本项目**不做线上本地兜底**。本机 Ollama 与规则模板保留下来只用于开发   */
+/* 期离线测试，用 FQ_AI_ALLOW_LOCAL=1 打开；线上默认关闭。               */
+/* 理由很简单：与其偷偷拿模板糊一段「看起来像 AI 写的」文字，不如明说现在  */
+/* 用不了 —— 做菜的人需要的是可信建议，不是占位内容。                     */
+/* ------------------------------------------------------------------ */
+
+let aiLastReason = '';   // budget | cloud | nokey | shape
+
+function aiLocalAllowed() {
+  const v = String(process.env.FQ_AI_ALLOW_LOCAL || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'on' || v === 'yes';
+}
+
+function aiCloudKey() {
+  return process.env.FQ_AI_KEY || process.env.AI_API_KEY || '';
+}
+
+/* 云端熔断：连续失败 3 次就关闸 60 秒。
+   没有这道闸，云端真挂的时候每个用户都得等满 25 秒超时才知道用不了。 */
+let aiBreak = { fails: 0, until: 0 };
+const AI_BREAK_AFTER = 3;
+const AI_BREAK_MS = 60 * 1000;
+
+function aiBreakerOpen() { return aiBreak.until > Date.now(); }
+function aiCloudOk() { aiBreak.fails = 0; aiBreak.until = 0; }
+function aiCloudFail() {
+  aiBreak.fails += 1;
+  if (aiBreak.fails >= AI_BREAK_AFTER) {
+    aiBreak.until = Date.now() + AI_BREAK_MS;
+    aiBreak.fails = 0;
+    console.log('[ai] 云端连续失败，暂停 ' + (AI_BREAK_MS / 1000) + ' 秒后重试');
+  }
+}
+
+/* 只读判断「今天总额度是不是已经烧完」，不计数 */
+function aiBudgetSpent() {
+  return aiDay === new Date().toISOString().slice(0, 10) && aiDayCount >= AI_GLOBAL_DAILY;
+}
+
+/* 现在立刻就能断定用不了吗？能的话接口直接回话，不消耗用户每日次数，也不用等超时 */
+function aiUnavailableNow() {
+  if (aiLocalAllowed()) return false;
+  if (!aiCloudKey()) return true;
+  return aiBreakerOpen() || aiBudgetSpent();
+}
+
+/* 统一应答：503 + code，前端把 error 原样显示给用户 */
+function aiDown(res) {
+  const table = {
+    budget: ['今天的 AI 额度用完了，明天再来', 'AI_BUDGET'],
+    shape: ['AI 这次没给出合格的稿子，直接发原文也完全没问题', 'AI_UNUSABLE']
+  };
+  const hit = table[aiLastReason] || ['AI 正在维护，稍后再试', 'AI_MAINTENANCE'];
+  return json(res, 503, { error: hit[0], code: hit[1] });
+}
+
+/* 接口入口用：命中维护状态就先回话，别让它白白消耗限流次数 */
+function aiGuard(res) {
+  if (!aiUnavailableNow()) return false;
+  aiLastReason = aiBudgetSpent() ? 'budget' : 'cloud';
+  aiDown(res);
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* AI 额度保险丝                                                        */
 /*                                                                     */
@@ -1671,7 +1742,7 @@ function aiBudgetOk() {
   if (!(process.env.FQ_AI_KEY || process.env.AI_API_KEY)) return true;
   const d = new Date().toISOString().slice(0, 10);
   if (d !== aiDay) { aiDay = d; aiDayCount = 0; }
-  if (aiDayCount >= AI_GLOBAL_DAILY) return false;
+  if (aiDayCount >= AI_GLOBAL_DAILY) { aiLastReason = 'budget'; return false; }
   aiDayCount++;
   return true;
 }
@@ -1681,12 +1752,18 @@ async function aiRaw(system, user, opts) {
   const maxTokens = o.maxTokens || 500;
   const temperature = typeof o.temperature === 'number' ? o.temperature : 0.4;
 
-  // 额度保险丝：今天烧满了就直接返回 null，各调用方会落到本地兜底
+  aiLastReason = '';
+
+  // 额度保险丝：今天烧满了就直接返回 null
   if (!aiBudgetOk()) return null;
 
   // 1) 云端 / 自建网关（OpenAI 兼容）
-  const key = process.env.FQ_AI_KEY || process.env.AI_API_KEY;
-  if (key) {
+  const key = aiCloudKey();
+  if (!key) {
+    aiLastReason = 'nokey';
+  } else if (aiBreakerOpen()) {
+    aiLastReason = 'cloud';                 // 已判定云端不可用，别再让用户等 25 秒
+  } else {
     const base = String(process.env.FQ_AI_BASE || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
     const model = process.env.FQ_AI_MODEL || 'deepseek-chat';
     const ctl = new AbortController();
@@ -1706,10 +1783,23 @@ async function aiRaw(system, user, opts) {
       if (r.ok) {
         const j = await r.json();
         const msg = j && j.choices && j.choices[0] && j.choices[0].message;
-        if (msg && msg.content) return { raw: msg.content, provider: 'model' };
+        if (msg && msg.content) { aiCloudOk(); return { raw: msg.content, provider: 'model' }; }
+        aiCloudFail();
+        aiLastReason = 'shape';             // 通是通了，但没给内容
+      } else {
+        aiCloudFail();
+        aiLastReason = 'cloud';
+        console.log('[ai] 云端返回 ' + r.status + '，' + (r.status === 403 ? '多半是额度用完' : '稍后重试'));
       }
-    } catch (e) { /* 落下一级 */ } finally { clearTimeout(timer); }
+    } catch (e) {
+      aiCloudFail();
+      aiLastReason = 'cloud';
+    } finally { clearTimeout(timer); }
   }
+
+  /* 线上到此为止：拿不到云端结果就交给调用方回「维护中」。
+     本机模型只在 FQ_AI_ALLOW_LOCAL=1（开发测试）时才会走到下面。 */
+  if (!aiLocalAllowed()) return null;
 
   // 2) 本机 Ollama（原生接口，关思考 + 强制 JSON）
   const model = await aiOllamaModel();
@@ -2355,6 +2445,8 @@ async function handleApi(req, res, pathname, query) {
   if (pathname === '/api/ai/compose' && method === 'POST') {
     if (!me) return json(res, 401, { error: '登录后才能用 AI 润色' });
     if (me.banned) return json(res, 403, { error: '账号已被封禁' });
+    // 维护中就直说，不扣今天的次数
+    if (aiGuard(res)) return;
     if (!rateLimit('ai:' + me.id, AI_DAILY_LIMIT, 24 * 60 * 60 * 1000)) {
       return json(res, 429, { error: '今天的 AI 次数用完啦，明天再来' });
     }
@@ -2368,9 +2460,10 @@ async function handleApi(req, res, pathname, query) {
     const ck = 'v2|' + text.toLowerCase() + '|' + seed;
     if (aiCache.has(ck)) return json(res, 200, aiCache.get(ck));
 
-    // 先模型润色（含验货）→ 不合格或没模型就用本地润色
+    // 先模型润色（含验货）。线上没有本地兜底：拿不到就明说，不拿模板糊弄
     let out = await aiComposeByModel(text, seed);
-    if (!out) out = aiPolishLocal(text);
+    if (!out && !aiLocalAllowed()) return aiDown(res);
+    if (!out) out = aiPolishLocal(text);      // 仅开发测试（FQ_AI_ALLOW_LOCAL=1）
     if (!out) return json(res, 400, { error: '这段没太读懂，换个说法再试试' });
     if (aiCache.size >= AI_CACHE_MAX) aiCache.clear();
     aiCache.set(ck, out);
@@ -2398,6 +2491,9 @@ async function handleApi(req, res, pathname, query) {
     const ck = post ? 'p' + post.id : 'h' + hashStr(text);
     if (cookCache.has(ck)) return json(res, 200, Object.assign({ cached: true }, cookCache.get(ck)));
 
+    // 维护中就先回话（已拆好的缓存上面已经返回过，能用的照用），不扣次数
+    if (aiGuard(res)) return;
+
     const who = me ? 'u' + me.id : 'ip' + ip;
     if (!rateLimit('aisteps:' + who, me ? COOK_STEPS_LIMIT : 5, 24 * 60 * 60 * 1000)) {
       return json(res, 429, { error: '今天拆得够多啦，明天再来' });
@@ -2411,7 +2507,8 @@ async function handleApi(req, res, pathname, query) {
       out = aiStepsShape(aiJson(r.raw));
       if (out) out.provider = r.provider;
     }
-    if (!out) out = aiStepsLocal(text, title);
+    if (!out && !aiLocalAllowed()) return aiDown(res);
+    if (!out) out = aiStepsLocal(text, title);   // 仅开发测试（FQ_AI_ALLOW_LOCAL=1）
 
     if (cookCache.size >= COOK_CACHE_MAX) cookCache.clear();
     cookCache.set(ck, out);
@@ -2425,6 +2522,8 @@ async function handleApi(req, res, pathname, query) {
     const b = await readBody(req);
     const q = clean(b.question, 200);
     if (q.replace(/\s+/g, '').length < 2) return json(res, 400, { error: '说说现在是什么情况' });
+
+    if (aiGuard(res)) return;         // 维护中不扣次数
 
     const who = me ? 'u' + me.id : 'ip' + ip;
     if (!rateLimit('aihelp:' + who, me ? COOK_HELP_LIMIT : 5, 24 * 60 * 60 * 1000)) {
@@ -2454,7 +2553,8 @@ async function handleApi(req, res, pathname, query) {
       if (plain && !/^\s*[{[]/.test(plain)) ans = plain;
     }
     if (ans) out = { answer: ans, provider: r.provider };
-    if (!out) out = aiHelpLocal(q, { step: stepT || stepD });
+    if (!out && !aiLocalAllowed()) return aiDown(res);
+    if (!out) out = aiHelpLocal(q, { step: stepT || stepD });   // 仅开发测试
     return json(res, 200, out);
   }
 

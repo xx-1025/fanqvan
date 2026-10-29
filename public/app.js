@@ -24,6 +24,9 @@ const state = {
   // AI 小饭（发帖助手）：一次只在当前发布框里展开，不跨页保留
   ai: { open: false, loading: false, text: '', tags: [], err: '', n: 0, provider: '', slow: false, src: '', cmp: false },
   aiUsed: false,         // 本次草稿用过 AI，发布时带给后端打「AI 辅助」标
+  // AI 维护中的静默期：后端回 AI_MAINTENANCE 后 60 秒内不再自动预拆/预请求，
+  // 免得每点开一条帖子都白打一次接口、等一次失败
+  aiDownUntil: 0,
   // 做饭模式：全屏覆盖层，挂在 body 下的 #cook-root，不参与 #app 重绘
   cook: {
     open: false, loading: false, err: '', postId: 0, dish: '', provider: '', approx: false,
@@ -795,6 +798,7 @@ async function doAiGenerate(more) {
     state.ai.err = e.message || 'AI 暂时想不出来，先手写吧';
     state.ai.text = '';
     state.ai.provider = '';
+    aiMarkDown(e);
   }
   clearTimeout(slowTimer);
   state.ai.loading = false;
@@ -1260,8 +1264,10 @@ function cookHtml() {
         '<p>第一次要十几秒，拆完就存在这条帖子上，以后谁打开都是秒开。</p>' +
       '</div></div>';
   } else if (c.err) {
+    // 维护中别说「没拆出来」——那听起来像是这条帖子的问题，其实是服务不可用
+    const down = /维护|额度/.test(c.err);
     stage = '<div class="cook-stage"><div class="cook-inner cook-center">' +
-        '<h2>没拆出来</h2>' +
+        '<h2>' + (down ? '小饭这会儿不在' : '没拆出来') + '</h2>' +
         '<p>' + esc(c.err) + '</p>' +
         '<button class="cook-btn main" data-action="cook-open" data-id="' + c.postId + '">再试一次</button>' +
       '</div></div>';
@@ -1420,6 +1426,20 @@ function stopCookTick() {
   if (cookTick) { clearInterval(cookTick); cookTick = 0; }
 }
 
+/* AI 维护中 / 额度用完：记一段时间，期间不再自动预请求。
+   后端在维护状态下不扣每日次数，这里只是让用户少等几次失败。 */
+function aiMarkDown(e) {
+  const c = e && e.code;
+  if (c === 'AI_MAINTENANCE' || c === 'AI_BUDGET' || c === 'AI_UNUSABLE') {
+    state.aiDownUntil = Date.now() + 60000;
+    return true;
+  }
+  return false;
+}
+function aiDownNow() {
+  return Date.now() < (state.aiDownUntil || 0);
+}
+
 /* 同一条帖子只请求一次：预拆和「开始做」共用同一个 Promise，不会重复扣次数 */
 const cookJobs = new Map();
 
@@ -1441,7 +1461,11 @@ function prefetchCook(p) {
   if (!state.me || !p || p.status !== 'approved') return;
   if ((p.content || '').replace(/\s+/g, '').length < 20) return;
   if (cookJobs.has(p.id)) return;
-  setTimeout(() => { cookStepsRequest(p.id).catch(() => {}); }, 1000);
+  if (aiDownNow()) return;                 // 刚判定过不可用，别再白试
+  setTimeout(() => {
+    if (aiDownNow()) return;
+    cookStepsRequest(p.id).catch((e) => aiMarkDown(e));
+  }, 1000);
 }
 
 async function openCook(postId) {
@@ -1466,6 +1490,7 @@ async function openCook(postId) {
     if (!state.cook.steps.length) state.cook.err = '这条帖子写得比较简略，拆不出步骤';
   } catch (e) {
     state.cook.err = e.message || '小饭这会儿不在，等会儿再试';
+    aiMarkDown(e);
   }
   state.cook.loading = false;
   paintCook();
@@ -1647,6 +1672,7 @@ async function cookAsk(question) {
     if (!c.answer) c.askErr = '小饭没接上话，再问一次试试';
   } catch (e) {
     c.askErr = e.message || '这会儿问不上，先按现在的火候来';
+    aiMarkDown(e);
   }
   c.asking = false;
   paintCook();
