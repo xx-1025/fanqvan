@@ -601,6 +601,11 @@ function sidebar() {
           '</a>'
         : '') +
       (isMod() ? item('review', '#/review', icon('shield'), '审核中心', modBadge || '') : '') +
+      (isAdmin()
+        ? '<a class="nav-item" href="/ops" target="_blank" rel="noopener">' +
+            '<span class="nav-icon">' + icon('shield') + '</span>' +
+            '<span class="nav-label">安全控制台</span></a>'
+        : '') +
     '</nav>' +
     (me
       ? '<button class="btn-primary btn-block" data-action="new-post">发布新菜</button>'
@@ -2232,6 +2237,14 @@ function viewEdit() {
       '<div class="field"><label>再输一遍新密码</label><input id="pw-new2" type="password" autocomplete="new-password" placeholder="确认新密码，两次要一样"></div>' +
       '<button class="btn-primary" data-action="change-password" style="height:40px;margin-top:6px">更新密码</button>' +
     '</div>' +
+    (isAdmin()
+      ? '<div class="card edit-card"><h3>' + icon('shield') + '安全控制台</h3>' +
+        '<p style="margin:0 0 12px;font-size:12.5px;line-height:1.8;color:var(--ink-2)">' +
+          '看谁在爬这个站、谁在扫路径，发现异常可以一键封禁。只有管理员能打开。</p>' +
+        '<a class="btn-primary" href="/ops" target="_blank" rel="noopener" ' +
+          'style="height:40px;display:flex;align-items:center;justify-content:center;gap:6px">' +
+          icon('shield') + '打开安全控制台</a></div>'
+      : '') +
     appBlock;
 }
 

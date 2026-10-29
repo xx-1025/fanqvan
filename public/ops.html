@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>饭圈 · 安全控制台</title>
+<link rel="icon" href="/assets/mascot.webp">
+<link rel="stylesheet" href="/ops.css">
+</head>
+<body>
+
+<header class="op-top">
+  <a class="op-brand" href="/">
+    <img src="/assets/mascot.webp" alt="" width="28" height="28">
+    <b>饭圈</b><span>安全控制台</span>
+  </a>
+  <div class="op-pills" id="op-pills">
+    <span class="pill"><i>速率</i><em id="p-rate">–</em></span>
+    <span class="pill"><i>在途</i><em id="p-inflight">–</em></span>
+    <span class="pill"><i>封禁中</i><em id="p-blocked">–</em></span>
+    <span class="pill"><i>事件循环</i><em id="p-lag">–</em></span>
+  </div>
+  <div class="op-actions">
+    <span class="op-live" id="op-live"><i></i>实时</span>
+    <a class="op-btn ghost" href="/">回站点</a>
+  </div>
+</header>
+
+<main class="op-wrap">
+
+  <section class="op-main">
+
+    <div class="op-card">
+      <div class="op-head">
+        <h2>实时流量</h2>
+        <div class="op-tools">
+          <input id="op-q" class="op-input" placeholder="按 IP 过滤 / 查详情" autocomplete="off" spellcheck="false">
+          <button class="op-btn" id="op-pause">暂停</button>
+        </div>
+      </div>
+      <div class="op-feed-head">
+        <span>时间</span><span>IP</span><span>方法</span><span>路径</span><span>状态</span><span>耗时</span><span></span>
+      </div>
+      <div class="op-feed" id="op-feed"></div>
+    </div>
+
+    <div class="op-card">
+      <div class="op-head">
+        <h2>安全事件</h2>
+        <span class="op-sub" id="op-ev-sub">security.log 尾部</span>
+      </div>
+      <div class="op-events" id="op-events"></div>
+    </div>
+
+  </section>
+
+  <aside class="op-side">
+
+    <div class="op-card">
+      <div class="op-head">
+        <h2>威胁排行</h2>
+        <span class="op-sub">按行为分</span>
+      </div>
+      <div class="op-threats" id="op-threats"></div>
+    </div>
+
+    <div class="op-card">
+      <div class="op-head">
+        <h2>封禁名单</h2>
+        <span class="op-sub" id="op-block-sub"></span>
+      </div>
+      <div class="op-blocks" id="op-blocks"></div>
+    </div>
+
+  </aside>
+
+</main>
+
+<div class="op-modal" id="op-modal" hidden>
+  <div class="op-modal-box" id="op-modal-box"></div>
+</div>
+
+<div class="op-deny" id="op-deny" hidden>
+  <b>打不开这个页面</b>
+  <p id="op-deny-msg">只有管理员能进安全控制台。</p>
+  <a class="op-btn" href="/">回首页</a>
+</div>
+
+<script src="/ops.js"></script>
+</body>
+</html>

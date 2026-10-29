@@ -61,6 +61,27 @@ const fsp = fs.promises;
   } catch (e) { /* 读不到或格式不对就当没配 */ }
 })();
 
+/* 同一份 ai.config.json 里还放两类「运维」配置（都在 .gitignore 里，不进公开仓库）：
+     siteHosts:   ["xxx.app.workbuddy.host"]   → CSRF 严格比对用的对外域名
+     ipWhitelist: ["1.2.3.4", "10.1.*"]        → 永不自动封禁的地址
+   为什么要单独读一次：loadAiConfig 只映射模型相关的环境变量，这两项跟模型无关，
+   而且要在 CSRF 判定（很早就执行）之前就准备好。 */
+const EXTRA_CFG = (function () {
+  try {
+    const f = path.join(__dirname, 'ai.config.json');
+    if (!fs.existsSync(f)) return {};
+    return JSON.parse(fs.readFileSync(f, 'utf8')) || {};
+  } catch (e) { return {}; }
+})();
+
+const SITE_HOSTS_CFG = (Array.isArray(EXTRA_CFG.siteHosts) ? EXTRA_CFG.siteHosts : [])
+  .map((s) => String(s || '').trim().toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, ''))
+  .filter(Boolean);
+
+const IP_ALLOW_CFG = (Array.isArray(EXTRA_CFG.ipWhitelist) ? EXTRA_CFG.ipWhitelist : [])
+  .map((s) => String(s || '').trim()).filter(Boolean);
+
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = path.join(ROOT, 'data');
@@ -1217,11 +1238,19 @@ function clientIp(req) {
   return normalizeIp((req.socket && req.socket.remoteAddress) || 'unknown');
 }
 
-function clean(s, max) {
-  return String(s == null ? '' : s).trim().slice(0, max || 4000);
+/* 会话令牌要不要在响应体里再回一份：
+   浏览器（同源 XHR/fetch 的 POST 一定带 Origin）→ 不给，只走 HttpOnly Cookie。
+   这样即便将来前端误存 localStorage，一次 XSS 也偷不到「可长期使用的明文令牌」——
+   红队报告 P5 说的就是这个折扣。
+   脚本 / 原生客户端（不带 Origin）→ 给，它们本来也没有 Cookie 罐。 */
+function bodyToken(req, token) {
+  const origin = String((req && req.headers && req.headers.origin) || '');
+  return origin ? undefined : token;
 }
 
-/* 短哈希：只用来做缓存 key（同一段正文 = 同一个 key），不做安全用途 */
+function clean(s, max) {
+  return String(s == null ? '' : s).trim().slice(0, max || 4000);
+}/* 短哈希：只用来做缓存 key（同一段正文 = 同一个 key），不做安全用途 */
 function hashStr(s) {
   return crypto.createHash('sha1').update(String(s || '')).digest('hex').slice(0, 16);
 }
@@ -2121,6 +2150,7 @@ function hostSetOf(req) {
   add(req.headers['x-real-host']);
   add(req.headers['x-original-host']);
   add(process.env.FQ_SITE_HOSTS);
+  for (const h of SITE_HOSTS_CFG) add(h);
   return set;
 }
 
@@ -2327,14 +2357,18 @@ function csrfCrossSite(req, info) {
   try { host = new URL(src).host.toLowerCase().replace(/\.$/, ''); } catch (e) { return true; }
   const hosts = hostSetOf(req);
   if (hosts.has(host) || hosts.has(host.replace(/:\d+$/, ''))) return false;
-  // 走到这里 = Origin 跟本机 Host 对不上。两种可能：
+  // 走到这里 = Origin 跟本机能看到的 Host 都对不上。两种可能：
   //   a) 真的跨站；
   //   b) 部署在网关后面，Host 被改写成内部地址，浏览器的 Origin 才是对外的。
-  // 只有「这个请求确实是从代理转发进来的」（带 X-Forwarded-For）才按 b) 放行；
-  // 直连的请求没有这一层，照旧拒。列在 FQ_SITE_HOSTS 里的域名永远严格比对。
+  // 判据是「有没有配过对外域名」：
+  //   - 配了（ai.config.json 的 siteHosts / FQ_SITE_HOSTS）→ 严格。对不上就是跨站，
+  //     因为 b) 那种情况下的 Origin 一定会命中白名单。**这里以前拿「带 X-Forwarded-For」
+  //     当放行理由，但线上每个请求都带 XFF，等于把整段校验废掉了**（红队报告 P1）。
+  //   - 没配 → 保持旧的宽松行为，免得一份新部署在配好之前所有写请求全 403。
+  const configured = SITE_HOSTS_CFG.length > 0 || String(process.env.FQ_SITE_HOSTS || '').trim().length > 0;
+  if (configured) return true;
   const viaProxy = String(req.headers['x-forwarded-for'] || '').split(',').pop().trim().length > 0;
-  const configured = String(process.env.FQ_SITE_HOSTS || '').trim().length > 0;
-  if (viaProxy && !configured) { if (info) info.unverified = host; return false; }
+  if (viaProxy) { if (info) info.unverified = host; return false; }
   return true;
 }
 
@@ -2386,6 +2420,11 @@ async function handleApi(req, res, pathname, query) {
     res.setHeader('Retry-After', '30');
     return json(res, 429, { error: '请求太频繁了，请稍后再试' });
   }
+
+  /* ============ 安全控制台接口 ============
+     放在业务路由之前：一是这些接口要被「会话已解出来」后的 me 判断，
+     二是即便主站某个业务出错，控制台也应该还能打开。 */
+  if (pathname.startsWith('/api/ops/')) return handleOps(req, res, pathname, query, me);
 
   /* ============ 图形验证码 ============ */
   if (pathname === '/api/captcha' && method === 'GET') {
@@ -2442,7 +2481,7 @@ async function handleApi(req, res, pathname, query) {
     addSession(token, user.id);
     secLog('register', req, { uid: user.id, username });
     res.setHeader('Set-Cookie', sessionCookie(token, SESSION_DAYS * 86400, isHttps(req)));
-    return json(res, 200, { token, user: publicUser(user) });
+    return json(res, 200, { token: bodyToken(req, token), user: publicUser(user) });
   }
 
   if (pathname === '/api/auth/login' && method === 'POST') {
@@ -2499,6 +2538,8 @@ async function handleApi(req, res, pathname, query) {
       return json(res, 403, { error: '这个账号已被封禁，如有疑问请联系管理员' });
     }
     loginOk(lockKey);
+    // 管理员登录过的 IP 记一笔：自动封禁会跳过它，免得把自己锁在门外
+    if (rankOf(user) >= 2) adminIps.set(ip, nowMs());
 
     // 还在用初始/弱口令 → 只做个标记（写进登录日志），不拦任何操作
     if (!user.pwStrong) {
@@ -2511,7 +2552,7 @@ async function handleApi(req, res, pathname, query) {
     addSession(token, user.id);
     res.setHeader('Set-Cookie', sessionCookie(token, SESSION_DAYS * 86400, isHttps(req)));
     return json(res, 200, {
-      token, user: publicUser(user),
+      token: bodyToken(req, token), user: publicUser(user),
       mustChangePw: !!user.mustChangePw
     });
   }
@@ -2624,7 +2665,8 @@ async function handleApi(req, res, pathname, query) {
     const approved = db.posts.filter((p) => p.status === 'approved').length;
     await Promise.resolve();
     return json(res, 200, {
-      users: db.users.length,
+      // 用户总数只给登录用户：匿名看到它等于白拿「循环上限」，是枚举的第一步（红队 P3）
+      users: me ? db.users.length : undefined,
       posts: approved,
       approved: approved,
       pending: db.posts.filter((p) => p.status === 'pending').length,
@@ -3401,12 +3443,21 @@ async function handleApi(req, res, pathname, query) {
 
   if (pathname === '/api/users/suggest' && method === 'GET') {
     const kw = clean(query.searchParams.get('q'), 30).toLowerCase();
-    let list = db.users.filter((u) => !u.banned);
-    if (kw) {
-      list = list.filter((u) => u.username.toLowerCase().includes(kw) || u.nickname.toLowerCase().includes(kw));
+    /* 空查询不再吐人。以前 q 为空时按角色排序返回前 8 个 —— 管理员排第一，
+       等于免费送出一份「id 种子 + 谁是站长」，是红队报告里最好用的枚举入口。 */
+    if (!kw) return json(res, 200, { users: [] });
+    /* 匿名加一道独立限流：全局 240 次/分钟挡不住「一分钟换 38 个字母」的慢扫。
+       这个接口本来就是给「@ 找人」和「转发给别人」用的，匿名几乎用不到。 */
+    if (!rateLimit('sug:' + ip + (me ? ':u' : ':a'), me ? 120 : 20, 60 * 1000)) {
+      res.setHeader('Retry-After', '20');
+      return json(res, 429, { error: '搜索太频繁了，歇一下再来' });
     }
+    // 匿名至少两个字：把「一个字符一次请求」的扫词成本抬上去
+    if (!me && kw.length < 2) return json(res, 200, { users: [] });
+    let list = db.users.filter((u) => !u.banned &&
+      (u.username.toLowerCase().includes(kw) || u.nickname.toLowerCase().includes(kw)));
     list.sort((a, b) => rankOf(b) - rankOf(a));
-    return json(res, 200, { users: list.slice(0, 8).map(briefUser) });
+    return json(res, 200, { users: list.slice(0, me ? 8 : 5).map(briefUser) });
   }
 
   const userMatch = /^\/api\/users\/(\d+)$/.exec(pathname);
@@ -3946,6 +3997,447 @@ async function serveStatic(req, res, pathname) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 安全监控台（SOC）                                                     */
+/*                                                                     */
+/* 解决一个具体问题：**「安静地被抄一遍」是看不见的**。                    */
+/* 搬砖式限流挡得住爆破（一分钟几百次），挡不住爬虫（一分钟几十次，          */
+/* 跟正常人刷页面一模一样）。所以除了「次数」，还得看「形状」：            */
+/*   - 一分钟里翻了多少个**不同**的用户主页 → 遍历用户表                  */
+/*   - 换了多少个**不同**的搜索词 → 扫字符集                             */
+/*   - 404 有多少 → 扫站器                                               */
+/*   - 401/403 有多少 → 在探权限                                         */
+/*   - UA 是不是脚本（curl / python / scrapy / headless…）                */
+/*   - 请求速率                                                          */
+/* 合成分数，过线自动封 IP，同时把每一条证据留在控制台上，能一眼看懂。       */
+/*                                                                     */
+/* 为什么全部放内存里：被刷时磁盘日志每秒几百行，写爆是迟早的事；而且         */
+/* 「事后翻日志」等于没有告警。这里内存滚动(3000 条)、只把**事件**落盘。      */
+/* ------------------------------------------------------------------ */
+
+const OPS_WIN = 60 * 1000;          // 画像窗口
+const OPS_ID_WIN = 5 * 60 * 1000;   // 「翻过多少个人」按 5 分钟算，否则慢爬永远不触发
+const OPS_ACCESS_MAX = 3000;        // 访问环形缓冲条数
+const OPS_IP_MAX = 4000;            // 同时跟踪的 IP 上限
+const OPS_BLOCK_SCORE = 60;         // 到这个分数自动封
+const OPS_FLAG_SCORE = 30;          // 到这个分数先记一笔「可疑」
+const OPS_PATH_MAX = 96;
+const OPS_BOT_RE = /(curl|wget|python|requests|urllib|aiohttp|httpx|scrapy|go-http-client|java\/|okhttp|libwww|httpclient|phantomjs|headless|puppeteer|playwright|selenium|node-fetch|axios|postmanruntime|insomnia|masscan|nmap|zgrab|nuclei|nikto|sqlmap|dirbuster|gobuster|ffuf)/i;
+
+/* ---- 封禁名单（落库，重启/重新部署都还在）---- */
+if (!Array.isArray(db.blocked)) db.blocked = [];
+const blockIndex = new Map();       // ip -> { ip, until, reason, by, at, auto, hits }
+for (const b of db.blocked) if (b && b.ip) blockIndex.set(b.ip, b);
+
+/** 管理员登录过的 IP：永不自动封禁（自己把自己锁在门外是最蠢的运维事故） */
+const adminIps = new Map();
+
+function opsTrusted(ip) {
+  if (!ip || ip === 'unknown' || ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') return true;
+  if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)) return true;
+  for (const p of IP_ALLOW_CFG) {
+    if (p.endsWith('*') ? ip.startsWith(p.slice(0, -1)) : ip === p) return true;
+  }
+  const t = adminIps.get(ip);
+  return !!(t && nowMs() - t < 7 * 24 * H);
+}
+
+function blockedEntry(ip) {
+  const e = blockIndex.get(ip);
+  if (!e) return null;
+  if (e.until && nowMs() > e.until) { blockIndex.delete(ip); return null; }
+  return e;
+}
+
+function setBlock(ip, minutes, reason, by, auto) {
+  const clean = normalizeIp(ip);
+  if (!clean || clean === 'unknown') return null;
+  const now = nowMs();
+  const prev = blockIndex.get(clean);
+  const e = {
+    ip: clean,
+    at: now,
+    until: now + Math.max(1, minutes) * 60000,
+    reason: String(reason || '').slice(0, 120),
+    by: String(by || (auto ? 'auto' : 'manual')).slice(0, 40),
+    auto: !!auto,
+    hits: prev ? prev.hits || 0 : 0
+  };
+  blockIndex.set(clean, e);
+  const i = db.blocked.findIndex((b) => b && b.ip === clean);
+  if (i >= 0) db.blocked[i] = e; else db.blocked.push(e);
+  saveDB();
+  secLog('ip_block', null, { ip: clean, min: minutes, reason: e.reason, by: e.by, auto: !!auto });
+  return e;
+}
+
+function clearBlock(ip) {
+  const clean = normalizeIp(ip);
+  const had = blockIndex.delete(clean);
+  const before = db.blocked.length;
+  db.blocked = db.blocked.filter((b) => !b || b.ip !== clean);
+  // 连画像一起清零：否则「解封」之后分数还挂在那儿，下一个请求立刻又被自动封回去，
+  // 管理员会以为按钮坏了。
+  const w = ipWatch.get(clean);
+  if (w) {
+    w.score = 0; w.peak = 0; w.flagged = 0; w.blockedAt = 0;
+    w.ids.clear(); w.qs.clear(); w.pids.clear();
+    w.s1 = 0; w.s2 = 0; w.s3 = 0; w.s4 = 0; w.s5 = 0; w.scan = 0;
+  }
+  if (had || db.blocked.length !== before) {
+    saveDB();
+    secLog('ip_unblock', null, { ip: clean });
+  }
+  return had;
+}
+
+/* 过期条目每天清一次；保留 7 天是为了让控制台能显示「这个 IP 被封过几次」 */
+setInterval(() => {
+  const now = nowMs();
+  db.blocked = db.blocked.filter((b) => b && b.until && b.until > now - 7 * 24 * H);
+  for (const [ip, e] of blockIndex) if (e.until && now > e.until) blockIndex.delete(ip);
+  for (const [ip, t] of adminIps) if (now - t > 7 * 24 * H) adminIps.delete(ip);
+}, 10 * 60000).unref();
+
+/* ---- 访问环形缓冲 ---- */
+const accessRing = new Array(OPS_ACCESS_MAX);
+let accessHead = 0;
+let accessCount = 0;
+let accessSeq = 0;
+
+function pushAccess(ev) {
+  accessRing[accessHead] = ev;
+  accessHead = (accessHead + 1) % OPS_ACCESS_MAX;
+  if (accessCount < OPS_ACCESS_MAX) accessCount += 1;
+}
+
+/** 取 seq 之后的访问事件（控制台增量拉取用），最多 limit 条 */
+function accessSince(sinceSeq, limit) {
+  const max = Math.min(Number(limit) || 80, 200);
+  const out = [];
+  for (let i = 1; i <= accessCount && out.length < max; i++) {
+    const idx = (accessHead - i + OPS_ACCESS_MAX * 2) % OPS_ACCESS_MAX;
+    const ev = accessRing[idx];
+    if (!ev || ev.seq <= sinceSeq) break;
+    out.push(ev);
+  }
+  out.reverse();
+  return out;
+}
+
+/* ---- 每 IP 的行为画像 ---- */
+const ipWatch = new Map();
+
+function sweepWatch(now) {
+  for (const [ip, w] of ipWatch) if (now - w.last > 15 * 60000) ipWatch.delete(ip);
+  if (ipWatch.size <= OPS_IP_MAX) return;
+  // 还超就按「最久没动」砍掉四分之一
+  const arr = [...ipWatch.entries()].sort((a, b) => a[1].last - b[1].last);
+  for (let i = 0; i < Math.ceil(arr.length / 4); i++) ipWatch.delete(arr[i][0]);
+}
+
+function watchOf(ip, now) {
+  let w = ipWatch.get(ip);
+  if (!w) {
+    if (ipWatch.size >= OPS_IP_MAX) sweepWatch(now);
+    const win = Math.floor(now / OPS_WIN);
+    w = {
+      ip, win, idsWin: win, n: 0, s1: 0, s2: 0, s3: 0, s4: 0, s5: 0,
+      ids: new Set(), qs: new Set(), pids: new Set(),
+      scan: 0, bot: 0, ua: '', last: now, first: now,
+      score: 0, flagged: 0, peak: 0, blockedAt: 0,
+      lastPath: '', paths: []
+    };
+    ipWatch.set(ip, w);
+    return w;
+  }
+  const win = Math.floor(now / OPS_WIN);
+  if (w.win !== win) {
+    // 跨窗口：计数清零，分数保留 40%（连续两窗都超线 → 更快命中）
+    w.score = Math.round(w.score * 0.4);
+    w.win = win; w.n = 0; w.s1 = 0; w.s2 = 0; w.s3 = 0; w.s4 = 0; w.s5 = 0; w.scan = 0;
+    if (win - w.idsWin >= OPS_ID_WIN / OPS_WIN) { w.ids.clear(); w.qs.clear(); w.pids.clear(); w.idsWin = win; }
+  }
+  w.last = now;
+  return w;
+}
+
+/**
+ * 记一次访问 + 更新画像。返回该 IP 是否应被封（已封的返回 false，不重复处理）。
+ * 必须是「只做加法」的：任何异常都不能影响响应，所以整段包了 try。
+ */
+function noteAccess(req, pathname, code, ms) {
+  try {
+    /* 控制台自己的轮询不进流水：2 秒一次、每次两条，全是管理员自己点出来的，
+       混在实时表里只会让人误以为「有人在扫」。 */
+    if (pathname.startsWith('/api/ops/')) return;
+    const now = nowMs();
+    const ip = clientIp(req);
+    const ua = String(req.headers['user-agent'] || '').slice(0, 90);
+    const method = String(req.method || 'GET');
+
+    pushAccess({
+      seq: ++accessSeq, t: now, ip, m: method,
+      p: pathname.length > OPS_PATH_MAX ? pathname.slice(0, OPS_PATH_MAX) + '…' : pathname,
+      c: code, ms: ms | 0, ua, sfs: String(req.headers['sec-fetch-site'] || '').slice(0, 12)
+    });
+
+    const w = watchOf(ip, now);
+    w.n += 1;
+    w.ua = ua || w.ua;
+    w.lastPath = pathname;
+    if (code === 401) w.s1 += 1;
+    else if (code === 403) w.s3 += 1;
+    else if (code === 404) w.s4 += 1;
+    else if (code === 429) w.s2 += 1;
+    else if (code >= 500) w.s5 += 1;
+    if (w.paths.length < 40 && w.paths[w.paths.length - 1] !== pathname) w.paths.push(pathname);
+
+    if (!w.bot && ua && OPS_BOT_RE.test(ua)) w.bot = 12;
+
+    // 用户主页遍历：这是红队报告里最便宜的拖库路径
+    const um = /^\/api\/users\/(\d+)$/.exec(pathname);
+    if (um) w.ids.add(Number(um[1]));
+    const pm = /^\/api\/posts\/(\d+)$/.exec(pathname);
+    if (pm) w.pids.add(Number(pm[1]));
+    // 搜索联想：换关键词扫字符集（一次请求换 8 个账号，比扫 id 划算得多）
+    if (pathname === '/api/users/suggest' || pathname === '/api/search') {
+      const raw = String(req.url || '');
+      const qi = raw.indexOf('?');
+      if (qi >= 0) {
+        try {
+          const q = new URLSearchParams(raw.slice(qi + 1)).get('q');
+          if (q) w.qs.add(String(q).toLowerCase().slice(0, 20));
+        } catch (e2) { /* 无所谓 */ }
+      }
+    }
+    // 扫站器/漏洞扫描路径
+    if (pathname !== '/' && (SCAN_DENY.test(pathname) || SCAN_EXT.test(pathname))) w.scan += 1;
+
+    /* ---- 合成分数 ----
+       原则：**单一弱信号不许直接封人**。每项都有上限，任何一项单独都到不了 60，
+       必须有第二类证据（脚本 UA、404、扫路径、高频）叠加才封。
+       理由：一个刚来的人可能一分钟点开十几个作者主页，那不是攻击；
+       但「翻十几个主页 + python-requests」基本就不是人了。 */
+    let s = 0;
+    if (w.ids.size > 8) s += Math.min(40, (w.ids.size - 8) * 6);    // 遍历用户主页
+    if (w.qs.size > 8) s += Math.min(40, (w.qs.size - 8) * 6);      // 换搜索词扫人
+    if (w.pids.size > 40) s += Math.min(30, (w.pids.size - 40) * 2);
+    if (w.n > 200) s += Math.min(50, (w.n - 200) / 4);
+    if (w.s4 > 15) s += Math.min(50, (w.s4 - 15) * 4);              // 404 = 在猜路径
+    if (w.s3 > 15) s += Math.min(50, (w.s3 - 15) * 4);              // 403 = 在探权限
+    if (w.scan > 0) s += Math.min(60, w.scan * 30);                 // 一扫 /wp-admin 就基本实锤
+    s += w.bot;
+    w.score = Math.round(s);
+    if (w.score > w.peak) w.peak = w.score;
+
+    /* ---- 事件：先记一笔，再决定要不要封 ---- */
+    if (w.ids.size === 10 || w.qs.size === 10) {
+      secLog('enum_suspect', req, { ids: w.ids.size, q: w.qs.size, hits: w.n, path: pathname });
+    }
+    if (w.score >= OPS_FLAG_SCORE && (!w.flagged || now - w.flagged > 5 * 60000)) {
+      w.flagged = now;
+      secLog('probe_suspect', req, {
+        score: w.score, ids: w.ids.size, q: w.qs.size, s404: w.s4, s403: w.s3,
+        scan: w.scan, bot: !!w.bot, path: pathname
+      });
+    }
+
+    /* ---- 自动封禁 ---- */
+    if (w.score >= OPS_BLOCK_SCORE && !opsTrusted(ip) && !blockedEntry(ip)) {
+      // 安全阀：如果到现在只见过一个 IP，多半是代理没透传真实地址，
+      // 这时封了等于封所有人 —— 宁可不封。
+      // 另一个安全阀：同一 IP 一分钟内不重复判一次，避免「被封后还在打」被算成
+      // 二次、三次违规，直接把 15 分钟升到 24 小时。
+      if (ipWatch.size > 1 && (!w.blockedAt || now - w.blockedAt > 60000)) {
+        const times = db.blocked.filter((b) => b && b.ip === ip).length;
+        const mins = times === 0 ? 15 : times === 1 ? 60 : 1440;
+        setBlock(ip, mins, '行为分 ' + w.score + '（翻 ' + w.ids.size + ' 个主页 / ' +
+          w.qs.size + ' 个搜索词 / ' + w.s4 + ' 次 404）', 'auto', true);
+        w.blockedAt = now;
+      }
+    }
+  } catch (e) { /* 监控永不影响业务 */ }
+}
+
+/** 被封 IP 的回应：API 回 JSON，页面回一张小卡片 */
+function opsBlockedReply(res, pathname, e) {
+  res.setHeader('Retry-After', String(Math.max(60, Math.ceil((e.until - nowMs()) / 1000))));
+  if (pathname.startsWith('/api/')) {
+    return json(res, 403, {
+      error: '你的访问已被限制。如果认为这是误判，请联系管理员。',
+      code: 'IP_BLOCKED'
+    });
+  }
+  res.writeHead(403, securityHeaders(res._req, {
+    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store'
+  }));
+  res.end('<!doctype html><meta charset="utf-8"><title>访问受限</title>' +
+    '<div style="font:600 15px/1.9 system-ui,-apple-system,sans-serif;color:#40291b;' +
+    'background:#fff8ee;border:2.5px solid #40291b;border-radius:18px;box-shadow:4px 4px 0 #40291b;' +
+    'max-width:420px;margin:14vh auto;padding:26px 28px">' +
+    '<b style="font-size:18px">访问已被限制</b><p style="margin:10px 0 0;color:#7a5c48">' +
+    '系统检测到这个地址的访问行为异常（高频遍历 / 扫描），已临时限制访问。<br>' +
+    '如果这是一次误判，请联系站点管理员解除。</p></div>');
+}
+
+/** 服务端自己也可以主动「看一眼」某个 IP —— 控制台详情页用 */
+function watchSummary(w) {
+  return {
+    ip: w.ip, score: w.score, peak: w.peak, n: w.n, ids: w.ids.size, qs: w.qs.size,
+    pids: w.pids.size, s401: w.s1, s429: w.s2, s403: w.s3, s404: w.s4, s5: w.s5,
+    scan: w.scan, bot: w.bot > 0, ua: w.ua, last: w.last, first: w.first,
+    lastPath: w.lastPath, paths: w.paths.slice(-12)
+  };
+}
+
+/* ---- security.log 尾部（控制台「安全事件」面板）---- */
+let opsEvCache = { at: 0, list: [] };
+function opsEventTail(limit) {
+  const now = Date.now();
+  if (now - opsEvCache.at > 2000) {
+    const list = [];
+    try {
+      const st = fs.statSync(SEC_LOG);
+      const bytes = Math.min(96 * 1024, st.size);
+      const fd = fs.openSync(SEC_LOG, 'r');
+      const buf = Buffer.alloc(bytes);
+      fs.readSync(fd, buf, 0, bytes, st.size - bytes);
+      fs.closeSync(fd);
+      const lines = buf.toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0 && list.length < 200; i--) {
+        const s = lines[i].trim();
+        if (!s) continue;
+        try { list.push(JSON.parse(s)); } catch (e2) { /* 半行跳过 */ }
+      }
+    } catch (e) { /* 没有日志文件 */ }
+    opsEvCache = { at: now, list };
+  }
+  return opsEvCache.list.slice(0, Math.min(Number(limit) || 60, 200)).reverse();
+}
+
+/* ---- 控制台接口 ---- */
+
+function opsDenied(res) {
+  res.writeHead(403, securityHeaders(res._req, {
+    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store'
+  }));
+  res.end('<!doctype html><meta charset="utf-8"><title>没有权限</title>' +
+    '<div style="font:600 15px/1.9 system-ui,-apple-system,sans-serif;color:#40291b;' +
+    'background:#fff8ee;border:2.5px solid #40291b;border-radius:18px;box-shadow:4px 4px 0 #40291b;' +
+    'max-width:420px;margin:14vh auto;padding:26px 28px">' +
+    '<b style="font-size:18px">这不是给你的页面</b><p style="margin:10px 0 0;color:#7a5c48">' +
+    '安全控制台只对管理员开放。如果你确定自己有权限，先到 <a href="/" style="color:#f2682a">首页</a> 登录。</p></div>');
+}
+
+/** IPv4 / IPv6 / 1.2.3.* 这类简单通配。不追求严谨，只挡明显乱填的东西。 */
+function validIpPattern(s) {
+  const v = String(s || '').trim();
+  if (!v) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v)) return v.split('.').every((n) => Number(n) <= 255);
+  if (/^\d{1,3}(\.\d{1,3}){2}\.\*$/.test(v)) return true;
+  return /^[0-9a-f:.]{3,45}$/i.test(v) && v.includes(':');
+}
+
+async function handleOps(req, res, pathname, query, me) {
+  me = me || currentUser(req);
+  if (!me || rankOf(me) < 2) {
+    secLog('ops_denied', req, { path: pathname });
+    return json(res, 403, { error: '只有管理员能进安全控制台', code: 'OPS_FORBIDDEN' });
+  }
+  const method = req.method;
+  if (!rateLimit('ops:' + me.id, 1200, 60 * 1000)) {
+    return json(res, 429, { error: '刷得太快了' });
+  }
+
+  if (pathname === '/api/ops/overview' && method === 'GET') {
+    const now = nowMs();
+    // 最近 60 秒的请求数（环形缓冲本身就是按时间顺序写的；head 指向下一个待写槽位，从 i=1 开始）
+    let rate = 0;
+    for (let i = 1; i <= accessCount; i++) {
+      const ev = accessRing[(accessHead - i + OPS_ACCESS_MAX * 2) % OPS_ACCESS_MAX];
+      if (!ev) break;
+      if (now - ev.t > OPS_WIN) break;
+      rate += 1;
+    }
+    const active = [...blockIndex.values()].filter((b) => b.until > now);
+    const threats = [...ipWatch.values()]
+      .filter((w) => now - w.last < 10 * 60000)
+      .map(watchSummary)
+      .sort((a, b) => b.score - a.score || b.n - a.n)
+      .slice(0, 14);
+    return json(res, 200, {
+      now,
+      up: Math.round(process.uptime()),
+      inflight: inflightTotal,
+      lag: lagP95,
+      overloaded,
+      rate,
+      ips: ipWatch.size,
+      blocked: active.length,
+      seq: accessSeq,
+      stats: {
+        users: db.users.length,
+        posts: db.posts.length,
+        pending: db.posts.filter((p) => p.status === 'pending').length
+      },
+      threats,
+      events: opsEventTail(40),
+      blocks: active.map((b) => ({
+        ip: b.ip, until: b.until, reason: b.reason, by: b.by, auto: !!b.auto,
+        hits: b.hits || 0, at: b.at
+      })).sort((a, b) => b.hits - a.hits || b.until - a.until).slice(0, 60)
+    });
+  }
+
+  if (pathname === '/api/ops/feed' && method === 'GET') {
+    const after = Number(query.searchParams.get('after') || 0) || 0;
+    return json(res, 200, { seq: accessSeq, events: accessSince(after, 140) });
+  }
+
+  if (pathname === '/api/ops/ip' && method === 'GET') {
+    const ip = normalizeIp(query.searchParams.get('ip') || '');
+    const w = ipWatch.get(ip);
+    const evs = [];
+    for (let i = 0; i < accessCount && evs.length < 60; i++) {
+      const ev = accessRing[(accessHead - i + OPS_ACCESS_MAX * 2) % OPS_ACCESS_MAX];
+      if (!ev) break;
+      if (ev.ip === ip) evs.push(ev);
+    }
+    const e = blockIndex.get(ip);
+    return json(res, 200, {
+      ip,
+      watch: w ? watchSummary(w) : null,
+      events: evs,
+      block: e && e.until > nowMs() ? { until: e.until, reason: e.reason, by: e.by, auto: !!e.auto } : null,
+      trusted: opsTrusted(ip)
+    });
+  }
+
+  if (pathname === '/api/ops/block' && method === 'POST') {
+    const b = await readBody(req);
+    const ip = String(b.ip || '').trim();
+    if (!validIpPattern(ip)) return json(res, 400, { error: 'IP 格式不对' });
+    const mins = Math.max(1, Math.min(43200, Number(b.minutes) || 60));
+    const e = setBlock(ip, mins, clean(b.reason, 100) || '管理员手动封禁', me.username, false);
+    return json(res, 200, { ok: true, block: e });
+  }
+
+  if (pathname === '/api/ops/unblock' && method === 'POST') {
+    const b = await readBody(req);
+    const ip = String(b.ip || '').trim();
+    if (!ip) return json(res, 400, { error: '缺 IP' });
+    return json(res, 200, { ok: clearBlock(ip) });
+  }
+
+  if (pathname === '/api/ops/events' && method === 'GET') {
+    const lim = Number(query.searchParams.get('limit') || 60) || 60;
+    return json(res, 200, { events: opsEventTail(lim) });
+  }
+
+  return json(res, 404, { error: '接口不存在' });
+}
+
+/* ------------------------------------------------------------------ */
 /* 服务器                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -3977,14 +4469,44 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('400 Bad Request');
   }
+  /* 已封禁的 IP 在解析完路径后立刻打回：不查库、不走业务、不进静态服务。
+     仍然记一条访问事件 —— 控制台要能看到「他还在打，只是打不进来」。 */
+  const _t0 = Date.now();
+  const _ip = clientIp(req);
+  const _blk = blockedEntry(_ip);
+  if (_blk) {
+    _blk.hits = (_blk.hits || 0) + 1;
+    /* 例外：管理员即便自己也被封了，也一定要能进控制台解封。
+       否则「手滑封了自己」= 永久失去运维通道，只能去改库文件。
+       代价极小：要走这条路必须先有一个有效的管理员会话。 */
+    let _pass = false;
+    if (pathname.startsWith('/api/ops/') || pathname === '/ops' || pathname === '/ops/'
+      || pathname.startsWith('/ops.')) {
+      const opu = currentUser(req);
+      _pass = !!(opu && rankOf(opu) >= 2);
+    }
+    if (!_pass) {
+      noteAccess(req, pathname, 403, 0);
+      return opsBlockedReply(res, pathname, _blk);
+    }
+  }
   try {
     if (pathname.startsWith('/api/')) {
       /* 第二道闸：进程已经喘不过气（CPU 被打满）时，只放行「我是谁」这一个
          最轻的接口，其余回 503。这叫「有损降级」——牺牲部分请求的体验，
-         换整个服务不雪崩。不加这道，所有人一起卡到超时。 */
-      if (overloaded && pathname !== '/api/me') return tooBusy(res, 5);
+         换整个服务不雪崩。不加这道，所有人一起卡到超时。
+         安全控制台（/api/ops/）必须放行：正被攻击时恰恰是运维唯一要用的东西。 */
+      if (overloaded && pathname !== '/api/me' && !pathname.startsWith('/api/ops/')) {
+        return tooBusy(res, 5);
+      }
       await handleApi(req, res, pathname, u);
     } else {
+      /* 安全控制台只给管理员：html / js / css 一起挡，未登录连页面源码都拿不到 */
+      if (pathname === '/ops' || pathname === '/ops/' || pathname.startsWith('/ops.')) {
+        const opu = currentUser(req);
+        if (!opu || rankOf(opu) < 2) return opsDenied(res);
+        if (pathname === '/ops' || pathname === '/ops/') pathname = '/ops.html';
+      }
       /* 静态资源限流：阈值给得很宽（一次打开首页约 10~14 个资源请求），
          只为拦住「单个 IP 死循环刷同一个文件」，不会误伤正常浏览与 NAT 共用出口。 */
       if (!rateLimit('static:' + clientIp(req), 1800, 60 * 1000)) {
@@ -4007,6 +4529,9 @@ const server = http.createServer(async (req, res) => {
       }
     }
     else res.end();
+  } finally {
+    // 行为画像 / 访问流水：放在 finally 里，异常路径也照样计数
+    noteAccess(req, pathname, res.statusCode, Date.now() - _t0);
   }
 });
 
