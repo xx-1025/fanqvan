@@ -1221,14 +1221,65 @@ function loginOk(key) { loginFails.delete(key); }
    另：直连部署（前面没有反代）时 XFF 完全不可信，用 FQ_TRUST_PROXY=0 关掉。 */
 const TRUST_PROXY = String(process.env.FQ_TRUST_PROXY || '1') !== '0';
 
+/* 真实 IP 到底藏在哪个头里，**必须按部署环境确认后再配**，不能瞎猜。
+   原因：如果这里无条件信任 X-Real-IP / CF-Connecting-IP 这类头，而网关并不覆盖它们，
+   攻击者自己带一个就成了「换 IP 绕限流 + 栽赃别人被封」。
+   所以默认不认任何额外头；确认网关会覆盖之后，再配 FQ_IP_HEADER（或 ai.config.json 的 ipHeader）。
+   怎么确认：以管理员身份打开 /ops → 「网关诊断」，看网关到底给了什么。 */
+const IP_HEADER = String(process.env.FQ_IP_HEADER || EXTRA_CFG.ipHeader || '').toLowerCase().trim();
+
+/** 看一个「客户端声称的 IP」能不能用：只接受公网地址，内网/环回一律当没有 */
+function usableIp(v) {
+  const s = normalizeIp(String(v || '').split(',')[0].trim());
+  if (!s || s === 'unknown') return '';
+  if (!/^[0-9a-f:.]+$/i.test(s) || s.indexOf(':') < 0 && !/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return '';
+  // 环回 / 私网 / 链路本地 —— 是网关自己的地址，不是访客的
+  if (/^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(s)) return '';
+  if (s === '::1' || /^f[cd]/i.test(s) || /^fe80:/i.test(s)) return '';
+  return s;
+}
+
 /** 把 ::ffff:1.2.3.4 归一成 1.2.3.4 —— 否则同一个地址会算出两个限流 key */
 function normalizeIp(s) {
   const v = String(s || '').trim();
   return v.replace(/^::ffff:/i, '').toLowerCase() || 'unknown';
 }
 
+/* 真实客户端 IP。这里踩过一个很贵的坑：
+   线上网关（CloudStudio / EdgeOne）转发的形态是
+     x-real-ip:      125.94.249.39
+     x-forwarded-for: 125.94.249.39, 10.192.198.228, ::ffff:172.24.0.1
+   也就是说**真实 IP 在第一段**，最后一段是网关自己的内网地址。
+   以前取 XFF 最后一段，导致线上所有访客都被看成 172.24.0.1 —— 限流变成全站共用一个额度、
+   封禁变成「要么封所有人要么谁都封不了」。安全控制台一打开就露了这个馅。
+
+   判据（两个条件同时满足才认第一段，避免被「自己带一个 XFF」骗过去）：
+     1) 第一段是公网地址；
+     2) 最后一段是内网/环回 —— 说明这个请求确实穿过了代理，且代理在后面追加了自己。
+   再叠一层：如果同时还带了 x-real-ip，必须和第一段一致，否则不认。
+   直连（没有代理）时 XFF 根本不存在，直接落回 socket 地址。 */
+function realClientIp(req) {
+  const parts = String(req.headers['x-forwarded-for'] || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return '';
+  const first = usableIp(parts[0]);
+  if (!first) return '';
+  const claimed = usableIp(req.headers['x-real-ip']);
+  if (claimed) return claimed === first ? first : '';
+  // 后面必须跟着「非公网」的一段，才算真的过了代理
+  if (parts.length >= 2 && !usableIp(parts[parts.length - 1])) return first;
+  return '';
+}
+
 function clientIp(req) {
   if (TRUST_PROXY) {
+    // 手工指定的头优先（别的部署环境用）；只认公网地址
+    if (IP_HEADER) {
+      const v = usableIp(req.headers[IP_HEADER]);
+      if (v) return v;
+    }
+    const real = realClientIp(req);
+    if (real) return real;
     const xff = String(req.headers['x-forwarded-for'] || '');
     if (xff) {
       const parts = xff.split(',').map((s) => s.trim()).filter(Boolean);
@@ -4432,6 +4483,28 @@ async function handleOps(req, res, pathname, query, me) {
   if (pathname === '/api/ops/events' && method === 'GET') {
     const lim = Number(query.searchParams.get('limit') || 60) || 60;
     return json(res, 200, { events: opsEventTail(lim) });
+  }
+
+  /* 网关诊断：看不到真实 IP 时，靠它判断该配哪个头。
+     只回给管理员，并且把 Cookie / Authorization 这类凭据剔掉，别把会话带出去。 */
+  if (pathname === '/api/ops/diag' && method === 'GET') {
+    const DROP = /^(cookie|authorization|x-auth-token|set-cookie|proxy-authorization)$/i;
+    const headers = {};
+    for (const [k, v] of Object.entries(req.headers || {})) {
+      if (DROP.test(k)) { headers[k] = '(已隐藏)'; continue; }
+      headers[k] = String(v).slice(0, 200);
+    }
+    return json(res, 200, {
+      ip: clientIp(req),
+      socket: normalizeIp((req.socket && req.socket.remoteAddress) || ''),
+      trustProxy: TRUST_PROXY,
+      ipHeader: IP_HEADER || '(未配置)',
+      suspectIps: ['x-real-ip', 'x-client-ip', 'true-client-ip', 'cf-connecting-ip',
+        'x-cluster-client-ip', 'fastly-client-ip', 'x-forwarded-for', 'x-forwarded-host']
+        .filter((h) => req.headers[h])
+        .map((h) => ({ header: h, value: String(req.headers[h]).slice(0, 80), usable: usableIp(req.headers[h]) || '' })),
+      headers
+    });
   }
 
   return json(res, 404, { error: '接口不存在' });

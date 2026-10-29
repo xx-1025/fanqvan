@@ -317,6 +317,46 @@
 
   /* ---------------- 动作 ---------------- */
 
+  function openDiag() {
+    $('#op-modal').hidden = false;
+    $('#op-modal-box').innerHTML = '<h3>网关诊断</h3><div class="m-sub">正在读取…</div>';
+    get('/api/ops/diag').then(function (d) {
+      var rows = [
+        ['服务器看到的 IP', d.ip],
+        ['socket 地址', d.socket],
+        ['信任代理头', d.trustProxy ? '是' : '否'],
+        ['指定 IP 头', d.ipHeader],
+        ['可否作为 IP', d.ip === d.socket && /^(127\.|10\.|192\.168\.|172\.16)/.test(d.ip)
+          ? '不能（是网关自己的地址）' : '可以']
+      ];
+      var html = '<h3>网关诊断</h3><div class="m-sub">判断「真实 IP 有没有穿过来」</div>' +
+        '<div class="kv">' + rows.map(function (r) {
+          return '<i>' + r[0] + '</i><span>' + esc(r[1]) + '</span>';
+        }).join('') + '</div>';
+
+      if (d.suspectIps && d.suspectIps.length) {
+        html += '<div class="m-sub" style="margin:12px 0 6px">可能装着真实 IP 的请求头</div>' +
+          '<div class="m-paths">' + d.suspectIps.map(function (x) {
+            return '<div>' + esc(x.header) + ' = ' + esc(x.value) +
+              (x.usable ? '   ✅ 可作 IP' : '   ⚠️ 不是公网地址') + '</div>';
+          }).join('') + '</div>';
+      } else {
+        html += '<div class="m-sub" style="margin:12px 0 6px">没有任何代理转发头 —— 网关把来源抹掉了</div>';
+      }
+
+      html += '<div class="m-sub" style="margin:12px 0 6px">全部请求头</div><div class="m-paths">' +
+        Object.keys(d.headers || {}).map(function (k) {
+          return '<div>' + esc(k) + ': ' + esc(d.headers[k]) + '</div>';
+        }).join('') + '</div>' +
+        '<div class="m-acts"><button class="op-btn ghost" id="op-close">关闭</button></div>';
+
+      $('#op-modal-box').innerHTML = html;
+      $('#op-close').addEventListener('click', closeModal);
+    }).catch(function (e) {
+      $('#op-modal-box').innerHTML = '<h3>网关诊断</h3><div class="m-sub">' + esc(e.message) + '</div>';
+    });
+  }
+
   function doBlock(ip, mins) {
     return post('/api/ops/block', { ip: ip, minutes: mins, reason: '管理员在控制台手动封禁' })
       .then(function () { return refresh(); })
@@ -419,6 +459,8 @@
     $('#op-pause').addEventListener('click', function () {
       setLive(state.paused);
     });
+
+    $('#op-diag').addEventListener('click', openDiag);
 
     // 标签页切回前台时立刻刷一次，别让用户盯着一屏过期数据
     document.addEventListener('visibilitychange', function () {
