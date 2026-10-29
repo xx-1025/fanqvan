@@ -554,6 +554,45 @@ function saveNow() {
 }
 saveNow();
 ensureBootstrap();
+applyPasswordResetFromConfig();
+
+/* 忘了管理员口令时的应急通道。
+   在 ai.config.json 里加一行 "adminPassword": "想用的新口令"，重启 / 重新部署后
+   就会把 admin 的口令换成它，并**立刻把这一行从文件里删掉** —— 明文只在磁盘上
+   活到这一次启动。（reviewerPassword 同理。）
+   为什么要这个：admin 的口令是首次建号时随机生成的，只打印在那一次的启动日志里，
+   连库里都只有哈希；忘了就再也拿不回来，只能靠这条通道重置。
+   ai.config.json 在 .gitignore 里，不会进公开仓库。 */
+function applyPasswordResetFromConfig() {
+  const cfgFile = path.join(__dirname, 'ai.config.json');
+  let cfg = null;
+  try {
+    if (!fs.existsSync(cfgFile)) return;
+    cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+  } catch (e) { return; }
+  const pairs = [['adminPassword', 'admin'], ['reviewerPassword', 'reviewer']];
+  const done = [];
+  for (const [key, username] of pairs) {
+    const pw = String(cfg[key] || '').trim();
+    if (!pw) continue;
+    const user = db.users.find((u) => u.username === username);
+    if (!user) continue;
+    const problem = passwordProblem(pw, username);
+    if (problem) { console.warn(`[security] ai.config.json 里的 ${key} 不合规：${problem}`); continue; }
+    user.password = makePw(pw);
+    user.pwStrong = true;
+    user.pwResetAt = nowMs();
+    delete user.mustChangePw;
+    dropUserSessions(user.id);          // 换完口令，其他设备一律下线
+    done.push(username);
+  }
+  if (!done.length) return;
+  saveNow();
+  for (const [key] of pairs) delete cfg[key];
+  try { fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2) + '\n', 'utf8'); } catch (e) { /* 只读目录就算了 */ }
+  console.log(`[security] 已按 ai.config.json 重置口令：${done.join(', ')}（文件里的明文已清除）`);
+  secLog('pw_reset_by_config', null, { users: done.join(',') });
+}
 
 /* ------------------------------------------------------------------ */
 /* 上传：真实类型校验 + 空间配额                                         */
