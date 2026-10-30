@@ -2627,7 +2627,19 @@ async function handleApi(req, res, pathname, query) {
     }
     loginOk(lockKey);
     // 管理员登录过的 IP 记一笔：自动封禁会跳过它，免得把自己锁在门外
-    if (rankOf(user) >= 2) adminIps.set(ip, nowMs());
+    if (rankOf(user) >= 2) {
+      adminIps.set(ip, nowMs());
+      const _n = netOf(ip);
+      if (_n) adminNets.set(_n, nowMs());
+      /* 自救：管理员从「已被封的地址」登录成功，就把这条封禁撤掉。
+         第一版没有这段，于是出现了一条死锁 —— 被封的 IP 连登录接口都打不进来，
+         拿不到会话就进不去控制台，进了控制台才有的解封按钮永远点不到。
+         现在登录接口对封禁地址放行，登录成功即自动解开自己这一条（含所在网段）。 */
+      const lifted = [];
+      if (blockedEntry(ip)) { clearBlock(ip); lifted.push(ip); }
+      if (_n && blockedEntry(_n)) { clearBlock(_n); lifted.push(_n); }
+      if (lifted.length) secLog('ip_unblock', req, { ip: lifted.join(' '), by: 'admin_login' });
+    }
 
     // 还在用初始/弱口令 → 只做个标记（写进登录日志），不拦任何操作
     if (!user.pwStrong) {
@@ -4115,8 +4127,14 @@ const OPS_BOT_RE = /(curl|wget|python|requests|urllib|aiohttp|httpx|scrapy|go-ht
    同一个人一分钟内可能来自 125.94.247.x / 248.x / 249.x 好几个地址。
    只按单个 IP 封根本追不上 —— 所以再按 /24 记一维：
    同一段里出现多个「各自都有可疑行为」的地址，就把整段挡掉。 */
-const OPS_NET_HIT = 3;              // 同一 /24 里至少 3 个不同 IP 都越过「可疑」线才封段
+const OPS_NET_HIT = 3;              // 同一 /24 里至少 3 个不同 IP 都有「硬证据」才封段
 const OPS_NET_MAX = 3000;           // 同时跟踪的网段上限
+
+/* 为什么「硬证据」的门槛要单独定、而且比 OPS_FLAG_SCORE 严：
+   第一版用的是「可疑线 30 分」，结果一次正常的运维验收（一堆 403 + curl 的 UA）
+   就在同一个 /24 里凑出 3 个 30+ 的地址，把整段连带封了 —— 连管理员自己都进不去。
+   封段是「连坐」，误伤代价远大于放过一个爬虫，所以只认扫站 / 遍历 / 撞 404 这类
+   明确行为，不认「综合分有点高」。 */
 
 /** IPv4 → a.b.c.0/24；IPv6 / 其它一律返回 ''（v6 先不聚合，一段就是天文数字） */
 function netOf(ip) {
@@ -4134,6 +4152,7 @@ function netTrusted(net) {
     if (p.endsWith('*') && base.startsWith(p.slice(0, -1))) return true;
   }
   for (const [ip] of adminIps) if (netOf(ip) === net) return true;
+  return adminNetTrusted(net);
   return false;
 }
 
@@ -4159,6 +4178,18 @@ for (const b of db.blocked) if (b && b.ip) blockIndex.set(b.ip, b);
 
 /** 管理员登录过的 IP：永不自动封禁（自己把自己锁在门外是最蠢的运维事故） */
 const adminIps = new Map();
+/** 管理员登录过的 /24 段。手机上出口 IP 会在同一片里跳（…247.x / 248.x / 249.x），
+ *  只记单个 IP 的话，换一次出口就又变成陌生地址，管理员会被自己系统误封。
+ *  记网段等于「这台设备所在的片区是我自己的」，比记 IP 稳。
+ *  代价：跟管理员同一片区的陌生人也被免于自动封禁 —— 手动封禁仍然有效，
+ *  而误封管理员的代价是把整个站点对站长本人关掉，权衡下来取前者。 */
+const adminNets = new Map();
+
+function adminNetTrusted(net) {
+  if (!net) return false;
+  const t = adminNets.get(net);
+  return !!(t && nowMs() - t < 7 * 24 * H);
+}
 
 function opsTrusted(ip) {
   if (!ip || ip === 'unknown' || ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') return true;
@@ -4167,7 +4198,8 @@ function opsTrusted(ip) {
     if (p.endsWith('*') ? ip.startsWith(p.slice(0, -1)) : ip === p) return true;
   }
   const t = adminIps.get(ip);
-  return !!(t && nowMs() - t < 7 * 24 * H);
+  if (t && nowMs() - t < 7 * 24 * H) return true;
+  return adminNetTrusted(netOf(ip));
 }
 
 function blockedEntry(ip) {
@@ -4350,8 +4382,14 @@ function noteAccess(req, pathname, code, ms) {
         } catch (e2) { /* 无所谓 */ }
       }
     }
-    // 扫站器/漏洞扫描路径
-    if (pathname !== '/' && (SCAN_DENY.test(pathname) || SCAN_EXT.test(pathname))) w.scan += 1;
+    /* 扫站器/漏洞扫描路径。
+       **必须排除我们自己的 /api/admin/ 和 /api/ops/**：
+       SCAN_DENY 里有一条 `admin`，本意是抓 /wp-admin、/admin.php 这种探后台的路径，
+       但 `/api/admin/users` 也含 `/admin/`，于是管理员每点一次后台管理就被记一次「扫路径」，
+       一次加 30 分 —— 用不了几下就 60 分自动封了自己。
+       这条误伤比任何真实攻击都致命：它专打站长本人。 */
+    const _ownApi = pathname.startsWith('/api/admin/') || pathname.startsWith('/api/ops/');
+    if (pathname !== '/' && !_ownApi && (SCAN_DENY.test(pathname) || SCAN_EXT.test(pathname))) w.scan += 1;
 
     /* ---- 合成分数 ----
        原则：**单一弱信号不许直接封人**。每项都有上限，任何一项单独都到不了 60，
@@ -4379,7 +4417,14 @@ function noteAccess(req, pathname, code, ms) {
     if (net) {
       const nw = netWatchOf(net, now);
       nw.last = now; nw.n += 1; nw.ips.add(ip);
-      if (w.score >= OPS_FLAG_SCORE) nw.hit.add(ip);
+      /* 谁算「这个地址有问题」：只认行为证据，不看综合分。
+         证据 = 扫过站 / 大面积翻用户主页 / 大面积换搜索词 / 点了一堆不存在的页面。
+         **故意不认「分数高」**：60 分可以靠「一堆 403 + 脚本 UA」堆出来，
+         而那恰恰是我自己跑验收脚本、或者管理员拿着旧会话反复试接口时的样子。
+         三个这样的地址凑在同一个 /24 → 整段连坐 → 管理员自己被挡在门外（踩过）。
+         真正的分布式采集长的是「每个地址各自安静地翻主页/扫路径」，那才是这里要抓的。 */
+      const hard = w.scan > 0 || w.ids.size > 8 || w.qs.size > 8 || w.s4 > 30;
+      if (hard) nw.hit.add(ip);
       if (nw.hit.size >= OPS_NET_HIT && !netTrusted(net) && !blockedEntry(net)
         && (!nw.blockedAt || now - nw.blockedAt > 5 * 60000)) {
         const times = db.blocked.filter((b) => b && b.ip === net).length;
@@ -4410,33 +4455,94 @@ function noteAccess(req, pathname, code, ms) {
       if (ipWatch.size > 1 && (!w.blockedAt || now - w.blockedAt > 60000)) {
         const times = db.blocked.filter((b) => b && b.ip === ip).length;
         const mins = times === 0 ? 15 : times === 1 ? 60 : 1440;
-        setBlock(ip, mins, '行为分 ' + w.score + '（翻 ' + w.ids.size + ' 个主页 / ' +
-          w.qs.size + ' 个搜索词 / ' + w.s4 + ' 次 404）', 'auto', true);
+        setBlock(ip, mins, '行为分 ' + w.score + '，主要是' + scoreWhy(w), 'auto', true);
         w.blockedAt = now;
       }
     }
   } catch (e) { /* 监控永不影响业务 */ }
 }
 
-/** 被封 IP 的回应：API 回 JSON，页面回一张小卡片 */
+/** 被封 IP 的回应：API 回 JSON，页面回一张带「自助解封」的卡片 */
 function opsBlockedReply(res, pathname, e) {
-  res.setHeader('Retry-After', String(Math.max(60, Math.ceil((e.until - nowMs()) / 1000))));
+  const waitMs = Math.max(0, e.until - nowMs());
+  res.setHeader('Retry-After', String(Math.max(60, Math.ceil(waitMs / 1000))));
   if (pathname.startsWith('/api/')) {
     return json(res, 403, {
       error: '你的访问已被限制。如果认为这是误判，请联系管理员。',
       code: 'IP_BLOCKED'
     });
   }
+  const left = Math.max(1, Math.ceil(waitMs / 60000));
+  const box = 'font:600 15px/1.9 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#40291b';
+  const inp = 'width:100%;box-sizing:border-box;padding:10px 12px;margin:0 0 9px;font:inherit;' +
+    'color:#40291b;background:#fff;border:2px solid #40291b;border-radius:11px;outline:none';
   res.writeHead(403, securityHeaders(res._req, {
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store'
   }));
-  res.end('<!doctype html><meta charset="utf-8"><title>访问受限</title>' +
-    '<div style="font:600 15px/1.9 system-ui,-apple-system,sans-serif;color:#40291b;' +
-    'background:#fff8ee;border:2.5px solid #40291b;border-radius:18px;box-shadow:4px 4px 0 #40291b;' +
-    'max-width:420px;margin:14vh auto;padding:26px 28px">' +
-    '<b style="font-size:18px">访问已被限制</b><p style="margin:10px 0 0;color:#7a5c48">' +
-    '系统检测到这个地址的访问行为异常（高频遍历 / 扫描），已临时限制访问。<br>' +
-    '如果这是一次误判，请联系站点管理员解除。</p></div>');
+  res.end('<!doctype html><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1"><title>访问受限</title>' +
+    '<div style="' + box + ';background:#fff8ee;border:2.5px solid #40291b;border-radius:18px;' +
+    'box-shadow:4px 4px 0 #40291b;max-width:430px;margin:10vh auto;padding:24px 26px">' +
+    '<b style="font-size:18px">访问已被限制</b>' +
+    '<p style="margin:10px 0 0;color:#7a5c48">系统觉得这个地址的访问不太像人在正常浏览' +
+    '（短时间里大量翻页、扫路径或用脚本抓取），先拦了下来。大约 ' + left + ' 分钟后会自动解开。</p>' +
+    '<p style="margin:14px 0 8px;color:#7a5c48">如果这是误判，或者你是站长本人 —— ' +
+    '<b style="color:#40291b">用管理员账号登录一下就能立刻解开</b>：</p>' +
+    '<input id="u" placeholder="用户ID" autocomplete="username" style="' + inp + '">' +
+    '<input id="p" type="password" placeholder="密码" autocomplete="current-password" style="' + inp + '">' +
+    '<div style="display:flex;gap:10px;align-items:stretch;margin-bottom:9px">' +
+    '<input id="c" placeholder="照图输入验证码" autocomplete="off" autocapitalize="characters" ' +
+    'style="' + inp + ';margin:0">' +
+    '<img id="ci" alt="验证码" title="看不清？点一下换一张" ' +
+    'style="height:45px;border:2px solid #40291b;border-radius:11px;cursor:pointer;background:#fff;flex:0 0 auto">' +
+    '</div>' +
+    '<button id="go" style="width:100%;padding:11px;font:inherit;cursor:pointer;color:#fff8ee;' +
+    'background:#40291b;border:2px solid #40291b;border-radius:12px">解开并进入</button>' +
+    '<p id="msg" style="margin:10px 0 0;font-size:13px;color:#9b6a4e"></p>' +
+    '</div>' +
+    '<script>(function(){' +
+    'var img=document.getElementById("ci"),msg=document.getElementById("msg"),cid="";' +
+    'function load(){fetch("/api/captcha",{cache:"no-store"}).then(function(r){return r.json()})' +
+    '.then(function(d){if(d&&d.id){cid=d.id;img.src=d.img}}).catch(function(){})}' +
+    'img.onclick=load;load();' +
+    'document.getElementById("go").onclick=function(){' +
+    'var u=document.getElementById("u").value.trim(),p=document.getElementById("p").value,' +
+    'c=document.getElementById("c").value.trim();' +
+    'if(!u||!p){msg.textContent="请填用户ID和密码";return}' +
+    'msg.textContent="正在验证…";' +
+    'fetch("/api/auth/login",{method:"POST",credentials:"same-origin",' +
+    'headers:{"Content-Type":"application/json"},' +
+    'body:JSON.stringify({username:u,password:p,captchaId:cid,captchaCode:c})})' +
+    '.then(function(r){return r.json().then(function(d){return {s:r.status,d:d}})})' +
+    '.then(function(x){var role=x.d&&x.d.user&&x.d.user.role;' +
+    'if(x.s===200&&(role==="admin"||role==="operator")){msg.textContent="已解开，正在进入…";location.reload();return}' +
+    'if(x.s===200){msg.textContent="这个账号不是管理员，解不开。请让管理员登录后再试。";return}' +
+    'msg.textContent=(x.d&&x.d.error)||"没登录成功，再试一次";load()})' +
+    '.catch(function(){msg.textContent="网络不太顺，再点一次";load()})};' +
+    '})();<\/script>');
+}
+
+/** 把「为什么被封」写成一句人能看懂的话。
+ *  以前只写「行为分 60（翻 0 个主页 / 0 个搜索词 / 0 次 404）」，
+ *  可那三项全是 0 —— 真正扣分的是 403 次数和脚本 UA，反而没写出来，
+ *  看记录的人只会觉得系统在乱封。 */
+function scoreWhy(w) {
+  const parts = [];
+  if (w.scan > 0) parts.push('扫了 ' + w.scan + ' 次后台/敏感路径');
+  if (w.s3 > 15) parts.push('被拒了 ' + w.s3 + ' 次（在试权限）');
+  if (w.s4 > 15) parts.push('点了 ' + w.s4 + ' 次不存在的页面（在猜路径）');
+  if (w.ids.size > 8) parts.push('翻了 ' + w.ids.size + ' 个人的主页');
+  if (w.qs.size > 8) parts.push('换了 ' + w.qs.size + ' 个搜索词扫人');
+  if (w.pids.size > 40) parts.push('翻了 ' + w.pids.size + ' 篇内容');
+  if (w.bot) parts.push('浏览器身份是脚本工具（' + uaTag(w.ua) + '）');
+  if (w.n > 200) parts.push('一分钟内请求了 ' + w.n + ' 次');
+  return parts.length ? parts.join('、') : '多种可疑行为叠加';
+}
+
+/** UA 里认出来的工具名，给上面那句用 */
+function uaTag(ua) {
+  const m = OPS_BOT_RE.exec(String(ua || ''));
+  return m ? m[1].toLowerCase() : '自动化工具';
 }
 
 /** 服务端自己也可以主动「看一眼」某个 IP —— 控制台详情页用 */
@@ -4709,12 +4815,17 @@ const server = http.createServer(async (req, res) => {
   const _blk = blockedEntry(_ip) || (_net ? blockedEntry(_net) : null);
   if (_blk) {
     _blk.hits = (_blk.hits || 0) + 1;
-    /* 例外：管理员即便自己也被封了，也一定要能进控制台解封。
-       否则「手滑封了自己」= 永久失去运维通道，只能去改库文件。
+    /* 例外一：自救通道。
+       被封的地址必须还能「拿验证码」和「登录」—— 否则管理员一旦被封，
+       登录接口也打不进来，拿不到会话就进不去 /ops，而解封按钮只在 /ops 里，
+       于是形成一条解不开的死锁（这个坑我已经踩过一次：整个站点对站长失联）。
+       放行这两种请求的风险可控：登录本来就有验证码 + 限流 + 错 8 次锁号，
+       而且登录成功只有管理员（rank>=2）才会自动解封自己的地址。 */
+    let _pass = (pathname === '/api/auth/login' || pathname === '/api/captcha');
+    /* 例外二：管理员即便自己也被封了，也一定要能进控制台解封。
        代价极小：要走这条路必须先有一个有效的管理员会话。 */
-    let _pass = false;
-    if (pathname.startsWith('/api/ops/') || pathname === '/ops' || pathname === '/ops/'
-      || pathname.startsWith('/ops.')) {
+    if (!_pass && (pathname.startsWith('/api/ops/') || pathname === '/ops' || pathname === '/ops/'
+      || pathname.startsWith('/ops.'))) {
       const opu = currentUser(req);
       _pass = !!(opu && rankOf(opu) >= 2);
     }
