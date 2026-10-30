@@ -9,9 +9,18 @@
 <link rel="icon" href="/assets/mascot.webp">
 <link rel="apple-touch-icon" href="/assets/mascot.webp">
 <link rel="stylesheet" href="/style.css?v=__FQ_V__">
+<style>
+/* 启动屏：app.js 到之前先给个东西看，别让用户对着白屏等。
+   样式内联在 head，不受 style.css 请求快慢影响；app.js 重绘 #app 时自动消失。 */
+#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#ffeacd;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+#boot .boot-plate{width:88px;height:88px;border-radius:26px;background:#fff;border:2.5px solid #40291b;box-shadow:3px 3px 0 #40291b;display:flex;align-items:center;justify-content:center;font-size:44px;line-height:1;animation:fq-bob 1.1s ease-in-out infinite}
+#boot .boot-txt{margin:0;color:#7a5c48;font-size:14.5px;font-weight:600;letter-spacing:.4px}
+@keyframes fq-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@media (prefers-reduced-motion:reduce){#boot .boot-plate{animation:none}}
+</style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app"><div id="boot"><div class="boot-plate">🍳</div><p class="boot-txt">正在装盘…</p></div></div>
   <div id="toast-wrap"></div>
   <script src="/app.js?v=__FQ_V__"></script>
 </body>
