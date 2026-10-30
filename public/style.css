@@ -782,6 +782,44 @@ img { display: block; }
 .cook-ans p { margin: 8px 0 0; font-size: 14.5px; line-height: 1.8; color: var(--ink); }
 .cook-ans-note { margin-top: 8px; font-size: 11.5px; color: var(--ink-3); }
 
+/* 「它说看到」这一行必须能用一眼和「该怎么做」分开：
+   用户就是靠这句话判断它有没有看错 —— 说「汁很多」但锅里是干的，
+   下面那段建议就不该信。所以给它单独一块浅底 + 左侧竖线。 */
+.cook-see {
+  margin-top: 9px; padding: 7px 11px;
+  background: rgba(255, 255, 255, .74);
+  border-left: 3px solid var(--ai); border-radius: 0 10px 10px 0;
+  font-size: 12.5px; line-height: 1.7; color: var(--ink-2);
+}
+
+/* 拍给我看：一块预览 + 一句可选的问题 */
+.cook-look {
+  margin-top: 14px; padding: 12px;
+  background: var(--paper); border: var(--bw) solid var(--ink);
+  border-radius: 18px; box-shadow: var(--sh-sm);
+}
+.cook-shot { position: relative; margin-bottom: 10px; }
+.cook-shot img {
+  display: block; width: 100%; max-height: 260px; object-fit: cover;
+  border: 2px solid var(--ink); border-radius: 12px; background: var(--cream);
+}
+.cook-shot-x {
+  position: absolute; right: 8px; top: 8px;
+  height: 28px; padding: 0 11px;
+  background: rgba(255, 255, 255, .93); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: var(--pill);
+  font-family: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
+}
+.cook-shot-add {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; height: 110px;
+  background: var(--cream); color: var(--ai);
+  border: 2px dashed #cfc4f5; border-radius: 14px;
+  font-family: inherit; font-size: 13.5px; font-weight: 900; cursor: pointer;
+}
+.cook-shot-add .ic { width: 22px; height: 22px; }
+.cook-look-tip { margin-top: 9px; font-size: 12px; color: var(--ink-3); }
+
 /* 兜底拆出来的通用步骤：说清楚这是补的，不装成原帖写的 */
 .cook-approx {
   display: flex; align-items: flex-start; gap: 6px;

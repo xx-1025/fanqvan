@@ -50,7 +50,13 @@ const fsp = fs.promises;
     const map = {
       key: 'FQ_AI_KEY', base: 'FQ_AI_BASE', model: 'FQ_AI_MODEL',
       thinking: 'FQ_AI_THINKING', timeout: 'FQ_AI_TIMEOUT',
-      allowLocal: 'FQ_AI_ALLOW_LOCAL'
+      allowLocal: 'FQ_AI_ALLOW_LOCAL',
+      /* 看图用的是另一支模型：平时聊天/润色的 deepseek 不看图。
+         通常和上面共用同一个 key 和 base（百炼一个端点就有 VL 系列），
+         所以这两个留空，只有要单独走别家时才填。 */
+      visionModel: 'FQ_AI_VISION_MODEL',
+      visionBase: 'FQ_AI_VISION_BASE',
+      visionKey: 'FQ_AI_VISION_KEY'
     };
     for (const k of Object.keys(map)) {
       const v = cfg[k];
@@ -1782,6 +1788,7 @@ function aiWarmup() {
 
 const COOK_STEPS_LIMIT = 60;        // 拆步骤：登录用户 60 次/天（缓存命中不计数）
 const COOK_HELP_LIMIT = 40;         // 急诊：40 次/天
+const LOOK_LIMIT = 30;              // 拍给我看：30 张/天（看图比纯文本贵，单独一条线）
 const COOK_CACHE_MAX = 200;
 const cookCache = new Map();        // 'p<帖子id>' / 'h<文本哈希>' -> 拆好的步骤
 
@@ -1810,6 +1817,26 @@ const COOK_HELP_SYSTEM = [
   '3. 真救不回来就直接说还能怎么吃、下次怎么避免，不要硬说能救。',
   '4. 口语，像站在旁边说话，80 字以内，不用 emoji，不用列表。',
   '只输出 JSON：{"answer":"..."}'
+].join('\n');
+
+/* 「拍给我看」的提示词。和 ask 最大的不同：它必须先说出「看到了什么」，
+   再给建议。这个 see 字段不是装饰 —— 它有三个用处：
+     1. 逼模型真的看图，而不是顺着菜名和步骤编一段听起来合理的话；
+     2. 用户一眼就能判断它有没有看错（说「汁很多」但锅里是干的，立刻知道不该信）；
+     3. 拍糊了、没对准锅，模型能老实说看不清，而不是硬答。
+   做菜的人最怕的不是不知道，是被一本正经的胡说说服了。 */
+const LOOK_SYSTEM = [
+  '你是「饭圈」美食社区里的小饭，正站在一个厨友的灶台边上。',
+  'TA 拍了一张锅里的照片，可能还附了一句话。你要先说看见了什么，再说接下来怎么做。',
+  '要求：',
+  '1. see 只写画面里真有把握看见的东西：颜色深浅、汤汁多少、有没有上色、食材形状、火苗大小。',
+  '   拍糊了、被手挡住、没对准锅、根本不像在做菜 —— 就直说看不清或没看到锅，绝不猜。',
+  '2. 不要顺着菜名和步骤去「想象」画面。原帖里写了、但照片里看不见的东西，一律不许进 see。',
+  '3. answer 给一个马上能做的动作：大火还是小火、再等几分钟、加什么、要不要翻面、关火还是继续。',
+  '   量要具体（几成、几分钟、大火小火），不要写「注意火候」「掌握好时间」这种废话。',
+  '4. 没把握就说「看着像…」「如果不是这样就…」，别把猜测说成结论。',
+  '5. 口语，像旁边站着的人，answer 120 字以内。不用列表、不用 emoji、不提 AI。',
+  '只输出 JSON：{"see":"看到了什么，30 字内","answer":"接下来怎么做"}'
 ].join('\n');
 
 /* 通用调用：先云端；返回 { raw, provider } 或 null。
@@ -1984,6 +2011,119 @@ async function aiRaw(system, user, opts) {
     const content = j && j.message ? j.message.content : '';
     return content ? { raw: content, provider: 'ollama' } : null;
   } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 看图说话：拍一张 → 「我这锅现在怎么样」                                 */
+/*                                                                     */
+/* 为什么要单开一支函数，而不是往 aiRaw() 里塞 opts.image：               */
+/*   1. aiRaw() 的 user 是一段纯文本，多模态要的是 content 数组；          */
+/*   2. 看图得用另一支模型 —— 平时润色/拆步骤那支（deepseek）根本不看图片； */
+/*   3. 超时和成本都不一样，混在一起会让两边的错误提示互相污染。            */
+/*                                                                     */
+/* 图片只收 base64 data URL，不让模型自己去拉链接：模型那边到不了内网，    */
+/* 也能避免把 /uploads 的路径变成一个人人可用的 SSRF 入口。                */
+/* ------------------------------------------------------------------ */
+
+/* 实测这个 workspace 上可用的两支看图模型（2026-10-30 探测）：
+   qwen3-vl-plus / qwen3.8-omni-flash。qwen-vl-max、qwen-vl-plus 在这里是
+   404 model not exist，qwen2.5-vl-72b 是 403 没权限 —— 所以备用提示不能乱指。 */
+const AI_VISION_DEFAULT = 'qwen3-vl-plus';
+const AI_VISION_ALSO = 'qwen3.8-omni-flash';    // 默认那支不通时换这个
+const LOOK_IMG_MAX = 2.2 * 1024 * 1024;         // base64 文本长度上限（原图约 1.6MB）
+
+function aiVisionModel() {
+  return String(process.env.FQ_AI_VISION_MODEL || '').trim() || AI_VISION_DEFAULT;
+}
+function aiVisionBase() {
+  const b = String(process.env.FQ_AI_VISION_BASE || '').trim();
+  return (b || String(process.env.FQ_AI_BASE || 'https://api.deepseek.com/v1')).replace(/\/+$/, '');
+}
+function aiVisionKey() {
+  return String(process.env.FQ_AI_VISION_KEY || '').trim() || aiCloudKey();
+}
+
+/* 前端传上来的图规整一下：凭文件头判断真实类型，不信声明的 MIME ——
+   声明是浏览器说了算的，不算证据。和 /api/upload 用同一套 sniffImage。 */
+function aiImageDataUrl(s) {
+  const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(s || '').trim());
+  if (!m) return '';
+  if (m[2].length > LOOK_IMG_MAX) return '';
+  const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+  let buf = null;
+  try { buf = Buffer.from(m[2], 'base64'); } catch (e) { return ''; }
+  if (!buf || !buf.length || sniffImage(buf) !== ext) return '';
+  return 'data:image/' + (ext === 'jpg' ? 'jpeg' : ext) + ';base64,' + m[2];
+}
+
+async function aiRawVision(system, text, imageUrl, opts) {
+  const o = opts || {};
+  const maxTokens = o.maxTokens || 600;
+  const temperature = typeof o.temperature === 'number' ? o.temperature : 0.3;
+
+  aiLastReason = '';
+  if (!aiBudgetOk()) return null;
+  if (aiBreakerOpen()) { aiLastReason = 'cloud'; return null; }
+
+  const key = aiVisionKey();
+  if (!key) { aiLastReason = 'nokey'; return null; }
+
+  const base = aiVisionBase();
+  const model = aiVisionModel();
+  const ctl = new AbortController();
+  /* 看图比纯文本慢：一张 896px 的图要编码成几百个 token 再走一遍视觉编码器。
+     25 秒是文本那边的预算，这里给到 40 秒，否则糊图/大图会白白超时。 */
+  const timer = setTimeout(() => ctl.abort(), 40000);
+  try {
+    const r = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: JSON.stringify(aiCloudBody(base, {
+        model,
+        temperature,
+        max_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: system },
+          {
+            role: 'user',
+            content: [
+              // 图放在文字前面：多模态模型对「先看图再读要求」更稳
+              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'text', text }
+            ]
+          }
+        ]
+      })),
+      signal: ctl.signal
+    });
+    if (r.ok) {
+      const j = await r.json();
+      const msg = j && j.choices && j.choices[0] && j.choices[0].message;
+      if (msg && msg.content) { aiCloudOk(); return { raw: msg.content, provider: 'model', model }; }
+      aiCloudFail();
+      aiLastReason = 'shape';
+      return null;
+    }
+    /* 403 = 额度用完；404 / 400 且提到 model = 这个 workspace 没开通这支模型。
+       后者是最常见的情况（百炼上模型要单独开通），必须说清楚，
+       否则用户只会看到一句「AI 正在维护」，永远不知道该去开什么。 */
+    const body = await r.text().catch(() => '');
+    if (r.status === 404 || /model|not\s*found|not\s*exist|invalid/i.test(body)) {
+      aiLastReason = 'novision';
+      console.log('[ai] 看图模型 ' + model + ' 不可用（' + r.status + '）：' + body.slice(0, 160));
+      return null;
+    }
+    aiCloudFail();
+    aiLastReason = 'cloud';
+    console.log('[ai] 看图接口返回 ' + r.status + '，' + (r.status === 403 ? '多半是额度用完' : '稍后重试'));
+    return null;
+  } catch (e) {
+    aiCloudFail();
+    aiLastReason = 'cloud';
     return null;
   } finally {
     clearTimeout(timer);
@@ -3031,6 +3171,75 @@ async function handleApi(req, res, pathname, query) {
     if (!out && !aiLocalAllowed()) return aiDown(res);
     if (!out) out = aiHelpLocal(q, { step: stepT || stepD });   // 仅开发测试
     return json(res, 200, out);
+  }
+
+  /* ============ 拍给我看：拍一张锅里的照片，让它告诉你现在怎么样 ============ */
+
+  /* 和 /api/ai/help 的区别：那边是「我描述，你诊断」，这边是「你自己看」。
+     为什么要登录而 help 不用：这里每次都要把一张图编码进模型，是真的花钱，
+     匿名 + 换 IP 就能绕过限额。登录后按用户计，成本可控。 */
+  if (pathname === '/api/ai/look' && method === 'POST') {
+    if (!me) return json(res, 401, { error: '登录后才能拍给我看' });
+    if (me.banned) return json(res, 403, { error: '账号已被封禁' });
+
+    const b = await readBody(req);
+
+    /* 图片校验放在最前面：格式不对就不该往下走，更不该花钱。
+       aiImageDataUrl 会核对文件头，改扩展名/塞一段假 base64 都过不来。 */
+    const img = aiImageDataUrl(b.image);
+    if (!img) return json(res, 400, { error: '这张图没读出来，重拍一张试试' });
+
+    if (aiGuard(res)) return;           // 维护中不扣次数
+
+    /* 两道限额：每天 30 张（够用：一道菜问 5~8 次已经很多），
+       外加每分钟 4 张 —— 防止有人按住快门连拍把额度一次烧完。 */
+    if (!rateLimit('look:u' + me.id, LOOK_LIMIT, 24 * 60 * 60 * 1000)) {
+      return json(res, 429, { error: '今天拍得够多啦，明天再来' });
+    }
+    if (!rateLimit('look:min' + me.id, 4, 60 * 1000)) {
+      return json(res, 429, { error: '一张一张来，小饭在看呢' });
+    }
+
+    const q = clean(b.question, 120);
+    const postId = Number(b.postId) || 0;
+    const post = postId ? db.posts.find((x) => x.id === postId) : null;
+    if (post && post.status !== 'approved' && !(me.id === post.authorId || rankOf(me) >= 1)) {
+      return json(res, 403, { error: '这条内容还没有通过审核' });
+    }
+    const stepT = clean(b.step, 40);
+    const stepD = clean(b.stepText, 200);
+    const stepNo = Math.max(0, Math.min(20, Number(b.stepNo) || 0));
+
+    const ctx = (post ? '正在做的菜（原帖节选）：\n' + post.content.slice(0, 600) + '\n\n' : '') +
+      (stepT ? 'TA 现在做到第 ' + (stepNo || 1) + ' 步：' + stepT + (stepD ? '（' + stepD + '）' : '') + '\n\n' : '') +
+      'TA 说：' + (q || '你看看现在这样行不行') + '\n\n' +
+      '下面这张是 TA 刚拍的锅里的照片。';
+
+    const r = await aiRawVision(LOOK_SYSTEM, ctx, img, { maxTokens: 400, temperature: 0.3 });
+
+    /* 模型不通有四种可能，对用户是四句不同的话：
+       novision = workspace 没开通这支看图模型（最常见，必须说清楚去哪儿开） */
+    if (!r) {
+      if (aiLastReason === 'novision') {
+        return json(res, 503, {
+          error: '看图的功能还没开通，先按现在的火候来',
+          code: 'AI_NO_VISION',
+          hint: '去百炼控制台开通 ' + aiVisionModel() + '（或 ' + AI_VISION_ALSO + '），再把模型名填进 ai.config.json 的 visionModel'
+        });
+      }
+      return aiDown(res);
+    }
+
+    const obj = aiJson(r.raw);
+    let see = obj && typeof obj.see === 'string' ? clean(obj.see, 80) : '';
+    let ans = obj && typeof obj.answer === 'string' ? clean(obj.answer, 400) : '';
+    // 模型偶尔不套 JSON，直接把话说出来；不是 JSON 残片就当答案收下
+    if (!ans && r) {
+      const plain = clean(String(r.raw || '').replace(/```json|```/g, '').replace(/^["“]|["”]$/g, ''), 400);
+      if (plain && !/^\s*[{[]/.test(plain)) ans = plain;
+    }
+    if (!ans) return aiDown(res);
+    return json(res, 200, { see, answer: ans, provider: r.provider });
   }
 
   if (pathname === '/api/posts' && method === 'POST') {

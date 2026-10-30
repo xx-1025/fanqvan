@@ -1310,12 +1310,39 @@ function cookHtml() {
         '</div>'
       : '<button class="cook-help-btn" data-action="cook-ask-open">' + icon('comment') + '这一步卡住了？问一句</button>';
 
+    /* 拍给我看：和「问一句」是两条路。问一句要你自己描述，
+       说的人在灶台前手忙脚乱，往往说不清；拍一张它自己看更省事。 */
+    const lookAns = c.lookAnswer
+      ? '<div class="cook-ans">' +
+          '<div class="cook-ans-head">' + icon('spark') + '<b>小饭看了照片</b></div>' +
+          (c.lookSee ? '<div class="cook-see">' + esc(c.lookSee) + '</div>' : '') +
+          '<p>' + esc(c.lookAnswer) + '</p>' +
+          '<div class="cook-ans-note">它只看得见照片里的东西，咸淡和熟没熟还得你自己尝</div>' +
+        '</div>'
+      : '';
+    const look = c.lookOpen
+      ? '<div class="cook-look">' +
+          (c.photo
+            ? '<div class="cook-shot"><img src="' + c.photo + '" alt="你刚拍的照片">' +
+                '<button class="cook-shot-x" data-action="cook-look-clear">换一张</button></div>' +
+              '<div class="cook-ask-row">' +
+                '<input id="ck-lq" maxlength="120" placeholder="想让它看什么？（不填也行）" value="' + esc(c.lookQ) + '">' +
+                '<button class="cook-send" data-action="cook-look-go"' + (c.looking ? ' disabled' : '') + '>' +
+                  (c.looking ? '…' : '看') + '</button>' +
+              '</div>'
+            : '<button class="cook-shot-add" data-action="cook-look-pick">' +
+                icon('image') + '<span>拍一张 / 从相册选</span></button>') +
+          (c.looking ? '<div class="cook-look-tip">小饭在看照片…</div>' : '') +
+          (c.lookErr ? '<div class="cook-err">' + esc(c.lookErr) + '</div>' : '') +
+        '</div>'
+      : '<button class="cook-help-btn" data-action="cook-look-open">' + icon('image') + '拍给我看</button>';
+
     stage = '<div class="cook-stage"><div class="cook-inner">' +
         '<div class="cook-num">第 ' + (c.i + 1) + ' 步</div>' +
         '<h1 class="cook-h">' + esc(s.t) + '</h1>' +
         (s.d && s.d !== s.t ? '<p class="cook-d">' + esc(s.d) + '</p>' : '') +
         (s.w ? '<div class="cook-why">' + icon('spark') + '<span>' + esc(s.w) + '</span></div>' : '') +
-        timer + ask + ans +
+        timer + ask + look + ans + lookAns +
         (c.approx
           ? '<div class="cook-approx">' + icon('warn') + '原帖写得比较简略，这几步是按家常做法补的，细节以原帖为准</div>'
           : '') +
@@ -1471,7 +1498,10 @@ async function openCook(postId) {
     dish: (p && p.content ? String(p.content).split('\n')[0].slice(0, 24) : ''),
     provider: '', approx: false, steps: [], i: 0, done: false,
     timerEnd: 0, timerSec: 0, timerDone: false,
-    askOpen: false, asking: false, draftQ: '', answer: '', answerProvider: '', askErr: ''
+    askOpen: false, asking: false, draftQ: '', answer: '', answerProvider: '', askErr: '',
+    // 拍给我看：photo 是压缩后的 data URL，一直留在 state 里（paintCook 会重绘整屏，
+    // 放 DOM 里会被抹掉）；looking 期间按钮显示「在看…」
+    photo: '', looking: false, lookQ: '', lookSee: '', lookAnswer: '', lookErr: '', lookOpen: false
   };
   paintCook();
   setModalLock(true);
@@ -1671,6 +1701,94 @@ async function cookAsk(question) {
     aiMarkDown(e);
   }
   c.asking = false;
+  paintCook();
+}
+
+/* -------- 拍给我看 -------- */
+
+/* 选图。input 必须临时建、建完就丢：paintCook() 是整屏重绘，
+   把 file input 写进 HTML 里，一重绘选中的文件就没了。 */
+function cookLookPick() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.setAttribute('capture', 'environment');   // 手机上直接开后置摄像头
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    if (!/^image\//.test(f.type || '')) { toast('只能发图片', 'err'); return; }
+    cookLookShrink(f).then((url) => {
+      if (!url) { toast('这张图没读出来，换一张试试', 'err'); return; }
+      const c = state.cook;
+      c.photo = url;
+      c.lookAnswer = ''; c.lookSee = ''; c.lookErr = '';
+      paintCook();
+    });
+  };
+  inp.click();
+}
+
+/* 上传前先在本地压到长边 896 的 JPEG。
+   手机上原图 3~8MB，传上去 base64 还要再胖三分之一；而模型那边反正要缩到
+   几百像素，多传的全是白花的流量和等待。压完一般 80~160KB，一秒内传完。 */
+function cookLookShrink(file) {
+  return new Promise((resolve) => {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; resolve(v); } };
+      try {
+        const MAX = 896;
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if (!w || !h) { URL.revokeObjectURL(src); finish(''); return; }
+        const k = Math.min(1, MAX / Math.max(w, h));
+        w = Math.max(1, Math.round(w * k));
+        h = Math.max(1, Math.round(h * k));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const g = cv.getContext('2d');
+        g.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(src);
+        finish(cv.toDataURL('image/jpeg', 0.72));
+      } catch (e) {
+        URL.revokeObjectURL(src);
+        finish('');
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(src); resolve(''); };
+    img.src = src;
+  });
+}
+
+async function cookLookGo() {
+  const c = state.cook;
+  if (!c.photo) { toast('先拍一张', 'err'); return; }
+  const q = (($('#ck-lq') || {}).value || '').trim();
+  const s = cookStep();
+  c.looking = true; c.lookErr = ''; c.lookAnswer = ''; c.lookSee = ''; c.lookQ = q;
+  paintCook();
+  try {
+    const d = await api('/api/ai/look', {
+      method: 'POST',
+      body: {
+        postId: c.postId,
+        stepNo: c.i + 1,
+        step: s ? s.t : '',
+        stepText: s ? s.d : '',
+        question: q,
+        image: c.photo
+      }
+    });
+    c.lookSee = d.see || '';
+    c.lookAnswer = d.answer || '';
+    if (!c.lookAnswer) c.lookErr = '小饭没看清，换个角度再拍一张';
+  } catch (e) {
+    c.lookErr = e.message || '这会儿看不上，先按现在的火候来';
+    aiMarkDown(e);
+  }
+  c.looking = false;
   paintCook();
 }
 
@@ -3318,6 +3436,24 @@ document.addEventListener('click', (e) => {
     }
     case 'cook-ask': cookAsk(''); break;
     case 'cook-quick': cookAsk(el.getAttribute('data-q')); break;
+    case 'cook-look-open': {
+      state.cook.lookOpen = true;
+      state.cook.lookErr = '';
+      state.cook.lookAnswer = '';
+      state.cook.lookSee = '';
+      paintCook();
+      break;
+    }
+    case 'cook-look-pick': cookLookPick(); break;
+    case 'cook-look-clear': {
+      state.cook.photo = '';
+      state.cook.lookAnswer = '';
+      state.cook.lookSee = '';
+      state.cook.lookErr = '';
+      paintCook();
+      break;
+    }
+    case 'cook-look-go': cookLookGo(); break;
     case 'cook-newpost': {
       closeCook();
       if (!state.me) { go('#/login'); return; }
