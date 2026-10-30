@@ -2267,7 +2267,6 @@ async function loadCaptcha(silent) {
 }
 
 function ensureCaptcha() {
-  if (state.authTab !== 'login') return;
   if (!state.captcha.img) loadCaptcha(true);
 }
 
@@ -2287,19 +2286,24 @@ function viewLogin() {
           ? '<div class="field"><label>昵称</label><input name="nickname" placeholder="大家怎么称呼你"></div>' : '') +
         '<div class="field"><label>密码</label>' +
           '<input name="password" type="password" placeholder="' + (isLogin ? '你的密码' : '自己想一个，长度不限') + '" autocomplete="' + (isLogin ? 'current-password' : 'new-password') + '"></div>' +
-        (isLogin
-          ? '<div class="field"><label>验证码</label>' +
-            '<div class="cap-row">' +
-              '<input name="captcha" id="cap-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="照图输入 4 个字符">' +
-              '<img id="cap-img" class="cap-img" alt="验证码" title="看不清？点一下换一张" data-action="reload-captcha" src="' + esc(state.captcha.img) + '">' +
-            '</div>' +
-            '<div class="field-hint" id="cap-hint">不区分大小写 · 看不清就点图片换一张</div></div>'
-          : '') +
         (!isLogin
           ? '<div class="field"><label>确认密码</label>' +
             '<input name="confirm" type="password" placeholder="再输入一次密码" autocomplete="new-password">' +
             '<div class="field-hint" id="pw-match" aria-live="polite"></div></div>'
           : '') +
+        /* 验证码：登录和注册都要。以前只有登录有，注册接口是裸的 ——
+           脚本写个循环就能批量建号，拉图识别也比人手快。 */
+        '<div class="field"><label>验证码</label>' +
+          '<div class="cap-row">' +
+            '<input name="captcha" id="cap-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="照图输入 4 个字符">' +
+            '<img id="cap-img" class="cap-img" alt="验证码" title="看不清？点一下换一张" data-action="reload-captcha" src="' + esc(state.captcha.img) + '">' +
+          '</div>' +
+          '<div class="field-hint" id="cap-hint">不区分大小写 · 看不清就点图片换一张</div></div>' +
+        /* 蜜罐：真人看不见也点不到（CSS 挪出屏幕 + tabindex=-1 + aria-hidden）。
+           按 name 抓表单、把所有 input 都填一遍的脚本会填进来。 */
+        '<div class="hp-trap" aria-hidden="true">' +
+          '<input name="hp" tabindex="-1" autocomplete="off" placeholder="留空">' +
+        '</div>' +
         '<button class="btn-primary btn-block" type="submit" style="margin-top:18px;height:44px">' +
           (isLogin ? '登录' : '注册并进入饭圈') + '</button>' +
       '</form>' +
@@ -3080,11 +3084,12 @@ async function onAuthSubmit(form) {
   const nickname = String(fd.get('nickname') || '').trim();
   const confirmPw = String(fd.get('confirm') || '');
   const captchaCode = String(fd.get('captcha') || '').trim();
+  const honeypot = String(fd.get('hp') || '').trim();
   const errBox = $('#auth-err');
   errBox.innerHTML = '';
 
-  // 登录必须先过图形验证码：先本地拦一道，省得白跑一次接口还把图作废
-  if (isLogin && !captchaCode) {
+  // 登录和注册都必须先过图形验证码：先本地拦一道，省得白跑一次接口还把图作废
+  if (!captchaCode) {
     errBox.innerHTML = '<div class="form-err">请照着图片填一下验证码</div>';
     const el = form.querySelector('input[name=captcha]');
     if (el) el.focus();
@@ -3110,7 +3115,7 @@ async function onAuthSubmit(form) {
   try {
     const d = isLogin
       ? await api('/api/auth/login', { method: 'POST', body: { username, password, captchaId: state.captcha.id, captchaCode } })
-      : await api('/api/auth/register', { method: 'POST', body: { username, nickname, password } });
+      : await api('/api/auth/register', { method: 'POST', body: { username, nickname, password, captchaId: state.captcha.id, captchaCode, hp: honeypot } });
     state.me = d.user;
     state.captcha = { id: '', img: '' };   // 下次进登录页重新拉图
     localStorage.removeItem('fq_token');
@@ -3122,13 +3127,11 @@ async function onAuthSubmit(form) {
     go('#/');
   } catch (e) {
     errBox.innerHTML = '<div class="form-err">' + esc(e.message) + '</div>';
-    if (isLogin) {
-      /* 验证码是一次性的：不管这次是「码错」还是「密码错」，那张图都已经作废了，
-         必须换一张，否则用户再点一次登录只会一直失败、还以为是密码记错了。 */
-      const el = form.querySelector('input[name=captcha]');
-      if (el) { el.value = ''; el.focus(); }
-      loadCaptcha(true);
-    }
+    /* 验证码是一次性的：不管这次是「码错」「密码错」还是「ID 重名」，那张图都已经作废了，
+       必须换一张，否则用户再点一次只会一直失败、还以为是密码记错了。 */
+    const el = form.querySelector('input[name=captcha]');
+    if (el) { el.value = ''; el.focus(); }
+    loadCaptcha(true);
   }
 }
 

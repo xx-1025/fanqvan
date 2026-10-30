@@ -327,6 +327,42 @@
     }).join('');
   }
 
+  /* ---------------- 换着地址来的（同一网段） ---------------- */
+
+  /* '125.94.247.0/24' 写成 '125.94.247.x' —— 前者像命令行参数，后者一看就是一片地址 */
+  function netLabel(net) {
+    return String(net || '').replace(/\.0\/24$/, '.x').replace(/\/24$/, '');
+  }
+
+  function paintNets(list) {
+    var card = $('#op-nets-card');
+    var box = $('#op-nets');
+    if (!list || !list.length) {
+      card.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+    card.hidden = false;
+    box.innerHTML = list.map(function (n) {
+      var hot = n.hit >= 3 || n.blocked;
+      var what = n.hit
+        ? '其中 ' + n.hit + ' 个各自在翻你的站或找后台' + (n.blocked ? '，整片已经挡住' : '，不像巧合')
+        : '各自看着都正常，只是从同一片地方来';
+      return '<div class="nt' + (hot ? ' hot' : '') + '">' +
+        '<div class="nt-top">' +
+          '<span class="nt-net" title="' + esc(n.net) + '">' + esc(netLabel(n.net)) + '</span>' +
+          '<span class="nt-ips">' + n.ips + ' 个地址</span>' +
+        '</div>' +
+        '<div class="nt-sub">' + esc(what) + '</div>' +
+        '<div class="nt-acts">' +
+          '<button class="op-btn ghost mini" data-net="' + esc(n.net) + '">看详情</button>' +
+          (n.blocked
+            ? '<button class="op-btn ghost mini" data-unblock="' + esc(n.net) + '">放进来</button>'
+            : '<button class="op-btn danger mini" data-blocknet="' + esc(n.net) + '">挡住整片</button>') +
+        '</div></div>';
+    }).join('');
+  }
+
   /* ---------------- 已经挡住的地址 ---------------- */
 
   function paintBlocks(list) {
@@ -392,11 +428,62 @@
     $('#op-modal-box').innerHTML = '';
   }
 
+  /* 网段详情：一片地方挂着一堆地址，要能看清「这到底是同一个人还是一栋楼」 */
+  function paintNetDetail(d) {
+    var nw = d.net || {};
+    var members = d.members || [];
+    var rows = members.map(function (m) {
+      return '<div class="nt-m" data-nip="' + esc(m.ip) + '" title="点开只看这一个地址">' +
+        '<span class="nt-m-ip">' + esc(m.ip) + '</span>' +
+        '<span class="nt-m-sc' + (m.score >= 60 ? ' hot' : m.score >= 30 ? ' warm' : '') + '">' +
+          m.score + ' 分 · ' + m.n + ' 次</span></div>';
+    }).join('');
+
+    var head = nw.hit
+      ? '这一片有 ' + nw.hit + ' 个地址各自在翻你的站或找后台，不像巧合。'
+      : '这一片只是来得勤，每个地址单独看都还正常。';
+
+    var html = '<h3>' + esc(netLabel(d.ip)) + '</h3>' +
+      '<div class="m-sub">' + esc(head) + '<br>' +
+      '手机流量换一次连接就换一个地址，所以一个人可以有一堆「马甲」。' +
+      '挡住整片能拦住换地址的人，也可能连带挡住住得近的邻居 —— 拿不准就先只观察。</div>' +
+      '<div class="kv">' +
+        '<i>这一片有多少地址</i><span>' + (nw.ips || 0) + ' 个</span>' +
+        '<i>其中几个可疑</i><span>' + (nw.hit || 0) + ' 个</span>' +
+        '<i>一共来过</i><span>' + (nw.n || 0) + ' 次</span>' +
+      '</div>' +
+      (rows ? '<div class="m-sub" style="margin:12px 0 6px">这一片都有谁（点一个只看它）</div>' +
+        '<div class="m-nets">' + rows + '</div>' : '');
+
+    html += '<div class="m-acts">' +
+      '<select id="op-min" title="挡住多久">' +
+        '<option value="30">挡 30 分钟</option>' +
+        '<option value="180" selected>挡 3 小时</option>' +
+        '<option value="1440">挡 1 天</option>' +
+        '<option value="43200">挡 30 天</option>' +
+      '</select>' +
+      '<button class="op-btn danger" id="op-do-block">挡住整片</button>' +
+      (d.block ? '<button class="op-btn ghost" id="op-do-unblock">放开整片</button>' : '') +
+      '<button class="op-btn ghost" id="op-close">关闭</button>' +
+      '</div>';
+
+    $('#op-modal-box').innerHTML = html;
+
+    $('#op-close').addEventListener('click', closeModal);
+    $('#op-do-block').addEventListener('click', function () {
+      var mins = Number(($('#op-min') || {}).value || 180);
+      doBlock(d.ip, mins).then(closeModal);
+    });
+    var ub = $('#op-do-unblock');
+    if (ub) ub.addEventListener('click', function () { doUnblock(d.ip).then(closeModal); });
+  }
+
   function openIp(ip) {
     $('#op-modal').hidden = false;
     $('#op-modal-box').innerHTML = '<h3>' + esc(ip) + '</h3><div class="m-sub">正在读取…</div>';
 
     get('/api/ops/ip?ip=' + encodeURIComponent(ip)).then(function (d) {
+      if (d.isNet) return paintNetDetail(d);
       var w = d.watch || {};
       var kv = [
         ['可疑度', (w.score || 0) + ' 分（满 60 自动挡住）' + (w.peak ? '，最高到过 ' + w.peak : '')],
@@ -531,6 +618,7 @@
       paintVerdict(o);
       paintPills(o);
       paintThreats(o.threats);
+      paintNets(o.nets);
       paintBlocks(o.blocks);
       paintEvents(o.events);
     }).catch(function (e) {
@@ -586,6 +674,24 @@
     if (ub) {
       ev.stopPropagation();
       doUnblock(ub.getAttribute('data-unblock'));
+      return;
+    }
+    var netBtn = t.closest('[data-net]');
+    if (netBtn) {
+      ev.stopPropagation();
+      openIp(netBtn.getAttribute('data-net'));
+      return;
+    }
+    var bn = t.closest('[data-blocknet]');
+    if (bn) {
+      ev.stopPropagation();
+      doBlock(bn.getAttribute('data-blocknet'), 180);
+      return;
+    }
+    var nip = t.closest('[data-nip]');
+    if (nip) {
+      ev.stopPropagation();
+      openIp(nip.getAttribute('data-nip'));
       return;
     }
     var th = t.closest('.th');

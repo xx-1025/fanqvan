@@ -2395,6 +2395,17 @@ function consumeCaptcha(id, input) {
   return rec.code === String(input || '').trim().toUpperCase();
 }
 
+/* 全站注册闸门：一分钟内真的建成超过 15 个号就停一停。
+   小站一天也注册不了几个，这个额度对真人等于没有；但批量注册会被压住。
+   只数成功的（见 register 分支）—— 数失败尝试会把「验证码填错几次」的真人也挡住。 */
+const REG_PER_MIN = 15;
+const regOkAt = [];
+function regGateOpen() {
+  const now = nowMs();
+  while (regOkAt.length && now - regOkAt[0] > 60000) regOkAt.shift();
+  return regOkAt.length < REG_PER_MIN;
+}
+
 /* 返回 true = 确认是「别的网站借用户的浏览器发来的」；info 用来记日志 */
 function csrfCrossSite(req, info) {
   const sfs = String(req.headers['sec-fetch-site'] || '').toLowerCase();
@@ -2496,10 +2507,33 @@ async function handleApi(req, res, pathname, query) {
     if (!rateLimit('reg:' + ip, 20, 60 * 60000)) {
       return json(res, 429, { error: '注册太频繁了，请稍后再试' });
     }
+    /* 全站总闸：单 IP 的 20 次/小时，换个地址就绕过了；这一层按全站算，绕不掉。
+       注意只数「真的建成了」的号，不数失败的尝试 —— 用 rateLimit 会在进门前就计数，
+       把「验证码填错」「ID 重名」也算进去，真人一紧张连错几次就自己被挡了。 */
+    if (!regGateOpen()) {
+      secLog('register_throttle', req, { ip });
+      return json(res, 429, { error: '现在注册的人有点多，过一会儿再试' });
+    }
     const b = await readBody(req);
     const username = clean(b.username, 20);
     const nickname = clean(b.nickname, 24) || username;
     const password = String(b.password || '');
+
+    /* 注册也必须过图形验证码。
+       以前只有登录有验证码，注册接口是裸的 —— 写个 for 循环就能批量建号，
+       拉一张图识一下的成本也比人手快。放在最前面、哈希之前：
+       被刷的时候省掉最贵的 scrypt，而且每建一个号都得多拉一张图。 */
+    if (CAPTCHA_ON && !consumeCaptcha(b.captchaId, b.captchaCode)) {
+      secLog('captcha_fail', req, { username, where: 'register' });
+      return json(res, 400, { error: '验证码不对，换一张重新输', code: 'CAPTCHA_FAIL' });
+    }
+    /* 蜜罐：表单里有一个用 CSS 藏起来、正常用户看不见也点不到的栏位（hp）。
+       真人永远不会填；脚本按 name 抓表单、把所有 input 都填一遍就会中招。
+       文案故意模糊 —— 不让它知道自己是踩了蜜罐，否则下次去掉这个字段就绕过了。 */
+    if (String(b.hp || '').trim()) {
+      secLog('register_bot', req, { username, where: 'honeypot' });
+      return json(res, 400, { error: '注册没成功，刷新页面再试一次' });
+    }
 
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
       return json(res, 400, { error: '用户ID需为 3-20 位字母、数字或下划线' });
@@ -2528,6 +2562,7 @@ async function handleApi(req, res, pathname, query) {
       createdAt: nowMs()
     };
     db.users.push(user);
+    regOkAt.push(nowMs());
 
     const token = rid(24);
     addSession(token, user.id);
@@ -4075,6 +4110,47 @@ const OPS_FLAG_SCORE = 30;          // 到这个分数先记一笔「可疑」
 const OPS_PATH_MAX = 96;
 const OPS_BOT_RE = /(curl|wget|python|requests|urllib|aiohttp|httpx|scrapy|go-http-client|java\/|okhttp|libwww|httpclient|phantomjs|headless|puppeteer|playwright|selenium|node-fetch|axios|postmanruntime|insomnia|masscan|nmap|zgrab|nuclei|nikto|sqlmap|dirbuster|gobuster|ffuf)/i;
 
+/* 网段聚合：手机流量（运营商 NAT）每换一次连接就换一个出口 IP，
+   同一个人一分钟内可能来自 125.94.247.x / 248.x / 249.x 好几个地址。
+   只按单个 IP 封根本追不上 —— 所以再按 /24 记一维：
+   同一段里出现多个「各自都有可疑行为」的地址，就把整段挡掉。 */
+const OPS_NET_HIT = 3;              // 同一 /24 里至少 3 个不同 IP 都越过「可疑」线才封段
+const OPS_NET_MAX = 3000;           // 同时跟踪的网段上限
+
+/** IPv4 → a.b.c.0/24；IPv6 / 其它一律返回 ''（v6 先不聚合，一段就是天文数字） */
+function netOf(ip) {
+  const s = normalizeIp(ip);
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/.exec(s);
+  if (!m) return '';
+  return m[1] + '.' + m[2] + '.' + m[3] + '.0/24';
+}
+
+/** 网段是不是「不能封」的：本机 / 内网 / 白名单 / 管理员自己待过的段 */
+function netTrusted(net) {
+  if (!net) return true;
+  const base = net.slice(0, -4) + '.';   // '125.94.247.' 前缀
+  for (const p of IP_ALLOW_CFG) {
+    if (p.endsWith('*') && base.startsWith(p.slice(0, -1))) return true;
+  }
+  for (const [ip] of adminIps) if (netOf(ip) === net) return true;
+  return false;
+}
+
+const netWatch = new Map();         // 'a.b.c.0/24' -> { net, ips:Set, hit:Set, n, last, blockedAt }
+function netWatchOf(net, now) {
+  let nw = netWatch.get(net);
+  if (!nw) {
+    if (netWatch.size >= OPS_NET_MAX) {
+      const arr = [...netWatch.entries()].sort((a, b) => a[1].last - b[1].last);
+      for (let i = 0; i < Math.ceil(arr.length / 4); i++) netWatch.delete(arr[i][0]);
+    }
+    nw = { net, ips: new Set(), hit: new Set(), n: 0, last: now, blockedAt: 0 };
+    netWatch.set(net, nw);
+  }
+  return nw;
+}
+
+
 /* ---- 封禁名单（落库，重启/重新部署都还在）---- */
 if (!Array.isArray(db.blocked)) db.blocked = [];
 const blockIndex = new Map();       // ip -> { ip, until, reason, by, at, auto, hits }
@@ -4135,6 +4211,16 @@ function clearBlock(ip) {
     w.ids.clear(); w.qs.clear(); w.pids.clear();
     w.s1 = 0; w.s2 = 0; w.s3 = 0; w.s4 = 0; w.s5 = 0; w.scan = 0;
   }
+  /* 解封的是网段时，把这一段的聚合证据也一起清掉 ——
+     否则段里还有 3 个高分 IP，下一个请求立刻又把整段封回去，按钮看着像坏了。 */
+  if (clean.endsWith('/24')) {
+    const nw = netWatch.get(clean);
+    if (nw) { nw.hit.clear(); nw.blockedAt = 0; }
+  } else {
+    const net = netOf(clean);
+    const nw = net && netWatch.get(net);
+    if (nw) { nw.hit.delete(clean); nw.blockedAt = 0; }
+  }
   if (had || db.blocked.length !== before) {
     saveDB();
     secLog('ip_unblock', null, { ip: clean });
@@ -4181,6 +4267,7 @@ const ipWatch = new Map();
 
 function sweepWatch(now) {
   for (const [ip, w] of ipWatch) if (now - w.last > 15 * 60000) ipWatch.delete(ip);
+  for (const [net, nw] of netWatch) if (now - nw.last > 30 * 60000) netWatch.delete(net);
   if (ipWatch.size <= OPS_IP_MAX) return;
   // 还超就按「最久没动」砍掉四分之一
   const arr = [...ipWatch.entries()].sort((a, b) => a[1].last - b[1].last);
@@ -4282,6 +4369,25 @@ function noteAccess(req, pathname, code, ms) {
     w.score = Math.round(s);
     if (w.score > w.peak) w.peak = w.score;
 
+    /* ---- 网段聚合：专门对付「换出口 IP」的采集 ----
+       运营商 NAT 池里，同一个人一分钟内可能来自 a.b.c.11、a.b.c.87、a.b.c.203……
+       只封单个 IP 等于永远封不完。这里按 /24 记一维：
+       同一段里出现 ≥3 个「各自都有可疑行为」的地址，就说明不是巧合，整段挡掉。
+       门槛不低（要 3 个不同 IP 各自越线），正常用户的邻居不会满足。 */
+    const net = netOf(ip);
+    if (net) {
+      const nw = netWatchOf(net, now);
+      nw.last = now; nw.n += 1; nw.ips.add(ip);
+      if (w.score >= OPS_FLAG_SCORE) nw.hit.add(ip);
+      if (nw.hit.size >= OPS_NET_HIT && !netTrusted(net) && !blockedEntry(net)
+        && (!nw.blockedAt || now - nw.blockedAt > 5 * 60000)) {
+        const times = db.blocked.filter((b) => b && b.ip === net).length;
+        const mins = times === 0 ? 15 : times === 1 ? 60 : 1440;
+        setBlock(net, mins, '同一网段有 ' + nw.hit.size + ' 个不同地址各自在翻站 / 扫路径', 'auto', true);
+        nw.blockedAt = now;
+      }
+    }
+
     /* ---- 事件：先记一笔，再决定要不要封 ---- */
     if (w.ids.size === 10 || w.qs.size === 10) {
       secLog('enum_suspect', req, { ids: w.ids.size, q: w.qs.size, hits: w.n, path: pathname });
@@ -4335,7 +4441,7 @@ function opsBlockedReply(res, pathname, e) {
 /** 服务端自己也可以主动「看一眼」某个 IP —— 控制台详情页用 */
 function watchSummary(w) {
   return {
-    ip: w.ip, score: w.score, peak: w.peak, n: w.n, ids: w.ids.size, qs: w.qs.size,
+    ip: w.ip, net: netOf(w.ip), score: w.score, peak: w.peak, n: w.n, ids: w.ids.size, qs: w.qs.size,
     pids: w.pids.size, s401: w.s1, s429: w.s2, s403: w.s3, s404: w.s4, s5: w.s5,
     scan: w.scan, bot: w.bot > 0, ua: w.ua, last: w.last, first: w.first,
     lastPath: w.lastPath, paths: w.paths.slice(-12)
@@ -4387,6 +4493,12 @@ function validIpPattern(s) {
   if (!v) return false;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v)) return v.split('.').every((n) => Number(n) <= 255);
   if (/^\d{1,3}(\.\d{1,3}){2}\.\*$/.test(v)) return true;
+  // 网段（a.b.c.0/24）：对付换出口 IP 的采集，必须能整段封
+  const nm = /^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/.exec(v);
+  if (nm) {
+    const base = nm[1].split('.').every((n) => Number(n) <= 255);
+    return base && Number(nm[2]) >= 8 && Number(nm[2]) <= 32;
+  }
   return /^[0-9a-f:.]{3,45}$/i.test(v) && v.includes(':');
 }
 
@@ -4417,6 +4529,16 @@ async function handleOps(req, res, pathname, query, me) {
       .map(watchSummary)
       .sort((a, b) => b.score - a.score || b.n - a.n)
       .slice(0, 14);
+    /* 网段汇总：同一个人换出口 IP 在控制台上就是「一堆不同地址各自只来过两三次」，
+       单看 IP 榜永远是一片 score 12、完全看不出是同一批人。这一维专门回答那个问题。 */
+    const nets = [...netWatch.values()]
+      .filter((nw) => now - nw.last < 10 * 60000 && nw.ips.size >= 3)
+      .map((nw) => ({
+        net: nw.net, ips: nw.ips.size, hit: nw.hit.size, n: nw.n, last: nw.last,
+        blocked: !!blockedEntry(nw.net)
+      }))
+      .sort((a, b) => b.hit - a.hit || b.ips - a.ips || b.n - a.n)
+      .slice(0, 8);
     return json(res, 200, {
       now,
       up: Math.round(process.uptime()),
@@ -4433,6 +4555,7 @@ async function handleOps(req, res, pathname, query, me) {
         pending: db.posts.filter((p) => p.status === 'pending').length
       },
       threats,
+      nets,
       events: opsEventTail(40),
       blocks: active.map((b) => ({
         ip: b.ip, until: b.until, reason: b.reason, by: b.by, auto: !!b.auto,
@@ -4448,6 +4571,38 @@ async function handleOps(req, res, pathname, query, me) {
 
   if (pathname === '/api/ops/ip' && method === 'GET') {
     const ip = normalizeIp(query.searchParams.get('ip') || '');
+    /* 网段详情：一个段里可能挂着十几个换着来的出口 IP，要把成员都列出来，
+       管理员才能判断「这是同一个人」还是「这栋楼里正好有几台机器」 */
+    if (ip.endsWith('/24')) {
+      const nw = netWatch.get(ip);
+      const members = [];
+      for (const w of ipWatch.values()) {
+        if (netOf(w.ip) === ip) members.push(watchSummary(w));
+      }
+      members.sort((a, b) => b.score - a.score || b.n - a.n);
+      const evs = [];
+      for (let i = 0; i < accessCount && evs.length < 60; i++) {
+        const ev = accessRing[(accessHead - i + OPS_ACCESS_MAX * 2) % OPS_ACCESS_MAX];
+        if (!ev) break;
+        if (netOf(ev.ip) === ip) evs.push(ev);
+      }
+      const e = blockIndex.get(ip);
+      const top = members.reduce((m, x) => (x.score > (m ? m.score : -1) ? x : m), null);
+      return json(res, 200, {
+        ip, isNet: true,
+        net: nw ? { ips: nw.ips.size, hit: nw.hit.size, n: nw.n, last: nw.last } : null,
+        members,
+        watch: top ? Object.assign({}, top, {
+          ip, n: nw ? nw.n : top.n, ids: members.reduce((s, x) => s + x.ids, 0),
+          qs: members.reduce((s, x) => s + x.qs, 0), pids: members.reduce((s, x) => s + x.pids, 0),
+          s404: members.reduce((s, x) => s + x.s404, 0), s403: members.reduce((s, x) => s + x.s403, 0),
+          scan: members.reduce((s, x) => s + x.scan, 0), ua: top.ua
+        }) : null,
+        events: evs,
+        block: e && e.until > nowMs() ? { until: e.until, reason: e.reason, by: e.by, auto: !!e.auto } : null,
+        trusted: netTrusted(ip)
+      });
+    }
     const w = ipWatch.get(ip);
     const evs = [];
     for (let i = 0; i < accessCount && evs.length < 60; i++) {
@@ -4547,7 +4702,10 @@ const server = http.createServer(async (req, res) => {
      仍然记一条访问事件 —— 控制台要能看到「他还在打，只是打不进来」。 */
   const _t0 = Date.now();
   const _ip = clientIp(req);
-  const _blk = blockedEntry(_ip);
+  const _net = netOf(_ip);
+  /* 先看单个 IP，再看它所在的 /24 段。段封是为了对付「换出口 IP」的采集：
+     手机流量的出口在同一个 /24 里跳，封单个 IP 追不上，封整段才拦得住。 */
+  const _blk = blockedEntry(_ip) || (_net ? blockedEntry(_net) : null);
   if (_blk) {
     _blk.hits = (_blk.hits || 0) + 1;
     /* 例外：管理员即便自己也被封了，也一定要能进控制台解封。

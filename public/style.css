@@ -1262,6 +1262,19 @@ img { display: block; }
 /* 登录验证码：左边输框、右边一张可点的图，高度跟其他输入框对齐
    （图是服务端现画的 PNG，132×52 那种点阵字，缩到 46px 高正好） */
 .cap-row { display: flex; gap: 10px; align-items: stretch; }
+/* 蜜罐栏位：真人看不见、点不到、Tab 也跳不进来。
+   故意不用 display:none / hidden —— 有些脚本会跳过这类元素，
+   用绝对定位挪到屏幕外反而更容易让它们老老实实填进来。 */
+.hp-trap {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
 .cap-row input {
   flex: 1 1 0;
   width: auto;

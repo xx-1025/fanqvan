@@ -367,6 +367,42 @@ body {
   white-space: nowrap;
 }
 
+/* ---------------- 换着地址来的（网段） ---------------- */
+
+.op-nets { padding: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+
+.nt {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+}
+.nt.hot { border-color: rgba(255, 107, 107, .45); background: rgba(255, 107, 107, .07); }
+.nt-top { display: flex; align-items: baseline; gap: 8px; }
+.nt-net { font-family: var(--mono); font-size: 12.5px; font-weight: 800; color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nt-ips { font-size: 10.5px; font-weight: 800; color: var(--ink-3); white-space: nowrap; }
+.nt.hot .nt-ips { color: var(--bad); }
+.nt-sub { margin-top: 4px; font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.nt.hot .nt-sub { color: #ffc9c9; }
+.nt-acts { display: flex; gap: 6px; margin-top: 7px; }
+
+.m-nets { max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; }
+.nt-m {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  cursor: pointer;
+  font-size: 11.5px;
+}
+.nt-m + .nt-m { border-top: 1px solid var(--line); }
+.nt-m:hover { background: rgba(255, 255, 255, .045); }
+.nt-m-ip { font-family: var(--mono); color: var(--ink); }
+.nt-m-sc { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
+.nt-m-sc.warm { color: var(--warn); }
+.nt-m-sc.hot { color: var(--bad); }
+
 /* ---------------- 封禁名单 ---------------- */
 
 .op-blocks { max-height: 300px; overflow-y: auto; }
