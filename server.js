@@ -2519,20 +2519,21 @@ async function handleApi(req, res, pathname, query) {
     const nickname = clean(b.nickname, 24) || username;
     const password = String(b.password || '');
 
-    /* 注册也必须过图形验证码。
-       以前只有登录有验证码，注册接口是裸的 —— 写个 for 循环就能批量建号，
-       拉一张图识一下的成本也比人手快。放在最前面、哈希之前：
-       被刷的时候省掉最贵的 scrypt，而且每建一个号都得多拉一张图。 */
-    if (CAPTCHA_ON && !consumeCaptcha(b.captchaId, b.captchaCode)) {
-      secLog('captcha_fail', req, { username, where: 'register' });
-      return json(res, 400, { error: '验证码不对，换一张重新输', code: 'CAPTCHA_FAIL' });
-    }
     /* 蜜罐：表单里有一个用 CSS 藏起来、正常用户看不见也点不到的栏位（hp）。
        真人永远不会填；脚本按 name 抓表单、把所有 input 都填一遍就会中招。
+       放在验证码**之前**：这是白捡的信号，不该等它先过验证码才生效。
        文案故意模糊 —— 不让它知道自己是踩了蜜罐，否则下次去掉这个字段就绕过了。 */
     if (String(b.hp || '').trim()) {
       secLog('register_bot', req, { username, where: 'honeypot' });
       return json(res, 400, { error: '注册没成功，刷新页面再试一次' });
+    }
+    /* 注册也必须过图形验证码。
+       以前只有登录有验证码，注册接口是裸的 —— 写个 for 循环就能批量建号，
+       拉一张图识一下的成本也比人手快。放在哈希之前：
+       被刷的时候省掉最贵的 scrypt，而且每建一个号都得多拉一张图。 */
+    if (CAPTCHA_ON && !consumeCaptcha(b.captchaId, b.captchaCode)) {
+      secLog('captcha_fail', req, { username, where: 'register' });
+      return json(res, 400, { error: '验证码不对，换一张重新输', code: 'CAPTCHA_FAIL' });
     }
 
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
