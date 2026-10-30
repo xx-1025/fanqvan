@@ -9,6 +9,9 @@
 <link rel="icon" href="/assets/mascot.webp">
 <link rel="apple-touch-icon" href="/assets/mascot.webp">
 <link rel="stylesheet" href="/style.css?v=__FQ_V__">
+<!-- 关键路径并行化：app.js 是首屏必下载的大头，预加载让它在 HTML 解析阶段就和 HTML 一起并发下载，
+     不再等 HTML 回来后再去请求，慢回源下能省掉一整轮 RTT+排队等待 -->
+<link rel="preload" as="script" href="/app.js?v=__FQ_V__">
 <style>
 /* 启动屏：app.js 到之前先给个东西看，别让用户对着白屏等。
    样式内联在 head，不受 style.css 请求快慢影响；app.js 重绘 #app 时自动消失。 */
@@ -22,6 +25,6 @@
 <body>
   <div id="app"><div id="boot"><div class="boot-plate">🍳</div><p class="boot-txt">正在装盘…</p></div></div>
   <div id="toast-wrap"></div>
-  <script src="/app.js?v=__FQ_V__"></script>
+  <script src="/app.js?v=__FQ_V__" fetchpriority="high"></script>
 </body>
 </html>
