@@ -4,7 +4,38 @@
 
 ---
 
+## 2026-10-30（续）
+
+**首屏关键路径并行化 + Cloudflare 反代显式边缘缓存**
+
+用户说手机/电脑进站点要 10~20 秒，问是不是控制台监测拖慢的。先实测排除：本地同样走全部中间件（含安全监测）只要 2~5ms；`secLog` 是异步写且仅异常路径触发；控制台 `/ops` 不参与普通访问。真凶是平台 CDN **从不缓存**我们的资源（`Eo-Cache-Status` 每次 MISS），每次访问都回源，撞上共享平台回源链路偶发抖动就是十几秒。
+
+本轮两条优化：
+
+- **首屏关键路径并行化**：原来 HTML 回来后才去请求 app.js，慢回源下等于多等一轮 RTT+排队。给 `index.html` 的 app.js 加 `rel="preload"` + `fetchpriority="high"`，让 HTML 解析阶段就和 app.js 并发下载，省掉这一轮。preload 与 script 指向同一 `?v=` 版本，不会重复下载。
+- **Cloudflare 反代升级**（`deploy/cloudflare-worker-proxy.js`）：平台不缓存，但 Cloudflare 边缘可以。给 `app.js/style.css/assets/intro` 加 `cf` 缓存（一天 TTL + 一周 stale-while-revalidate），回源次数骤降；用户先连就近 Cloudflare 节点，不再直连那条抖动的回源链路。兼容 `*.workers.dev` 免费部署，**不用买域名**。已建「饭圈站点保活」每小时自动化，保持实例温暖防冷启动。
+
+实测：UI 16/16 通过；线上 preload 生效、gzip 生效。
+
 ## 2026-10-30
+
+**网站提速：gzip + 版本指纹强缓存 + 首屏启动屏**
+
+用户反馈网站加载慢。实测定位：前端代码本身很快（本地 2~5ms），瓶颈在部署链路——
+单次往返 0.5~3s、偶发 10~20s，带宽约 33KB/s；之前 300KB 的 JS+CSS 未压缩，光下载就要近 9 秒。
+
+- **静态资源 gzip**：文本类资源（HTML/JS/CSS）预压一次驻留内存，app.js 186KB→57KB、
+  style.css 116KB→29KB，合计省 71%。图片/webp 本身已压，不重复压。
+- **JS/CSS 版本指纹强缓存**：`index.html` 里注入 `__FQ_V__`（按 app.js/style.css 的
+  size+mtime 算短 hash），带 `?v=` 的请求走 `public, max-age=31536000, immutable`；
+  文件一改版本号自动变，浏览器立刻拿新的，零构建自动失效。修了一个缓存串味 bug——
+  强缓存头不能存进共享 scache，要按当前请求现算。
+- **首屏启动屏**：`#app` 原先是空 div，app.js 没执行前用户对着白屏等。在 `#app` 内放一个
+  内联 boot 屏（煎蛋图标 + 浮动动画 + 正在装盘），内联 style 在 head 不依赖 style.css 加载，
+  app.js 全量重绘时自动消失。零 JS 改动，CSP 允许内联 style。
+- 验证：安全回归 68/68、冒烟 43/43、UI 16/16 全过；线上实测 gzip 生效、强缓存生效、304 复用正常。
+- 仍无法根治的部分：平台网关（CloudStudio Gateway / EdgeOne）端到端的偶发 10~20s 抖动，
+  以及首页 html 必须 `no-cache`（要拿最新版本号）。这两个是平台侧，代码层已无更多空间。
 
 **做饭模式加了「拍给我看」：拍一张锅里的照片，它自己看**
 
