@@ -4215,19 +4215,75 @@ function ifNoneMatchHit(req, etag) {
   return inm.split(',').some((t) => t.trim() === etag || t.trim() === '*');
 }
 
+/* 文本资源 gzip：线上链路单次往返要好几秒，300KB 的 JS+CSS 不压就是白等。
+   压缩结果跟着 scache 一起驻留内存，每个文件只压一次。
+   图片（webp/png/jpg）本身已压缩，不再走这条路。 */
+function acceptsGzip(req) {
+  return /\bgzip\b/i.test(String(req.headers['accept-encoding'] || ''));
+}
+
+function compressibleType(type) {
+  return /^(text\/|application\/(javascript|json|manifest\+json|xml)|image\/svg\+xml)/i.test(String(type || ''));
+}
+
+/* 强缓存只给「带版本指纹的 JS/CSS」。
+   注意不能把算好的 cc 存进 scache：同一个文件既可能被带 ?v= 请求，
+   也可能被不带 ?v= 的请求命中，缓存条目是共享的，必须按当前请求现算。 */
+function staticCacheControl(req, ent) {
+  if (ent.strong && /[?&]v=[0-9a-f]{6,}/i.test(String(req.url || ''))) {
+    return 'public, max-age=31536000, immutable';
+  }
+  return ent.cc;
+}
+
 function sendStaticCached(req, res, ent) {
-  if (ifNoneMatchHit(req, ent.etag)) {
-    res.writeHead(304, securityHeaders(req, { ETag: ent.etag, 'Cache-Control': ent.cc }));
+  const cc = staticCacheControl(req, ent);
+  const gz = ent.gzip && acceptsGzip(req) ? ent.gzip : null;
+  const etag = gz ? ent.etag.replace(/"$/, '-gz"') : ent.etag;
+  if (ifNoneMatchHit(req, etag)) {
+    res.writeHead(304, securityHeaders(req, { ETag: etag, 'Cache-Control': cc, Vary: 'Accept-Encoding' }));
     return res.end();
+  }
+  if (gz) {
+    res.writeHead(200, securityHeaders(req, {
+      'Content-Type': ent.type,
+      'Cache-Control': cc,
+      'Content-Encoding': 'gzip',
+      'Content-Length': gz.length,
+      Vary: 'Accept-Encoding',
+      ETag: etag
+    }));
+    return res.end(gz);
   }
   res.writeHead(200, securityHeaders(req, {
     'Content-Type': ent.type,
-    'Cache-Control': ent.cc,
+    'Cache-Control': cc,
     'Content-Length': ent.buf.length,
-    ETag: ent.etag
+    Vary: 'Accept-Encoding',
+    ETag: etag
   }));
   return res.end(ent.buf);
 }
+
+/* 静态版本号：拿 app.js / style.css 的 size+mtime 算一个短 hash。
+   index.html 里的 __FQ_V__ 会被换成它，于是 JS/CSS 可以放心用一年强缓存，
+   而我们改了文件之后版本号自然变、浏览器立刻拿新的。零构建。 */
+let assetVerCache = { at: 0, v: '' };
+async function assetVersion() {
+  const now = Date.now();
+  if (assetVerCache.v && now - assetVerCache.at < 5000) return assetVerCache.v;
+  let sig = '';
+  for (const f of ['app.js', 'style.css', 'ops.css', 'ops.js']) {
+    try {
+      const s = await fsp.stat(path.join(PUBLIC_DIR, f));
+      sig += f + ':' + s.size + ':' + Math.floor(s.mtimeMs) + ';';
+    } catch (e) { /* 文件不存在就跳过 */ }
+  }
+  const v = crypto.createHash('sha1').update(sig).digest('hex').slice(0, 10);
+  assetVerCache = { at: now, v };
+  return v;
+}
+let indexCache = { at: 0, v: '', buf: null };
 
 async function serveStatic(req, res, pathname) {
   let rel;
@@ -4258,8 +4314,46 @@ async function serveStatic(req, res, pathname) {
 
   const ext = path.extname(file).toLowerCase();
   const type = MIME[ext] || 'application/octet-stream';
+  // 基础缓存策略；带 ?v= 指纹的 JS/CSS 在发送那一刻才升级成一年强缓存
   const cc = IMMUTABLE.test(file) ? 'public, max-age=86400' : 'no-cache';
   const now = Date.now();
+
+  // index.html 每次现拼：把 __FQ_V__ 换成当前静态资源版本号
+  if (safe === 'index.html') {
+    const v = await assetVersion();
+    if (!indexCache.buf || indexCache.v !== v) {
+      let raw;
+      try { raw = await fsp.readFile(file); } catch (e) { return staticNotFound(res); }
+      const buf = Buffer.from(String(raw).replace(/__FQ_V__/g, v));
+      let gzb = null;
+      try { gzb = zlib.gzipSync(buf, { level: 9 }); } catch (e) { gzb = null; }
+      indexCache = { at: now, v, buf, gz: gzb };
+    }
+    const etag = 'W/"' + indexCache.buf.length.toString(16) + '-' + v + '"';
+    const useGz = indexCache.gz && acceptsGzip(req);
+    const eTagFinal = useGz ? etag.replace(/"$/, '-gz"') : etag;
+    if (ifNoneMatchHit(req, eTagFinal)) {
+      res.writeHead(304, securityHeaders(req, { ETag: eTagFinal, 'Cache-Control': 'no-cache' }));
+      return res.end();
+    }
+    res.writeHead(200, securityHeaders(req, useGz
+      ? {
+        'Content-Type': type,
+        'Cache-Control': 'no-cache',
+        'Content-Encoding': 'gzip',
+        'Content-Length': indexCache.gz.length,
+        Vary: 'Accept-Encoding',
+        ETag: eTagFinal
+      }
+      : {
+        'Content-Type': type,
+        'Cache-Control': 'no-cache',
+        'Content-Length': indexCache.buf.length,
+        Vary: 'Accept-Encoding',
+        ETag: eTagFinal
+      }));
+    return res.end(useGz ? indexCache.gz : indexCache.buf);
+  }
 
   const ent = scache.get(file);
   if (ent && now - ent.at < SCACHE_TTL) return sendStaticCached(req, res, ent);
@@ -4299,7 +4393,17 @@ async function serveStatic(req, res, pathname) {
   try { buf = await fsp.readFile(file); }
   catch (e) { return staticNotFound(res); }
 
-  const fresh = { buf, etag, type, cc, at: now, size: st.size, mtime: Math.floor(st.mtimeMs) };
+  // 文本类资源预压一次，之后每个请求直接吐压缩后的字节
+  let gzBuf = null;
+  if (compressibleType(type)) {
+    try { gzBuf = zlib.gzipSync(buf, { level: 9 }); } catch (e) { gzBuf = null; }
+    if (gzBuf && gzBuf.length >= buf.length) gzBuf = null;
+  }
+
+  const fresh = {
+    buf, gzip: gzBuf, etag, type, cc, at: now, size: st.size, mtime: Math.floor(st.mtimeMs),
+    strong: ext === '.js' || ext === '.css'
+  };
   if (scache.size >= SCACHE_MAX) scache.delete(scache.keys().next().value);
   scache.set(file, fresh);
   return sendStaticCached(req, res, fresh);
