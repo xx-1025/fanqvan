@@ -156,12 +156,17 @@ function rid(n) { return crypto.randomBytes(n || 12).toString('hex'); }
 /* ------------------------------------------------------------------ */
 /* 密码强度                                                             */
 /*                                                                     */
-/* 以前只卡「至少 6 位」，于是 123456 / password 这种全站一遍就撞开了。     */
-/* 现在三条硬规则 + 一张常见弱口令表：撞库成本从「几乎为零」抬到需要真跑字典。 */
+/* 2026-10-30 按产品要求放宽：不再要求「至少 8 位」、不再要求「必须掺字母/    */
+/* 不能纯数字」、不再限制「密码里不能带用户ID」。                            */
+/* 理由：这是熟人小圈子的美食社区，硬规则把正常用户挡在门外，收益抵不过麻烦。  */
+/* 撞库风险改由入口挡——登录限流 + 图形验证码 + ip|username 失败锁号，      */
+/* 不再指望口令本身长成什么样。                                          */
+/*                                                                     */
+/* 只留两条：不能为空、不能用全网都在用的弱口令（避免 admin/123456 这类     */
+/* 一秒被撞开）。要连弱口令表也一起去掉，把下面 WEAK_PW 清空即可。          */
 /* ------------------------------------------------------------------ */
 
-const MIN_PW = 8;
-const MAX_PW = 72;            // scrypt 吃得住，再长没意义还费 CPU
+const MAX_PW = 72;            // scrypt 吃得住，再长没意义还费 CPU（这是技术上限，不是体验限制）
 
 /* 常见弱口令（含本项目的初始口令）。比对时忽略大小写。 */
 const WEAK_PW = new Set([
@@ -179,17 +184,13 @@ const WEAK_PW = new Set([
   'fanqvan', 'fanqvan123', 'rice', 'cook123', 'food123', 'chifan'
 ].map((s) => s.toLowerCase()));
 
-/** 返回 '' 表示合格，否则返回给用户看的原因 */
+/** 返回 '' 表示合格，否则返回给用户看的原因。
+    username 参数保留只为调用点不用改，**不再参与任何判断**（不再限制密码含用户ID）。 */
 function passwordProblem(pw, username) {
   const s = String(pw == null ? '' : pw);
-  const un = String(username || '').toLowerCase();
-  if (s.length < MIN_PW) return '密码至少 ' + MIN_PW + ' 位';
+  if (!s.trim()) return '密码不能为空';
   if (s.length > MAX_PW) return '密码最长 ' + MAX_PW + ' 位';
-  if (!/[a-zA-Z]/.test(s) && !/[^\x00-\x7F]/.test(s)) return '密码不能是纯数字，掺几个字母';
-  if (/^(.)\1+$/.test(s)) return '密码不能是同一个字符重复';
-  if (WEAK_PW.has(s.toLowerCase())) return '这个密码太常见了，换一个吧';
-  if (un && s.toLowerCase() === un) return '密码不能和用户ID一样';
-  if (un && un.length >= 4 && s.toLowerCase().includes(un)) return '密码里别带自己的用户ID';
+  if (WEAK_PW.has(s.toLowerCase())) return '这个密码太常见了，容易被猜到，换一个吧';
   return '';
 }
 
@@ -215,7 +216,7 @@ function randPassword(n) {
 /** 初始口令取环境变量（FQ_ADMIN_PASSWORD / FQ_REVIEWER_PASSWORD），没有就随机生成 */
 function bootPassword(username) {
   const env = String(process.env['FQ_' + String(username).toUpperCase() + '_PASSWORD'] || '').trim();
-  if (env.length >= MIN_PW && !WEAK_PW.has(env.toLowerCase())) return env;
+  if (env && !WEAK_PW.has(env.toLowerCase())) return env;
   return randPassword(16);
 }
 
