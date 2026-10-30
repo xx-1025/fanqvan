@@ -1702,9 +1702,24 @@ async function cookAsk(question) {
   }
   c.asking = false;
   paintCook();
+  /* 原来这里不滚，长回答会被压在底部按钮后面看不见（和拍照那条一样的问题） */
+  cookScrollTo('.cook-ans');
 }
 
-/* -------- 拍给我看 -------- */
+/* 结果渲染在照片/输入框下面，而 .cook-stage 是个独立的滚动容器。
+   不滚过去的话，用户拍完只看到照片和「看」按钮，会以为没反应 —— 明明已经答完了。
+   用自己算 scrollTop 而不是 scrollIntoView：后者在嵌套滚动容器里会连外层一起滚。 */
+function cookScrollTo(sel) {
+  const stage = document.querySelector('.cook-stage');
+  if (!stage) return;
+  const list = document.querySelectorAll('.cook-stage ' + sel);
+  if (!list.length) return;
+  const el = list[list.length - 1];
+  const st = stage.getBoundingClientRect();
+  const et = el.getBoundingClientRect();
+  const top = Math.max(0, stage.scrollTop + (et.top - st.top) - 10);
+  try { stage.scrollTo({ top, behavior: 'smooth' }); } catch (e) { stage.scrollTop = top; }
+}
 
 /* 选图。input 必须临时建、建完就丢：paintCook() 是整屏重绘，
    把 file input 写进 HTML 里，一重绘选中的文件就没了。 */
@@ -1723,6 +1738,7 @@ function cookLookPick() {
       c.photo = url;
       c.lookAnswer = ''; c.lookSee = ''; c.lookErr = '';
       paintCook();
+      cookScrollTo('.cook-shot');
     });
   };
   inp.click();
@@ -1790,6 +1806,7 @@ async function cookLookGo() {
   }
   c.looking = false;
   paintCook();
+  cookScrollTo('.cook-ans');   // 答案在照片下面，滚过去才看得见
 }
 
 /* -------- 私信 -------- */
@@ -3442,6 +3459,7 @@ document.addEventListener('click', (e) => {
       state.cook.lookAnswer = '';
       state.cook.lookSee = '';
       paintCook();
+      cookScrollTo('.cook-look');
       break;
     }
     case 'cook-look-pick': cookLookPick(); break;
