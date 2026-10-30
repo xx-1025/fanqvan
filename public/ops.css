@@ -173,6 +173,39 @@ body {
 .op-input::placeholder { color: var(--ink-3); }
 .op-input:focus { border-color: var(--brand); }
 
+/* ---------------- 顶部一句话结论 ---------------- */
+
+/* 这一条是给「不搞技术」的人看的：不用读表格，看这句话就知道要不要管。 */
+.op-band {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 14px 16px 0;
+}
+.op-band b {
+  display: block;
+  font-size: 19px;
+  line-height: 1.4;
+  letter-spacing: .2px;
+  color: var(--ok);
+}
+.op-band b.warn { color: var(--warn); }
+.op-band b.bad { color: var(--bad); }
+#op-v-s {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+.op-help {
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-style: normal;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
 /* ---------------- 布局 ---------------- */
 
 .op-wrap {
@@ -225,7 +258,7 @@ body {
 
 .op-feed-head, .op-row {
   display: grid;
-  grid-template-columns: 76px 138px 46px minmax(0, 1fr) 48px 54px 40px;
+  grid-template-columns: 74px 136px 70px minmax(0, 1fr) 62px 50px 46px;
   gap: 8px;
   align-items: center;
   padding: 0 14px;
@@ -294,8 +327,11 @@ body {
 .th.hot { border-color: rgba(255, 107, 107, .45); background: rgba(255, 107, 107, .07); }
 .th.warm { border-color: rgba(255, 209, 102, .35); background: rgba(255, 209, 102, .05); }
 
-.th-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.th-ip { font-family: var(--mono); font-size: 12.5px; font-weight: 800; color: var(--ink); }
+.th-top { display: flex; align-items: center; gap: 8px; }
+.th-ip { font-family: var(--mono); font-size: 12.5px; font-weight: 800; color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.th-verdict { font-size: 10.5px; font-weight: 800; color: var(--ink-3); white-space: nowrap; }
+.th.hot .th-verdict { color: var(--bad); }
+.th.warm .th-verdict { color: var(--warn); }
 .th-score {
   font-family: var(--mono);
   font-size: 11px;
@@ -304,6 +340,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 1px 7px;
+  flex-shrink: 0;
 }
 .th.hot .th-score { color: var(--bad); border-color: rgba(255, 107, 107, .5); }
 .th.warm .th-score { color: var(--warn); border-color: rgba(255, 209, 102, .45); }
@@ -342,7 +379,7 @@ body {
   font-size: 12px;
 }
 .bl-ip { font-family: var(--mono); font-weight: 800; flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.bl-meta { font-size: 10.5px; color: var(--ink-3); font-family: var(--mono); white-space: nowrap; }
+.bl-meta { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
 .bl-badge {
   font-size: 10px;
   font-weight: 800;
@@ -454,8 +491,10 @@ body {
   .op-top { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
   .op-pills { order: 3; flex: 1 0 100%; width: 100%; }
   .op-wrap { padding: 10px; gap: 10px; }
+  .op-band { padding: 12px 10px 0; }
+  .op-band b { font-size: 17px; }
   .op-side { grid-template-columns: 1fr; }
-  .op-feed-head, .op-row { grid-template-columns: 54px 100px minmax(0, 1fr) 38px; }
+  .op-feed-head, .op-row { grid-template-columns: 52px 100px minmax(0, 1fr) 46px; }
   .op-feed-head span:nth-child(3),
   .op-row > span:nth-child(3),
   .op-feed-head span:nth-child(6),

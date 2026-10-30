@@ -16,17 +16,23 @@
     <b>饭圈</b><span>安全控制台</span>
   </a>
   <div class="op-pills" id="op-pills">
-    <span class="pill"><i>速率</i><em id="p-rate">–</em></span>
-    <span class="pill"><i>在途</i><em id="p-inflight">–</em></span>
-    <span class="pill"><i>封禁中</i><em id="p-blocked">–</em></span>
-    <span class="pill"><i>事件循环</i><em id="p-lag">–</em></span>
+    <span class="pill" title="最近一分钟有多少次访问"><i>每分钟访问</i><em id="p-rate">–</em></span>
+    <span class="pill" title="同时正在处理的请求数，满 200 会开始排队"><i>正在处理</i><em id="p-inflight">–</em></span>
+    <span class="pill" title="当前被挡在门外的地址数"><i>已挡住</i><em id="p-blocked">–</em></span>
+    <span class="pill" title="数字越大说明服务器越忙，超过 300 会开始变卡"><i>服务器忙不忙</i><em id="p-lag">–</em></span>
   </div>
   <div class="op-actions">
     <span class="op-live" id="op-live"><i></i>实时</span>
-    <button class="op-btn ghost" id="op-diag">网关诊断</button>
+    <button class="op-btn ghost" id="op-diag">排错工具</button>
     <a class="op-btn ghost" href="/">回站点</a>
   </div>
 </header>
+
+<div class="op-band">
+  <b id="op-v-t">正在读取…</b>
+  <span id="op-v-s"></span>
+  <em class="op-help">这一页就看三件事：谁在访问、谁在可疑地翻、谁该被挡住。可疑度满 60 分系统会自己挡住，一般你只看上面这句话就够了。</em>
+</div>
 
 <main class="op-wrap">
 
@@ -34,22 +40,22 @@
 
     <div class="op-card">
       <div class="op-head">
-        <h2>实时流量</h2>
+        <h2>谁在访问</h2>
         <div class="op-tools">
-          <input id="op-q" class="op-input" placeholder="按 IP 过滤 / 查详情" autocomplete="off" spellcheck="false">
+          <input id="op-q" class="op-input" placeholder="输入一个地址，只看它" autocomplete="off" spellcheck="false">
           <button class="op-btn" id="op-pause">暂停</button>
         </div>
       </div>
       <div class="op-feed-head">
-        <span>时间</span><span>IP</span><span>方法</span><span>路径</span><span>状态</span><span>耗时</span><span></span>
+        <span>时间</span><span>来访地址</span><span>在做什么</span><span>看的哪一页</span><span>结果</span><span>耗时</span><span></span>
       </div>
       <div class="op-feed" id="op-feed"></div>
     </div>
 
     <div class="op-card">
       <div class="op-head">
-        <h2>安全事件</h2>
-        <span class="op-sub" id="op-ev-sub">security.log 尾部</span>
+        <h2>发生过什么</h2>
+        <span class="op-sub" id="op-ev-sub">最近 60 条</span>
       </div>
       <div class="op-events" id="op-events"></div>
     </div>
@@ -60,15 +66,15 @@
 
     <div class="op-card">
       <div class="op-head">
-        <h2>威胁排行</h2>
-        <span class="op-sub">按行为分</span>
+        <h2>可疑的人</h2>
+        <span class="op-sub">越靠上越可疑</span>
       </div>
       <div class="op-threats" id="op-threats"></div>
     </div>
 
     <div class="op-card">
       <div class="op-head">
-        <h2>封禁名单</h2>
+        <h2>已经挡住的地址</h2>
         <span class="op-sub" id="op-block-sub"></span>
       </div>
       <div class="op-blocks" id="op-blocks"></div>
