@@ -2629,6 +2629,23 @@ async function handleApi(req, res, pathname, query) {
      二是即便主站某个业务出错，控制台也应该还能打开。 */
   if (pathname.startsWith('/api/ops/')) return handleOps(req, res, pathname, query, me);
 
+  /* ============ 未登录不给看内容 ============
+     站内的一切内容（帖子、评论、用户、热搜、搜索、通知、私信）只对登录用户开放。
+     以前游客能匿名浏览，等于把整站内容白送：随便写个脚本就能把帖子全量拖走，
+     连注册都省了。这一道放在所有业务路由之前，而不是逐个接口加 if ——
+     以后新增的接口默认也是关的，不会再有人忘了加判断。
+     放行的只有「门面」：验证码、登录/注册/退出、登录态探测。
+     /api/me 必须放行：前端启动时用它判断「到底登没登录」，
+     未登录返回 401 是正常应答，不是错误。 */
+  const GUEST_OK = pathname === '/api/captcha' ||
+    pathname === '/api/auth/login' ||
+    pathname === '/api/auth/register' ||
+    pathname === '/api/auth/logout' ||
+    pathname === '/api/me';
+  if (!me && !GUEST_OK) {
+    return json(res, 401, { error: '登录后才能看内容', code: 'LOGIN_REQUIRED' });
+  }
+
   /* ============ 图形验证码 ============ */
   if (pathname === '/api/captcha' && method === 'GET') {
     if (!rateLimit('cap:' + ip, 60, 60 * 1000)) {
@@ -4314,8 +4331,21 @@ async function serveStatic(req, res, pathname) {
 
   const ext = path.extname(file).toLowerCase();
   const type = MIME[ext] || 'application/octet-stream';
-  // 基础缓存策略；带 ?v= 指纹的 JS/CSS 在发送那一刻才升级成一年强缓存
-  const cc = IMMUTABLE.test(file) ? 'public, max-age=86400' : 'no-cache';
+  const isUpload = safe.startsWith('uploads' + path.sep) || safe.startsWith('uploads/');
+  // 用户上传的图片也是内容：帖子都对游客关门了，图片不该还能直接拖走。
+  // 这里按「文件头还没读」的位置就拦，省掉一次 stat + 读盘。
+  if (isUpload && !currentUser(req)) {
+    res.writeHead(403, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store'
+    });
+    return res.end('403 Forbidden');
+  }
+  // 基础缓存策略；带 ?v= 指纹的 JS/CSS 在发送那一刻才升级成一年强缓存。
+  // 上传图只允许浏览器私有缓存（private）：共享缓存会把图留在 CDN/代理上，
+  // 退出登录后别人照样能从缓存里拿到，等于没拦。
+  const cc = isUpload ? 'private, max-age=86400'
+    : IMMUTABLE.test(file) ? 'public, max-age=86400' : 'no-cache';
   const now = Date.now();
 
   // index.html 每次现拼：把 __FQ_V__ 换成当前静态资源版本号
@@ -4670,7 +4700,9 @@ function noteAccess(req, pathname, code, ms) {
     w.n += 1;
     w.ua = ua || w.ua;
     w.lastPath = pathname;
-    if (code === 401) w.s1 += 1;
+    /* /api/me 的 401 是「还没登录」的正常应答，每个访客启动时都会打一次，
+       不能算成异常，否则刷几次首页的人就被当成在探接口了。 */
+    if (code === 401 && pathname !== '/api/me') w.s1 += 1;
     else if (code === 403) w.s3 += 1;
     else if (code === 404) w.s4 += 1;
     else if (code === 429) w.s2 += 1;
@@ -4714,6 +4746,11 @@ function noteAccess(req, pathname, code, ms) {
     if (w.qs.size > 8) s += Math.min(40, (w.qs.size - 8) * 6);      // 换搜索词扫人
     if (w.pids.size > 40) s += Math.min(30, (w.pids.size - 40) * 2);
     if (w.n > 200) s += Math.min(50, (w.n - 200) / 4);
+    /* 401 也是一类证据。门禁上线后，扫 /api/users/9999 这种不存在的 id 不再回 404，
+       一律 401 —— 只靠 404 抓「在扫 id」的线索就断了，脚本可以安静地翻 40 个主页。
+       这里补一路，但门槛比 404 高得多、权重更低：正常游客只在启动时打一次
+       /api/me（上面已排除），反复切页面也不会攒到 20 次。 */
+    if (w.s1 > 20) s += Math.min(40, (w.s1 - 20) * 2);
     if (w.s4 > 15) s += Math.min(50, (w.s4 - 15) * 4);              // 404 = 在猜路径
     if (w.s3 > 15) s += Math.min(50, (w.s3 - 15) * 4);              // 403 = 在探权限
     if (w.scan > 0) s += Math.min(60, w.scan * 30);                 // 一扫 /wp-admin 就基本实锤

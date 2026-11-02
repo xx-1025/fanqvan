@@ -1392,6 +1392,16 @@ img { display: block; }
 }
 .auth-tip b { color: var(--brand-2); }
 
+/* 「内容只对登录用户开放」的说明：安静地待在底部，不跟登录按钮抢注意力 */
+.auth-locked {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+  letter-spacing: .2px;
+}
+
 .form-err {
   margin-bottom: 15px;
   padding: 11px 15px;

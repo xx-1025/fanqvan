@@ -251,6 +251,15 @@ async function api(path, opts) {
     const err = new Error(data.error || ('请求失败 ' + res.status));
     err.status = res.status;
     err.code = data.code || '';
+    /* 会话过期（Cookie 到期 / 被踢下线 / 换了设备）：内存里还以为自己登着，
+       接口已经全部 401。不收口的话，页面会停在满屏「加载失败」上，
+       用户只能手动刷新。这里统一清登录态、回登录页，登录完回原来那一页。
+       用 code 判断，避开 /api/me 探测登录态时的正常 401。 */
+    if (res.status === 401 && data.code === 'LOGIN_REQUIRED' && state.me) {
+      state.me = null;
+      toast('登录状态已过期，重新登录一下', 'err');
+      go('#/login?next=' + encodeURIComponent(location.hash || '#/'));
+    }
     throw err;
   }
   return data;
@@ -391,6 +400,7 @@ function threadRouteId() {
    拉完只**局部替换那两张卡片**，不整页 render() —— 整页重绘会重建 DOM、
    打断正在输入的搜索框或发帖框，所以定时轮询必须走这条路。 */
 async function refreshSidebar() {
+  if (!state.me) return;   // 游客没有任何内容可看，不打这两个接口
   const [hot, stats] = await Promise.allSettled([api('/api/hot'), api('/api/stats')]);
   if (hot.status === 'fulfilled') state.data.hot = hot.value;
   if (stats.status === 'fulfilled') state.data.stats = stats.value;
@@ -409,6 +419,21 @@ async function router() {
   lastHash = hashNow;
   state.route = parseHash();
   const r = state.route;
+  /* 站内内容只对登录用户开放：没登录就先去登录页，并记住原来想去哪，
+     登录完直接回到那一页（分享出去的帖子链接、收藏的私信都还能接上）。
+     后端对游客一律 401，这里的作用只是把「一片空白的界面」换成明确的登录入口。 */
+  if (!state.me && r.name !== 'login') {
+    state.loading = false;
+    go('#/login' + (hashNow === '#/' ? '' : '?next=' + encodeURIComponent(hashNow)));
+    return;
+  }
+  /* 已经登录的人停在 #/login（刷新继承了上次的地址）就送回首页，
+     没必要让登录着的人再看一遍登录框 */
+  if (state.me && r.name === 'login') {
+    state.loading = false;
+    go('#/');
+    return;
+  }
   // 记住从哪进详情页，返回时回原页面（首页 / 热门 / 搜索 / 私信都各回各的）
   if (r.name === 'post' && prevHash && !/^#\/post\//.test(prevHash)) state.postFrom = prevHash;
   // 换页时收掉所有浮层（弹窗 / 通知面板 / @补全），避免盖在新页面上
@@ -2430,7 +2455,7 @@ function viewLogin() {
            脚本写个循环就能批量建号，拉图识别也比人手快。 */
         '<div class="field"><label>验证码</label>' +
           '<div class="cap-row">' +
-            '<input name="captcha" id="cap-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="照图输入 4 个字符">' +
+            '<input name="captcha" id="cap-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="看图输入">' +
             '<img id="cap-img" class="cap-img" alt="验证码" title="看不清？点一下换一张" data-action="reload-captcha" src="' + esc(state.captcha.img) + '">' +
           '</div>' +
           '<div class="field-hint" id="cap-hint">不区分大小写 · 看不清就点图片换一张</div></div>' +
@@ -2443,10 +2468,9 @@ function viewLogin() {
           (isLogin ? '登录' : '注册并进入饭圈') + '</button>' +
       '</form>' +
       (isLogin
-        ? '<div class="auth-tip">登录后即可发帖、点赞、关注厨友。</div>'
-        : '<div class="auth-tip">注册后为普通厨友，可发帖、点赞、关注。<br>想当审核员？在「我的资料」里提交申请，由管理员审批。</div>') +
-      '<div style="text-align:center;margin-top:18px">' +
-        '<a href="#/" style="font-size:13px;color:var(--ink-3);font-weight:700">' + icon('back') + ' 先随便看看</a></div>' +
+        ? '<div class="auth-tip">登录后就能看到全部饭帖、发帖、点赞、关注厨友。</div>'
+        : '<div class="auth-tip">注册后即为普通厨友，可浏览全部内容、发帖、点赞、关注。<br>想当审核员？在「我的资料」里提交申请，由管理员审批。</div>') +
+      '<div class="auth-locked">饭圈的内容只对登录的厨友开放</div>' +
     '</div>' +
     '<img class="auth-deco" src="/assets/cooking.webp" alt="">' +
   '</div>';
@@ -3259,7 +3283,11 @@ async function onAuthSubmit(form) {
     render();
     await loadNotes();
     await loadUnreadMsgs();
-    go('#/');
+    /* 是被拦下来才来登录的，就回原来想去的那一页（分享出去的帖子链接、
+       收藏的私信都还能接上）；直接进站的就回首页。
+       next 只认站内 hash，而且不能指回登录页，免得登完又弹回来。 */
+    const next = (state.route.q && state.route.q.get('next')) || '';
+    go(/^#\/(?!login\b)/.test(next) ? next : '#/');
   } catch (e) {
     errBox.innerHTML = '<div class="form-err">' + esc(e.message) + '</div>';
     /* 验证码是一次性的：不管这次是「码错」「密码错」还是「ID 重名」，那张图都已经作废了，
