@@ -1209,8 +1209,11 @@ img { display: block; }
 
 .auth-page {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  /* 用 flex 居中，不用 grid：grid 的单列轨道会按内容 max-content 撑大，
+     卡片 width:100% 跟着变成「内容宽度」，在 390 手机上会溢到 413px 把验证码图切掉。 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 34px 20px;
   position: relative;
 }
@@ -1230,6 +1233,7 @@ img { display: block; }
 .auth-box {
   width: 100%;
   max-width: 440px;
+  min-width: 0;
   background: var(--paper);
   border: var(--bw) solid var(--ink);
   border-radius: 28px;
