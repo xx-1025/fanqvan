@@ -3872,6 +3872,32 @@ window.addEventListener('hashchange', router);
 window.addEventListener('resize', hideSuggest);
 window.addEventListener('scroll', hideSuggest, true);
 
+/* 手机可视区高度跟随：软键盘弹起、地址栏 / 工具栏伸缩时，布局视口不变，只有
+   visualViewport 知道「现在真正看得见多高」。私信页高度靠它算，否则输入框会被
+   键盘或底部工具栏切掉一半。写成一个 CSS 变量，样式里直接 calc 用。 */
+function syncViewportVar() {
+  const vv = window.visualViewport;
+  const h = Math.round((vv && vv.height) || window.innerHeight || 0);
+  if (h > 0) document.documentElement.style.setProperty('--fq-vh', h + 'px');
+}
+syncViewportVar();
+window.addEventListener('resize', syncViewportVar);
+window.addEventListener('orientationchange', syncViewportVar);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncViewportVar);
+  window.visualViewport.addEventListener('scroll', syncViewportVar);
+}
+// 键盘弹起后输入框要留在可见区里（容器刚收缩时高度可能还没稳定，等一帧再滚）
+document.addEventListener('focusin', (e) => {
+  if (e.target && e.target.id === 'msg-input') {
+    setTimeout(() => {
+      syncViewportVar();
+      const form = document.querySelector('.msg-form');
+      if (form) form.scrollIntoView({ block: 'nearest' });
+    }, 260);
+  }
+});
+
 /* ---------------------- 启动 ---------------------- */
 
 (async function boot() {

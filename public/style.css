@@ -2907,12 +2907,19 @@ button.msg-head-user {
 
 @media (max-width: 760px) {
   /* 手机端：列表与对话二选一，进入对话时列表收起，靠顶部返回键回来。
-     高度尽量吃满可视区（减去顶栏 + 横向导航 + 上下留白），聊天区不再是个小方块。 */
+     高度尽量吃满可视区（减去顶栏 + 横向导航 + 上下留白），聊天区不再是个小方块。
+     高度不能只按 dvh 算：软键盘弹起来时布局视口不变、只有「看得见的区域」变小，
+     光靠 dvh 会让底部输入框被键盘 / 浏览器工具栏盖掉一半。
+     --fq-vh 由 app.js 按 visualViewport 实时写（键盘、地址栏伸缩都会跟着变），
+     JS 没跑或老浏览器不支持时退回 dvh / vh。 */
   .msg-page {
     grid-template-columns: 1fr;
     height: calc(100vh - 190px);
     height: calc(100dvh - 190px);
-    min-height: 400px;
+    height: calc(var(--fq-vh, 100dvh) - 190px);
+    /* 400 会在 568 这类矮屏上把容器顶出视口，底部正好切掉输入框；
+       键盘弹起可见区更矮时连 240 也要让位，所以取两者较小值 */
+    min-height: max(0px, min(240px, calc(var(--fq-vh, 100dvh) - 190px)));
   }
   .hide-sm { display: none !important; }
   .msg-head { padding: 10px 12px; }
@@ -2920,7 +2927,8 @@ button.msg-head-user {
   .msg-body { padding: 12px 12px 8px; }
   .msg-row { max-width: 86%; }
   .msg-share { min-width: 0; max-width: 226px; }
-  .msg-form { padding: 10px 12px; }
+  /* 底部留出 iPhone 手势条的高度，别让输入框压在横条下面 */
+  .msg-form { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
   .msg-form .msg-send { padding: 0 18px; }
   /* 群聊弹窗：小屏也给足高度、名字输入框别太窄 */
   .modal-group { max-width: calc(100vw - 20px); }
