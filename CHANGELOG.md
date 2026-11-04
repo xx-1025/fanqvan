@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-11-04（四续）
+
+**「应用与手机不兼容」的真正原因：安装包没做 zip 对齐，不是系统版本太低**
+
+1.3 → 1.6 连着四次装不上，前三次都在调最低系统版本（26 → 21 → 19），方向错了。把 1.6 的包拆开逐项核对后发现：`resources.arsc` 的数据区落在偏移 320215，**不是 4 的倍数**。安卓 11（API 30）起对 `targetSdkVersion >= 30` 的包有硬性要求——`resources.arsc` 必须不压缩且 4 字节对齐，不满足就拒装，安装器给出的提示恰恰就是「应用与手机不兼容」。这跟手机是哪个安卓版本无关，所以改 minSdk 怎么改都没用。
+
+根因在建包脚本：`tools/merge_apk.py` 用 Python 的 `zipfile` 重新写包，它不会做对齐；整条流程里也没有 `zipalign` 这一步。
+
+- `tools/merge_apk.py` 重写：自己拼 local header / central directory，未压缩条目（`resources.arsc`、`classes.dex`、图片）用 `0xD935` 填充字段对齐到 4 字节；打完立即回读校验，歪了就退出。
+- `build.sh` 签名后**再查一次对齐**（签名会重写 zip），不合格直接 `exit 1`，不让坏包出门。
+- `Signer.java` 的 `setMinSdkVersion(26)` 写死了，改成由 `build.sh` 传真实值——apksig 靠它决定 v1 签名用 SHA-1 还是 SHA-256，写死高版本会把老系统的签名校验坑掉。
+- 最低系统版本顺手降到 `16`（Android 4.1）：既然真正的原因是对齐，`19` 这个数就没有保留的意义，降到 16 把「老系统装不上」这条也一并排除。
+- 新包 `dist/fanqvan-1.7.apk`（versionCode 8 / versionName 1.7）：`resources.arsc` 偏移 320204、`classes.dex` 偏移 740732，均 %4=0；v1+v2+v3 签名 `verified=true`；离线包 md5 与 `public/` 一致。
+
+**教训**：装机失败时先把包拆开看结构（`aapt2 dump badging` + 逐条目偏移 + 签名方案），别急着改版本号。同一个症状改两次都没好，就说明诊断错了。
+
+---
+
 ## 2026-11-04（三续）
 
 **还是「应用与手机不兼容」：这次降到 Android 4.4，并把「降了也白降」的坑一起填了**
