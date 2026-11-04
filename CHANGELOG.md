@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-11-04
+
+**安卓 App 装不上：提示「应用与手机不兼容」**
+
+这是 `INSTALL_FAILED_OLDER_SDK`——安装包声明的最低系统版本比手机高，安装器直接拒装。之前打的 APK 写死了 `minSdkVersion 26`（Android 8.0），Android 7 及更低的手机全部装不上。
+
+- 最低版本从 `26` 降到 `21`（Android 5.0），Android 5 以上都能装。
+- 补了三个旧系统专属的回调：`shouldOverrideUrlLoading(WebView, String)`（Android 7 以下点外链才有反应）、`onReceivedError(WebView, int, String, String)`（Android 6 以下断网才会显示错误页而不是白屏）。原来只重写了高版本的方法签名，老机上这些逻辑是失效的。
+- 加了内核兜底：页面用了 `async/await`（要 Chrome 55+），系统 WebView 内核低于 78 时不再硬加载（会白屏），改成原生提示页，直接给「去应用商店更新 Android System WebView」和「用浏览器打开」两个出口。
+- 新包 `dist/fanqvan-1.4.apk`（versionCode 5 / versionName 1.4），同证书签名，可覆盖安装。
+
+---
+
 ## 2026-11-02（再续）
 
 **修手机端聊天输入框只显示一半**
