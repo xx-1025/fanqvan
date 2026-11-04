@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-11-04（三续）
+
+**还是「应用与手机不兼容」：这次降到 Android 4.4，并把「降了也白降」的坑一起填了**
+
+第一次只降到 `minSdkVersion 21`（Android 5.0），装了 1.5 还是同样的提示 —— 说明那台手机在 Android 5.0 以下。这次降到 `19`（Android 4.4）。
+
+- `minSdkVersion` 21 → 19，APK 声明可装 Android 4.4 及以上。
+- **只改数字会在 4.4 上一启动就崩**：主题原来写的是 `Theme.Material.Light.NoActionBar`，而 `Theme.Material` 是 Android 5.0 才有的，4.4 找不到父主题会直接 `Resources$NotFoundException`。拆成两份：`res/values/styles.xml` 用 `Theme.Holo.Light.NoActionBar`（API 11 起就有），新增 `res/values-v21/styles.xml` 给 5.0+ 用回 Material 主题。
+- **还有四个 API 21 才有的调用**，在 4.4 上会 `NoSuchMethodError` 闪退，全部包了 `Build.VERSION.SDK_INT >= 21` 判断：`setStatusBarColor`、`setNavigationBarColor`、`setMixedContentMode`、`setAcceptThirdPartyCookies`。
+- 内核门槛 `78` → `70`：站里 JS 只用到 `async/await`、模板串这些 ES6 语法，没有可选链（`?.`）和 `??`（那是 Chrome 80 才有的），Chrome 70 完全跑得动。门槛定高了会把「其实能用」的老机挡在提示页外面。
+- `build.sh` 改成 **minSdk 单一来源**：从 `AndroidManifest.xml` 读，`aapt2 link` 和 `d8 --min-api` 都跟着它走，不再三处各写一个数；打包最后还会回读书包里的 `minSdkVersion` 做比对，不一致就报错退出，并打印「可装：Android 4.4 及以上」这种一眼能懂的话。
+- 新包 `dist/fanqvan-1.6.apk`（versionCode 7 / versionName 1.6），同证书 `fanqvan.jks`，v1+v2+v3 `verified=true`，可覆盖 1.5 安装。
+
+---
+
 ## 2026-11-04
 
 **安卓 App 装不上：提示「应用与手机不兼容」**
