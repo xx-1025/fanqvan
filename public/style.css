@@ -2895,15 +2895,20 @@ button.msg-head-user {
   padding: 12px 22px;
   border-top: 2px dashed var(--line);
   background: var(--paper);
+  /* 别让聊天区把输入条挤扁：气泡再多，输入条也保持自己的高度 */
+  flex: 0 0 auto;
 }
 .msg-form textarea {
-  flex: 1; min-height: 42px; max-height: 120px; resize: none;
-  padding: 10px 16px; border-radius: 21px;
+  flex: 1; min-width: 0; min-height: 44px; max-height: 120px; resize: none;
+  padding: 9px 16px; border-radius: 22px;
   border: var(--bw) solid var(--ink); background: var(--cream);
-  outline: none; font-weight: 600; line-height: 1.5;
+  outline: none; font-weight: 600; font-size: 15px; line-height: 1.45;
+  /* 字号/行高写死，是为了不被安卓的「字体放大」二次撑高：
+     框还是 44 高、字却变成 20+，上下两截就被切掉了 */
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
 }
 .msg-form textarea:focus { background: #fff; box-shadow: var(--sh-sm); }
-.msg-form .msg-send { flex: none; height: 42px; padding: 0 24px; }
+.msg-form .msg-send { flex: none; height: 44px; padding: 0 24px; }
 
 @media (max-width: 760px) {
   /* 手机端：列表与对话二选一，进入对话时列表收起，靠顶部返回键回来。
@@ -2916,10 +2921,19 @@ button.msg-head-user {
     grid-template-columns: 1fr;
     height: calc(100vh - 190px);
     height: calc(100dvh - 190px);
-    height: calc(var(--fq-vh, 100dvh) - 190px);
+    /* 高度 = 看得见的高度 − 聊天框上方的真实留白 − 底部余量。
+       以前这里硬编码减 190（顶栏 64 + 横向导航 76 + 页面留白 50），只要机型、
+       系统字号、浏览器工具栏、App WebView 任一和估算不一样，算出来就偏高，
+       整个聊天框顶出屏幕下沿 —— 底部输入框正好被切掉一半。
+       现在 app.js 的 syncMsgTop() 会量出 .msg-page 的真实顶边写进 --fq-msg-top，
+       以实测为准；--fq-msg-top 还没有值时（首帧）才退回 190 这个老估算。 */
+    height: calc(var(--fq-vh, 100dvh) - var(--fq-msg-top, 190px) - 12px);
+    /* 兜底上限：哪怕量出来的顶边偏小/被别的样式干扰，底部也一定留出 12px，
+       不让输入框贴着屏幕边、被系统手势条或浏览器工具栏压住 */
+    max-height: calc(var(--fq-vh, 100dvh) - 120px);
     /* 400 会在 568 这类矮屏上把容器顶出视口，底部正好切掉输入框；
        键盘弹起可见区更矮时连 240 也要让位，所以取两者较小值 */
-    min-height: max(0px, min(240px, calc(var(--fq-vh, 100dvh) - 190px)));
+    min-height: max(0px, min(240px, calc(var(--fq-vh, 100dvh) - var(--fq-msg-top, 190px) - 12px)));
   }
   .hide-sm { display: none !important; }
   .msg-head { padding: 10px 12px; }
@@ -2938,4 +2952,12 @@ button.msg-head-user {
   .msg-menu button { padding: 5px 12px; font-size: 12.5px; }
   /* 手机端顶部太挤，私信入口交给下面的横向导航即可 */
   .topbar-right .msg-ico { display: none; }
+}
+
+/* 窄屏的对话标题栏很挤（返回 + 头像 + 名字 + 角色 + 已关注 + 主页），
+   名字会被挤成一字一行竖着排。把空间让给名字：先砍掉「已关注」这个可有可无的标 */
+@media (max-width: 420px) {
+  .msg-head { gap: 7px; padding: 9px 10px; }
+  .msg-head .msg-rel { display: none; }
+  .msg-head-name { font-size: 14px; }
 }

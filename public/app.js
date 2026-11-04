@@ -2714,6 +2714,10 @@ function render() {
       }
     }
   }
+
+  // 私信页的高度要按「聊天框上方实际占了多少」算（见 syncMsgTop）
+  syncMsgTop();
+  watchMsgTop();
 }
 
 /* ---------------------- 交互 ---------------------- */
@@ -3878,14 +3882,64 @@ window.addEventListener('scroll', hideSuggest, true);
 function syncViewportVar() {
   const vv = window.visualViewport;
   const h = Math.round((vv && vv.height) || window.innerHeight || 0);
-  if (h > 0) document.documentElement.style.setProperty('--fq-vh', h + 'px');
+  if (h > 0 && h !== _lastVh) {
+    _lastVh = h;
+    document.documentElement.style.setProperty('--fq-vh', h + 'px');
+  }
 }
+let _lastVh = 0;
+
+/* 私信页高度 = 看得见的高度 − 聊天框上方的真实留白。
+   那个留白（顶栏 + 横向导航 + 页面 padding）以前是写死一个 190 去减的，
+   机型字号、浏览器工具栏、App WebView 只要有一个不一样，算出来就偏高，
+   整个聊天框顶到屏幕外 —— 表现就是「点开一个人，底部输入框只剩一半」。
+   这里直接量 .msg-page 的顶边写进 --fq-msg-top，样式里减它，不再靠猜。
+   页面已经往下滚时不量：那时顶边会跟着滚上去，量出来偏小会把框拉高。 */
+function syncMsgTop() {
+  const root = document.documentElement;
+  const el = document.querySelector('.msg-page');
+  if (!el) { root.style.removeProperty('--fq-msg-top'); return; }
+  if (window.scrollY > 2) return;
+  const top = Math.round(el.getBoundingClientRect().top);
+  if (!(top > 40 && top < 2000)) return;   // 还没排版好（或明显异常）就别写
+  if (top === _lastMsgTop) return;
+  _lastMsgTop = top;
+  root.style.setProperty('--fq-msg-top', top + 'px');
+}
+let _lastMsgTop = 0;
+
+/* 顶栏 / 横向导航的高度会在排版稳定后才最终定下来（字体、图片、系统字号、
+   地址栏伸缩都会影响），只在 resize 时量一次容易量到中间态 —— 量小了照样会
+   把输入框推出屏幕。这里直接盯住这两个元素，尺寸一变就重新量。 */
+let _msgTopRO = null;
+function watchMsgTop() {
+  if (typeof ResizeObserver !== 'function') return;   // 老内核没有，靠 resize 兜底
+  const bar = document.querySelector('.topbar');
+  const nav = document.querySelector('.side-nav');
+  if (_msgTopRO) { _msgTopRO.disconnect(); _msgTopRO = null; }
+  if (!bar && !nav) return;
+  _msgTopRO = new ResizeObserver(() => syncMsgTop());
+  if (bar) _msgTopRO.observe(bar);
+  if (nav) _msgTopRO.observe(nav);
+}
+
+function syncLayout() {
+  syncViewportVar();
+  syncMsgTop();
+  requestAnimationFrame(() => { syncViewportVar(); syncMsgTop(); });
+}
+
 syncViewportVar();
-window.addEventListener('resize', syncViewportVar);
-window.addEventListener('orientationchange', syncViewportVar);
+syncMsgTop();
+window.addEventListener('resize', syncLayout);
+window.addEventListener('orientationchange', syncLayout);
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', syncViewportVar);
+  window.visualViewport.addEventListener('resize', syncLayout);
   window.visualViewport.addEventListener('scroll', syncViewportVar);
+}
+// 字体加载完行高会变、横向导航可能高几像素，再量一遍
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => syncLayout()).catch(() => { });
 }
 // 键盘弹起后输入框要留在可见区里（容器刚收缩时高度可能还没稳定，等一帧再滚）
 document.addEventListener('focusin', (e) => {
