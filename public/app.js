@@ -1222,7 +1222,7 @@ function profileHeadHtml(u, opts) {
       '<div class="profile-stats">' + (opts.stats || '') + '</div>' +
       (opts.joined ? '<div class="profile-joined">' + icon('calendar') + ' 加入于 ' + timeAgo(u.createdAt) + '</div>' : '') +
       '<div class="profile-tabs">' +
-        profileTabBtn('posts', '微博', opts.postCount || 0, tab) +
+        profileTabBtn('posts', '饭帖', opts.postCount || 0, tab) +
         profileTabBtn('photos', '相册', opts.photoCount || 0, tab) +
       '</div>' +
     '</div>';
@@ -1243,7 +1243,7 @@ function viewMine() {
     '<button class="btn-ghost btn-sm hide-desk" data-action="logout">退出</button>';
 
   const stats =
-    '<div><b>' + approved.length + '</b>微博</div>' +
+    '<div><b>' + approved.length + '</b>饭帖</div>' +
     relStat(me.followingCount || 0, '关注', 'following', me.id) +
     relStat(me.followerCount || 0, '粉丝', 'followers', me.id) +
     '<div><b>' + likes + '</b>获赞</div>' +
@@ -1287,7 +1287,7 @@ function viewUser() {
 
   // 粉丝 / 关注名单只有本人能看，非本人这两项只给数字（点不动的普通文字，不是灰按钮）
   const statsHtml =
-    '<div><b>' + (stats.posts || 0) + '</b>微博</div>' +
+    '<div><b>' + (stats.posts || 0) + '</b>饭帖</div>' +
     (d.isSelf
       ? relStat(u.followingCount || 0, '关注', 'following', u.id)
       : plainStat(u.followingCount || 0, '关注', 'TA 的关注名单不公开')) +
