@@ -904,6 +904,8 @@ function msgOut(m, me) {
   // 「仅自己删除」：对删过的本人不返回这条（对方仍看得到）
   if (meId && Array.isArray(m.deletedFor) && m.deletedFor.includes(meId)) return null;
   const o = { id: m.id, content: m.content, createdAt: m.createdAt, mine: meId ? m.fromId === meId : false };
+  // 能不能撤回由服务端算，避免客户端时钟不准时菜单判断跟接口对不上
+  if (meId && m.fromId === meId && !m.recalled && nowMs() - m.createdAt <= 2 * 60 * 1000) o.canRecall = true;
   if (m.recalled) {
     // 撤回后不再暴露原文；前端按「你/TA 撤回了一条消息」渲染
     o.recalled = true;
@@ -3990,6 +3992,7 @@ async function handleApi(req, res, pathname, query) {
 
     if (method === 'GET') {
       const after = Math.max(0, Number(query.searchParams.get('after') || 0));
+      const lastN = Math.min(200, Math.max(0, Number(query.searchParams.get('last') || 0)));
       const all = db.messages
         .filter((m) => m.toGroupId === g.id)
         .sort((a, b) => a.createdAt - b.createdAt);
@@ -4000,7 +4003,7 @@ async function handleApi(req, res, pathname, query) {
         if (m.fromId !== me.id && !m.readByIds.includes(me.id)) { m.readByIds.push(me.id); changed = true; }
       }
       if (changed) saveDB();
-      const list = after ? all.filter((m) => m.id > after) : all.slice(-200);
+      const list = after ? all.filter((m) => m.id > after) : (lastN ? all.slice(-lastN) : all.slice(-200));
       return json(res, 200, {
         group: groupOut(g, me),
         messages: list.map((x) => msgOut(x, me)).filter(Boolean)
@@ -4044,9 +4047,10 @@ async function handleApi(req, res, pathname, query) {
     if (!peer) return json(res, 404, { error: '用户不存在' });
     if (peer.id === me.id) return json(res, 400, { error: '不能给自己发私信' });
 
-    // 聊天记录：默认返回最近 200 条；带 after= 时只回增量（轮询用）
+    // 聊天记录：默认最近 200 条；after= 只回增量；last=N 取最近 N 条（轮询核对撤回/删除用）
     if (method === 'GET') {
       const after = Math.max(0, Number(query.searchParams.get('after') || 0));
+      const lastN = Math.min(200, Math.max(0, Number(query.searchParams.get('last') || 0)));
       const all = db.messages
         .filter((m) => !m.toGroupId &&
           ((m.fromId === me.id && m.toId === peer.id) || (m.fromId === peer.id && m.toId === me.id)))
@@ -4057,7 +4061,7 @@ async function handleApi(req, res, pathname, query) {
         if (m.toId === me.id && !m.read) { m.read = true; changed = true; }
       }
       if (changed) saveDB();
-      const list = after ? all.filter((m) => m.id > after) : all.slice(-200);
+      const list = after ? all.filter((m) => m.id > after) : (lastN ? all.slice(-lastN) : all.slice(-200));
       return json(res, 200, {
         peer: briefUser(peer),
         relation: relationTag(me, peer),

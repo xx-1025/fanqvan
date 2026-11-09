@@ -2028,7 +2028,7 @@ function threadBodyHtml() {
     lastAt = m.createdAt;
     // 撤回的：居中灰条占位，不画气泡
     if (m.recalled) {
-      out += '<div class="msg-row recalled-row">' + recalledHtml(m, t) + '</div>';
+      out += '<div class="msg-row recalled-row" data-mid="' + m.id + '">' + recalledHtml(m, t) + '</div>';
       continue;
     }
     const card = m.postId ? shareCardHtml(m) : '';
@@ -2104,14 +2104,15 @@ function bindMsgInput() {
   grow();
 }
 
-// 点气泡弹出的操作菜单（撤回 / 引用 / 删除）
+// 点气泡弹出的操作菜单：引用 / 撤回 / 删除
+// 撤回只对自己 2 分钟内的消息出现。服务端给 canRecall，本地再按时间补一枪 ——
+// 页面停着不动时 canRecall 不会自己过期，不补判会出现「点了报超时」。
 function msgMenuHtml(m) {
-  const msgs = (state.data.thread && state.data.thread.messages) || [];
-  const mine = msgs.find((x) => x.id === m.id && x.mine);
-  const canRecall = m.mine && (Date.now() - m.createdAt < 2 * 60 * 1000);
+  const inTime = Date.now() - m.createdAt <= 2 * 60 * 1000 + 5000;
+  const canRecall = !m.recalled && m.canRecall === true && inTime;
   return '<div class="msg-menu">' +
-      (canRecall ? '<button data-action="msg-recall" data-id="' + m.id + '">' + icon('repost') + '撤回</button>' : '') +
       '<button data-action="msg-quote" data-id="' + m.id + '">' + icon('comment') + '引用</button>' +
+      (canRecall ? '<button data-action="msg-recall" data-id="' + m.id + '">' + icon('repost') + '撤回</button>' : '') +
       '<button class="danger" data-action="msg-delete" data-id="' + m.id + '">' + icon('trash') + '删除</button>' +
     '</div>';
 }
@@ -2180,16 +2181,38 @@ function startMsgPoll() {
     const tid = threadRouteId();
     if (!tid || !state.data.thread) return;
     try {
-      const msgs = state.data.thread.messages || [];
-      const after = msgs.length ? msgs[msgs.length - 1].id : 0;
-      const d = await api(msgApiBase(tid) + '?after=' + after);
-      if (d.messages && d.messages.length) {
-        state.data.thread.messages = msgs.concat(d.messages);
-        paintThread();
-      }
+      /* 拉最近 40 条做核对，而不是只拉 after 之后的新消息：
+         撤回和「仅自己删除」改的是已有消息，只拉增量永远同步不到 —— 对方撤回了这边还看得见。 */
+      const d = await api(msgApiBase(tid) + '?last=40');
+      mergeThread(d.messages || []);
       loadConversations().then(paintConversations).catch(() => {});
     } catch (e) { /* ignore */ }
   }, 4000);
+}
+
+/* 把最新一页合并进本地：新消息追加、撤回/引用失效替换、对方删掉的移除 */
+function mergeThread(fresh) {
+  const t = state.data.thread;
+  if (!t || !fresh.length) return;
+  const msgs = t.messages || (t.messages = []);
+  const at = new Map(msgs.map((m, i) => [m.id, i]));
+  let changed = false;
+  const minFresh = fresh[0].id;
+  for (const m of fresh) {
+    const i = at.get(m.id);
+    if (i === undefined) { msgs.push(m); changed = true; continue; }
+    const old = msgs[i];
+    if (old.recalled !== m.recalled || old.content !== m.content ||
+        !!(old.quote && old.quote.gone) !== !!(m.quote && m.quote.gone)) {
+      msgs[i] = Object.assign(old, m);
+      changed = true;
+    }
+  }
+  // 这一页里已经不返回的，是对自己删除了
+  const keepIds = new Set(fresh.map((m) => m.id));
+  const kept = msgs.filter((m) => m.id < minFresh || keepIds.has(m.id));
+  if (kept.length !== msgs.length) { t.messages = kept; changed = true; }
+  if (changed) paintThread();
 }
 
 async function sendMessage(tid) {
