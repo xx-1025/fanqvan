@@ -174,8 +174,10 @@ function rid(n) { return crypto.randomBytes(n || 12).toString('hex'); }
 
 const MAX_PW = 72;            // scrypt 吃得住，再长没意义还费 CPU（这是技术上限，不是体验限制）
 
-/* 头像框：白名单，只认这几款（'' = 不戴框）。前端 CSS 里一一对应，别只加一边。 */
-const AVATAR_FRAMES = ['sunset', 'gold', 'rose', 'mint', 'violet', 'night'];
+/* 头像框：白名单，只认这几款（'' = 不戴框）。前端 CSS 里一一对应，别只加一边。
+   sunset/gold/rose/mint/violet/night 是 2026-11-09 第一批的老 key（只换了视觉没改名，
+   线上已存的 user.frame 才不会丢）；aurora / candy 是第二批新增的。 */
+const AVATAR_FRAMES = ['sunset', 'gold', 'rose', 'mint', 'violet', 'night', 'aurora', 'candy'];
 
 /* 常见弱口令（含本项目的初始口令）。比对时忽略大小写。 */
 const WEAK_PW = new Set([

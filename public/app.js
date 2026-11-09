@@ -58,6 +58,54 @@ const state = {
   groupName: ''          // 建群弹窗里的群名称草稿
 };
 
+/* ---------------------- 深浅色 ----------------------
+   三种状态：没存过（''）= 跟随系统；'light' / 'dark' = 用户手动选的。
+   首帧由 CSS 的 @media (prefers-color-scheme: dark) 兜底，脚本只负责
+   「手动选过」的那一路 —— 所以系统是深色时不会先白闪一下再变黑。 */
+const THEME_KEY = 'fq_theme';
+const THEME_COLOR = { light: '#ff8a3d', dark: '#111114' };
+
+function savedTheme() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === 'light' || v === 'dark' ? v : '';
+  } catch (e) { return ''; }
+}
+function systemDark() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function currentTheme() {
+  return savedTheme() || (systemDark() ? 'dark' : 'light');
+}
+function applyTheme(t) {
+  const root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
+  else root.removeAttribute('data-theme');
+  // 手机浏览器的状态栏 / 地址栏颜色跟着走，不然深色页面顶上是条白带
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', THEME_COLOR[t] || THEME_COLOR[currentTheme()]);
+}
+function themeBtnHtml() {
+  const dark = currentTheme() === 'dark';
+  return '<button class="bell theme-btn" data-action="theme-toggle" title="' +
+    (dark ? '切到浅色' : '切到深色') + '" aria-label="切换深浅色">' +
+    icon(dark ? 'sun' : 'moon') + '</button>';
+}
+function toggleTheme() {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+  applyTheme(next);
+  // 只换图标和提示，不整页 render —— 整页重绘会打断正在打的字
+  const dark = next === 'dark';
+  $$('.theme-btn').forEach((b) => {
+    b.innerHTML = icon(dark ? 'sun' : 'moon');
+    b.setAttribute('title', dark ? '切到浅色' : '切到深色');
+  });
+  toast(dark ? '深色模式已开' : '浅色模式已开', 'ok', 'check');
+}
+
+applyTheme(savedTheme());   // 脚本在 body 末尾，这行执行时 <html> 一定已存在
+
 /* ---------------------- 基础工具 ---------------------- */
 
 function esc(s) {
@@ -105,11 +153,13 @@ function avatarHtml(u, size) {
   if (size == null) size = 44;
   if (!u) u = { id: 0, nickname: '?' };
   const box = size ? 'width:' + size + 'px;height:' + size + 'px' : '';
-  // 头像框：class 只认纯小写名（后端也是白名单），环宽按头像尺寸走 ——
-  // 20px 的小头像套 3px 环就只剩中间一点了，所以固定比例而不是固定像素
+  // 头像框：class 只认纯小写名（后端也是白名单）
   const frame = /^[a-z]{3,10}$/.test(u.frame || '') ? u.frame : '';
-  const fw = size ? Math.max(1, Math.round(size * 0.05 * 10) / 10) : 3;
-  const fv = frame ? '--fb:' + fw + 'px;--fg:' + fw + 'px;' : '';
+  // 环宽：环是画在头像**内部**的一圈（见 style.css 的 frame 段），不往外溢。
+  // 有具体尺寸就按 6.5% 算（下限 3px，34px 以下 2px）；size=0 是「尺寸交给 CSS」
+  // 的大头像（顶栏 30px / 主页 76~88px），这时不写内联，由 CSS 按场景给。
+  const fw = size ? (size < 34 ? 2 : Math.max(3, Math.round(size * 0.065))) : 0;
+  const fv = frame && size ? '--fw:' + fw + 'px;' : '';
   const fc = frame ? ' frame-' + frame : '';
   if (u.avatar) {
     return '<span class="avatar' + fc + '" style="' + fv + box + '">' +
@@ -181,7 +231,9 @@ const ICON_PATHS = {
   ban: '<circle cx="12" cy="12" r="8.2"/><path d="M6.3 6.3 17.7 17.7"/>',
   inbox: '<path d="M3.8 12.8 6.9 5.6h10.2l3.1 7.2v5.6a1.8 1.8 0 0 1-1.8 1.8H5.6a1.8 1.8 0 0 1-1.8-1.8v-5.6Z"/><path d="M3.8 12.8h4.9l1.2 2.5h4.2l1.2-2.5h4.9"/>',
   warn: '<path d="M12 4.4 20.9 19.7H3.1L12 4.4Z"/><path d="M12 10.2v4.2"/><circle cx="12" cy="17.4" r="1" fill="currentColor" stroke="none"/>',
-  at: '<circle cx="12" cy="12" r="3.6"/><path d="M15.6 12v1.7a2.6 2.6 0 0 0 5.2 0V12a8.8 8.8 0 1 0-3.5 7"/>'
+  at: '<circle cx="12" cy="12" r="3.6"/><path d="M15.6 12v1.7a2.6 2.6 0 0 0 5.2 0V12a8.8 8.8 0 1 0-3.5 7"/>',
+  moon: '<path d="M20.3 14.3A8.4 8.4 0 0 1 9.7 3.7 8.6 8.6 0 1 0 20.3 14.3Z"/>',
+  sun: '<circle cx="12" cy="12" r="4.1"/><path d="M12 2.8v2.1M12 19.1v2.1M4.5 4.5l1.5 1.5M18 18l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.5 19.5 6 18M18 6l1.5-1.5"/>'
 };
 
 function icon(name, cls) {
@@ -639,6 +691,7 @@ function shell() {
           '<button class="bell' + (unread ? ' has' : '') + '" data-action="note-toggle" title="消息">' + icon('bell') +
             (unread ? '<span class="bell-dot">' + (unread > 99 ? '99+' : unread) + '</span>' : '') +
           '</button>' +
+          themeBtnHtml() +
           '<a class="user-chip" href="#/mine">' + avatarHtml(me, 0) + '<span>' + esc(me.nickname) + '</span></a>' +
           '<button class="btn-ghost" data-action="logout">退出</button>'
         : '<a class="btn-primary" href="#/login" style="height:36px">登录 / 注册</a>') +
@@ -2577,11 +2630,13 @@ function viewEdit() {
     '<img src="' + a + '" alt=""></button>').join('');
 
   // 头像框：预览直接套在「当前头像」上，选之前就能看到效果。点一下立即存，和换头像一个节奏。
+  // key 与 server.js 的 AVATAR_FRAMES、style.css 的 .avatar.frame-* 三处必须一致。
   const FRAMES = [
-    ['', '不戴'], ['sunset', '落日橙'], ['gold', '香槟金'],
-    ['rose', '玫瑰粉'], ['mint', '薄荷绿'], ['violet', '葡萄紫'], ['night', '黑金']
+    ['', '不戴'], ['sunset', '日出'], ['gold', '鎏金'],
+    ['rose', '樱粉'], ['mint', '薄荷'], ['violet', '星河'],
+    ['aurora', '极光'], ['candy', '糖果'], ['night', '墨玉']
   ];
-  const frameRow = '<div class="frame-row"><b>头像框</b><div class="frame-opts">' +
+  const frameRow = '<div class="frame-row"><b>头像框<em>选一个，立即生效</em></b><div class="frame-opts">' +
     FRAMES.map(([k, label]) => k === ''
       ? '<button class="frame-opt none' + (state.editFrame === '' ? ' on' : '') +
         '" data-action="pick-frame" data-frame="" title="' + label + '"><span class="frame-none">无</span></button>'
@@ -3950,6 +4005,7 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'save-profile': saveProfile(); break;
+    case 'theme-toggle': toggleTheme(); break;
     case 'change-password': changePassword(); break;
     case 'apply-reviewer': applyReviewer(); break;
     case 'pick-avatar': {
