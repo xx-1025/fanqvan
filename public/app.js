@@ -1204,8 +1204,13 @@ function profileHeadHtml(u, opts) {
   opts = opts || {};
   const tab = state.profileTab === 'photos' ? 'photos' : 'posts';
   const act = opts.act || '';
+  // 自定义封面：只认站内上传的地址，别的一律回落到默认渐变
+  const cv = (u && /^\/uploads\/[A-Za-z0-9._-]+$/.test(String(u.cover || ''))) ? u.cover : '';
   return '<div class="card profile-head">' +
-      '<div class="profile-cover"></div>' +
+      '<div class="profile-cover' + (cv ? ' has-img' : '') + '"' +
+        (cv ? " style=\"background-image:url('" + cv + "')\"" : '') + '>' +
+        (opts.coverAct || '') +
+      '</div>' +
       '<div class="profile-info">' + avatarHtml(u, 0) +
         '<div class="profile-name">' +
           '<h2>' + esc(u.nickname) + roleBadge(u) + '</h2>' +
@@ -1245,8 +1250,14 @@ function viewMine() {
     (posts.filter((p) => p.status === 'pending').length
       ? pendingStat(posts.filter((p) => p.status === 'pending').length) : '');
 
+  const coverAct = '<div class="cover-act">' +
+      '<button class="cover-btn" data-action="cover-pick">' + icon('image') + (me.cover ? '换封面' : '设置封面') + '</button>' +
+      (me.cover ? '<button class="cover-btn plain" data-action="cover-reset">恢复默认</button>' : '') +
+    '</div>' +
+    '<input type="file" id="cover-input" accept="image/*" hidden>';
+
   return profileHeadHtml(me, {
-      act: act, stats: stats, joined: true,
+      act: act, stats: stats, joined: true, coverAct: coverAct,
       postCount: posts.length, photoCount: photos.length
     }) +
     '<div id="profile-list">' +
@@ -2969,6 +2980,31 @@ async function uploadImage(file) {
   return r.url;
 }
 
+/* 主页封面：选一张图上传后写进 /api/me，空字符串 = 恢复默认渐变 */
+async function pickCover(file) {
+  const box = $('.profile-cover');
+  if (box) box.classList.add('busy');
+  try {
+    const url = await uploadImage(file);
+    const d = await api('/api/me', { method: 'PATCH', body: { cover: url } });
+    state.me.cover = d.user.cover;
+    render();
+    toast('封面换好了', 'ok', 'check');
+  } catch (e) {
+    const b = $('.profile-cover');
+    if (b) b.classList.remove('busy');
+    toast(e.message, 'err');
+  }
+}
+async function resetCover() {
+  try {
+    const d = await api('/api/me', { method: 'PATCH', body: { cover: '' } });
+    state.me.cover = d.user.cover;
+    render();
+    toast('已恢复默认封面', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
 async function onFiles(files) {
   const room = 9 - state.draftImages.length;
   if (room <= 0) { toast('最多 9 张图片，先删掉几张再选', 'err'); return; }
@@ -3711,6 +3747,12 @@ document.addEventListener('click', (e) => {
     case 'user-unadmin': adminUser(id, 'unadmin'); break;
     case 'user-delete': adminUser(id, 'delete'); break;
     case 'follow': toggleFollow(id, el); break;
+    case 'cover-pick': {
+      const inp = $('#cover-input');
+      if (inp) inp.click();
+      break;
+    }
+    case 'cover-reset': resetCover(); break;
     case 'profile-tab': {
       const t = el.getAttribute('data-tab') === 'photos' ? 'photos' : 'posts';
       if (state.profileTab === t) break;
@@ -3878,6 +3920,12 @@ document.addEventListener('change', (e) => {
     if (row) row.classList.add('busy');
     uploadImage(f).then((url) => { state.editAvatar = url; render(); toast('头像已更新，记得保存', 'ok'); })
       .catch((err) => { if (row) row.classList.remove('busy'); toast(err.message, 'err'); });
+    e.target.value = '';
+  }
+  if (e.target.id === 'cover-input') {
+    const f = e.target.files && e.target.files[0];
+    if (f && /^image\//.test(f.type)) pickCover(f);
+    else if (f) toast('选一张图片吧', 'err');
     e.target.value = '';
   }
   if (e.target.id === 'user-search') {

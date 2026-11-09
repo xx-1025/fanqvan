@@ -831,7 +831,7 @@ function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, username: u.username, nickname: u.nickname,
-    role: u.role, bio: u.bio, avatar: u.avatar, createdAt: u.createdAt,
+    role: u.role, bio: u.bio, avatar: u.avatar, cover: u.cover || '', createdAt: u.createdAt,
     followerCount: db.users.filter((x) => (x.follows || []).includes(u.id)).length,
     followingCount: (u.follows || []).length
   };
@@ -2850,6 +2850,14 @@ async function handleApi(req, res, pathname, query) {
         return json(res, 400, { error: '头像地址不合法' });
       }
       me.avatar = av;
+    }
+    // 主页封面：只允许站内上传的文件，空字符串 = 恢复默认渐变
+    if (b.cover !== undefined) {
+      const cv = String(b.cover || '');
+      if (cv && !/^\/uploads\/[a-zA-Z0-9._-]+$/.test(cv)) {
+        return json(res, 400, { error: '封面地址不合法' });
+      }
+      me.cover = cv;
     }
     saveDB();
     return json(res, 200, { user: publicUser(me) });

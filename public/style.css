@@ -3306,6 +3306,35 @@ a:hover { color: var(--brand-2); }
   background-size: 96px 96px;
   opacity: .28;
 }
+/* 用户自己传的封面：铺满居中裁切，吉祥物水印让位 */
+.profile-cover.has-img {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.profile-cover.has-img::after { display: none; }
+
+/* 封面右下角的操作：底色半透明，图片再花也认得出 */
+.cover-act {
+  position: absolute; right: 10px; bottom: 10px;
+  display: flex; gap: 6px; z-index: 2;
+}
+.cover-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 10px; border: 0; border-radius: 999px;
+  background: rgba(0, 0, 0, .42); color: #fff;
+  font: inherit; font-size: 12px; line-height: 1.2; cursor: pointer;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.cover-btn:hover { background: rgba(0, 0, 0, .56); }
+.cover-btn.plain { background: rgba(255, 255, 255, .92); color: #333; }
+.cover-btn svg { width: 13px; height: 13px; }
+.profile-cover.busy { opacity: .65; }
+.profile-cover.busy::before {
+  content: "上传中…"; position: absolute; inset: 0; z-index: 3;
+  display: grid; place-items: center; color: #fff; font-size: 13px;
+  background: rgba(0, 0, 0, .32);
+}
 .profile-info {
   display: flex; align-items: flex-end; gap: 12px;
   padding: 0 16px;
