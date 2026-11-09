@@ -456,7 +456,7 @@ async function router() {
   if (r.name === 'favs') { state.loading = false; go('#/mine?tab=favs'); return; }
   state.loading = true;
   // 换一个人（或回自己主页）时回到「饭帖」页签，别把上一个人的「相册」带过去；
-  // 只有左导航「我的收藏」带的 ?tab=favs 才直接落在收藏页签
+  // 「我的收藏」已经并进主页页签，`?tab=favs` 留给旧链接和外部跳转用
   if (r.name === 'user') state.profileTab = 'posts';
   if (r.name === 'mine') {
     const t = r.q.get('tab');
@@ -662,11 +662,7 @@ function sidebar() {
       item('feed', '#/', icon('home'), '首页', '', cur === 'feed' && !onFollowing) +
       item('hot', '#/hot', icon('fire'), '热门') +
       (me ? item('following', '#/?tab=following', icon('users'), '关注', '', onFollowing) : '') +
-      item('mine', '#/mine', icon('user'), '我的主页', '', cur === 'mine' && state.profileTab !== 'favs') +
-      (me
-        ? item('favs', '#/mine?tab=favs', icon('star'), '我的收藏', '',
-            cur === 'mine' && state.profileTab === 'favs')
-        : '') +
+      item('mine', '#/mine', icon('user'), '我的主页') +
       (me
         ? '<a class="nav-item' + (cur === 'messages' ? ' active' : '') + '" href="#/messages">' +
             '<span class="nav-icon">' + icon('chat') + '</span><span class="nav-label">私信</span>' +
@@ -959,7 +955,7 @@ function postCard(p, opts) {
         '<button class="act" data-action="comment-toggle" data-id="' + p.id + '">' +
           '<span class="ico">' + icon('comment') + '</span>' + (p.commentCount || '评论') + '</button>' +
         '<button class="act ' + (p.faved ? 'on' : '') + '" data-action="fav" data-id="' + p.id + '"' +
-          ' title="' + (p.faved ? '取消收藏' : '收藏这条饭帖，之后在「我的收藏」里找') + '">' +
+          ' title="' + (p.faved ? '取消收藏' : '收藏这条饭帖，之后在自己主页的「收藏」里找') + '">' +
           '<span class="ico">' + icon(p.faved ? 'star-fill' : 'star') + '</span>' +
           (p.favCount || '收藏') + '</button>' +
         '<button class="act ' + (p.liked ? 'on on-like' : '') + '" data-action="like" data-id="' + p.id + '">' +
@@ -3108,7 +3104,7 @@ async function toggleFav(id, btn) {
     const d = await api('/api/posts/' + id + '/fav', { method: 'POST' });
     const on = !!d.post.faved;
     btn.classList.toggle('on', on);
-    btn.title = on ? '取消收藏' : '收藏这条饭帖，之后在「我的收藏」里找';
+    btn.title = on ? '取消收藏' : '收藏这条饭帖，之后在自己主页的「收藏」里找';
     btn.innerHTML = '<span class="ico">' + icon(on ? 'star-fill' : 'star') + '</span>' +
       (d.post.favCount || '收藏');
     const local = (state.data.posts || []).find((p) => p.id === Number(id));
@@ -3121,7 +3117,7 @@ async function toggleFav(id, btn) {
     }
     // 主页「收藏」页签上的数字跟着变，别收藏完还显示旧数
     state.data.favTotal = Math.max(0, (state.data.favTotal || 0) + (on ? 1 : -1));
-    toast(on ? '已收藏，去「我的收藏」就能找到' : '已取消收藏', 'ok', on ? 'star-fill' : 'star');
+    toast(on ? '已收藏，在自己主页的「收藏」里能看到' : '已取消收藏', 'ok', on ? 'star-fill' : 'star');
     // 在收藏页签里取消收藏 → 这条要从列表里消失，不能只换个图标留着
     if (!on && state.data.favs) {
       state.data.favs = state.data.favs.filter((p) => p.id !== Number(id));
