@@ -2546,6 +2546,7 @@ function viewEdit() {
           '<label class="av-opt upload"><input type="file" id="avatar-input" accept="image/*" hidden>＋<span>上传</span></label>' +
         '</div>' +
       '</div>' +
+      '<p class="av-tip">' + icon('check') + ' 点头像或「上传」选一张，选完立即保存，不用再点下面的按钮</p>' +
       '<div class="field"><label>昵称</label><input id="edit-nickname" value="' + esc(me.nickname) + '" maxlength="24"></div>' +
       '<div class="field"><label>简介</label><textarea id="edit-bio" maxlength="160" placeholder="介绍一下你的拿手菜…">' + esc(me.bio || '') + '</textarea></div>' +
       '<button class="btn-primary" data-action="save-profile" style="height:40px;margin-top:6px">保存资料</button>' +
@@ -3366,6 +3367,20 @@ async function saveProfile() {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+/* 头像单独保存：选中内置头像或上传完成就立刻写库，不必再往下找「保存资料」。
+   之前头像只是暂存在 state.editAvatar 里，得再点一次保存才生效，
+   用户看着像「换头像没有保存键」。昵称简介仍走 saveProfile（会带上当前头像，重复提交无害）。 */
+async function saveAvatar(url) {
+  if (!url) return;
+  try {
+    const d = await api('/api/me', { method: 'PATCH', body: { avatar: url } });
+    if (d && d.user) state.me = d.user;
+    state.editAvatar = url;
+    toast('头像已保存', 'ok', 'check');
+  } catch (e) { toast(e.message, 'err'); }
+  render();
+}
+
 async function changePassword() {
   const oldPassword = ($('#pw-old') || {}).value || '';
   const newPassword = ($('#pw-new') || {}).value || '';
@@ -3810,6 +3825,7 @@ document.addEventListener('click', (e) => {
     case 'pick-avatar': {
       state.editAvatar = el.getAttribute('data-av');
       render();
+      saveAvatar(state.editAvatar);
       break;
     }
     case 'review-mode': {
@@ -3918,7 +3934,7 @@ document.addEventListener('change', (e) => {
     if (!f) return;
     const row = e.target.closest('.av-picks');
     if (row) row.classList.add('busy');
-    uploadImage(f).then((url) => { state.editAvatar = url; render(); toast('头像已更新，记得保存', 'ok'); })
+    uploadImage(f).then((url) => { if (row) row.classList.remove('busy'); saveAvatar(url); })
       .catch((err) => { if (row) row.classList.remove('busy'); toast(err.message, 'err'); });
     e.target.value = '';
   }

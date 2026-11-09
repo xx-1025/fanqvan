@@ -2165,7 +2165,13 @@ html.modal-open, body.modal-open { overflow: hidden; }
 }
 .edit-card .field textarea:focus { background: #fff; box-shadow: var(--sh-sm); }
 
-.edit-avatar-row { display: flex; gap: 18px; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; }
+.edit-avatar-row { display: flex; gap: 18px; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; }
+/* 头像选完即保存，别再让人找「保存资料」 */
+.av-tip {
+  display: flex; align-items: center; gap: 5px;
+  margin: 0 0 18px; font-size: 12.5px; font-weight: 400; color: #939393;
+}
+.av-tip svg { width: 13px; height: 13px; color: #b9b9b9; flex: none; }
 .edit-avatar .avatar { border-width: 3px; box-shadow: var(--sh); }
 .av-picks { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
 .av-opt {
@@ -2536,10 +2542,15 @@ html.modal-open, body.modal-open { overflow: hidden; }
   grid-template-columns: 340px minmax(0, 1fr);
   /* 聊天窗口做大：以前是 min(72vh, 640px)，900 高的屏幕上只有 640、手机上只占 66%，
      聊天区显得又小又挤。现在按视口弹性给高度，并留足顶部/底部空间不被遮挡。
-     用 dvh 兜底手机地址栏伸缩；不支持的浏览器用上面的 vh。 */
+     用 dvh 兜底手机地址栏伸缩；不支持的浏览器用上面的 vh。
+     注意 min-height 不能写死 460：窗口矮（或浏览器缩放 125%）时会把容器硬撑到
+     视口以外，输入条被顶出去，页面上只看得到聊天记录 —— 这就是「输入框没有了」。 */
   height: min(84vh, 860px);
   height: min(calc(100dvh - 136px), 860px);
-  min-height: 460px;
+  min-height: 0;
+  /* 行高钉死成容器高度：不然会话列表内容多时会把这一行撑高，
+     聊天区的输入条跟着被推到容器外（overflow:hidden 裁掉 = 看不见输入框） */
+  grid-template-rows: minmax(0, 1fr);
   background: var(--paper);
   border: var(--bw) solid var(--line);
   border-radius: var(--r);
@@ -3602,7 +3613,10 @@ a:hover { color: var(--brand-2); }
    ========================================================================= */
 .msg-page .msg-body {
   display: block;
-  padding: 10px 14px 6px;
+  flex: 1 1 auto;
+  /* 矮窗口下必须允许收缩到 0，否则消息撑住 min-content 高度，输入条会被顶出容器 */
+  min-height: 0;
+  padding: 10px 14px 12px;
   background: #f7f7f7;
   overflow-y: auto;
   overscroll-behavior: contain;
