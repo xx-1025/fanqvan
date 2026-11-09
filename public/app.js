@@ -16,7 +16,7 @@ const state = {
   route: { name: 'feed', id: '' },
   postFrom: '',          // 进详情页之前在哪，用来让「返回」回到原页面
   data: {},
-  // 主页的页签：微博 / 相册（切换只重画列表，不重新拉数据）
+  // 主页的页签：饭帖 / 相册 / 收藏（收藏只有自己主页有；切换只重画列表，不重新拉数据）
   profileTab: 'posts',
   draft: '',
   draftImages: [],
@@ -313,7 +313,6 @@ function listRequest() {
   if (r.name === 'user') return { scope: 'user', userId: Number(r.id) || 0 };
   if (r.name === 'search') return { scope: 'feed', q: state.keyword };
   if (r.name === 'hot') return { scope: 'hot' };
-  if (r.name === 'favs') return { scope: 'favs' };
   return { scope: state.homeTab === 'following' ? 'following' : 'feed' };
 }
 
@@ -453,9 +452,16 @@ async function router() {
   stopMsgPoll();
   // #/notifications 不是独立页面（通知是浮层），统一回到首页
   if (r.name === 'notifications') { state.loading = false; go('#/'); return; }
+  // 收藏已经是主页的第三个页签，旧链接 #/favs 一律转到那儿，别留两套入口
+  if (r.name === 'favs') { state.loading = false; go('#/mine?tab=favs'); return; }
   state.loading = true;
-  // 换一个人（或回自己主页）时回到「微博」页签，别把上一个人的「相册」带过去
-  if (r.name === 'mine' || r.name === 'user') state.profileTab = 'posts';
+  // 换一个人（或回自己主页）时回到「饭帖」页签，别把上一个人的「相册」带过去；
+  // 只有左导航「我的收藏」带的 ?tab=favs 才直接落在收藏页签
+  if (r.name === 'user') state.profileTab = 'posts';
+  if (r.name === 'mine') {
+    const t = r.q.get('tab');
+    state.profileTab = t === 'favs' ? 'favs' : (t === 'photos' ? 'photos' : 'posts');
+  }
   // 搜索页的关键词来自 URL（顶部搜索框、热搜话题、分享链接都走这里）
   state.keyword = r.name === 'search' ? (r.q.get('q') || '') : '';
   // 顶栏输入框只在这两个场景回填：进搜索页带关键词、离开搜索页清空
@@ -466,13 +472,21 @@ async function router() {
   render();
 
   try {
-    if (r.name === 'feed' || r.name === 'hot' || r.name === 'favs' || r.name === 'mine' || r.name === 'user' || r.name === 'search') {
-      if ((r.name === 'mine' || r.name === 'favs') && !state.me) { state.loading = false; go('#/login'); return; }
+    if (r.name === 'feed' || r.name === 'hot' || r.name === 'mine' || r.name === 'user' || r.name === 'search') {
+      if (r.name === 'mine' && !state.me) { state.loading = false; go('#/login'); return; }
       if (r.name === 'user' && r.id === 'me') { state.loading = false; go('#/mine'); return; }
       const jobs = [
         loadList(false),
         refreshSidebar()
       ];
+      // 收藏是主页里的页签，进主页时顺手把收藏拉回来：
+      // 页签上的数字要先有，切过去也不用再等一次请求
+      if (r.name === 'mine') {
+        jobs.push(api('/api/posts?scope=favs&limit=20').then((d) => {
+          state.data.favs = d.posts || [];
+          state.data.favTotal = d.total || 0;
+        }));
+      }
       if (r.name === 'user') {
         jobs.push(api('/api/users/' + encodeURIComponent(r.id)).then((d) => { state.data.profile = d; }));
       }
@@ -592,7 +606,7 @@ function tabbar() {
     '<a class="tab' + on(cur === 'messages') + '" href="#/messages">' +
       icon('chat') + '<span>消息</span>' +
       (dot ? '<i class="tb-dot">' + (dot > 99 ? '99+' : dot) + '</i>' : '') + '</a>' +
-    '<a class="tab' + on(cur === 'mine' || cur === 'user' || cur === 'edit' || cur === 'favs') + '" href="#/mine">' +
+    '<a class="tab' + on(cur === 'mine' || cur === 'user' || cur === 'edit') + '" href="#/mine">' +
       icon('user') + '<span>我</span></a>' +
   '</nav>';
 }
@@ -648,8 +662,11 @@ function sidebar() {
       item('feed', '#/', icon('home'), '首页', '', cur === 'feed' && !onFollowing) +
       item('hot', '#/hot', icon('fire'), '热门') +
       (me ? item('following', '#/?tab=following', icon('users'), '关注', '', onFollowing) : '') +
-      item('mine', '#/mine', icon('user'), '我的主页') +
-      (me ? item('favs', '#/favs', icon('star'), '我的收藏') : '') +
+      item('mine', '#/mine', icon('user'), '我的主页', '', cur === 'mine' && state.profileTab !== 'favs') +
+      (me
+        ? item('favs', '#/mine?tab=favs', icon('star'), '我的收藏', '',
+            cur === 'mine' && state.profileTab === 'favs')
+        : '') +
       (me
         ? '<a class="nav-item' + (cur === 'messages' ? ' active' : '') + '" href="#/messages">' +
             '<span class="nav-icon">' + icon('chat') + '</span><span class="nav-label">私信</span>' +
@@ -1052,16 +1069,6 @@ function viewHot() {
     viewComposer() + postList(state.data.posts || []);
 }
 
-function viewFavs() {
-  const list = state.data.posts || [];
-  return '<div class="card page-head"><div>' +
-      '<h2>' + icon('star-fill') + '我的收藏</h2>' +
-      '<div class="sub">只有你自己能看到。想找灵感的时候翻这儿，不用再翻聊天记录。</div></div></div>' +
-    postList(list, {
-      emptyText: '还没有收藏。看到喜欢的饭帖，点一下下面的「收藏」就存到这儿了。'
-    });
-}
-
 // 搜索结果页的标题区：关键词和「共找到 n 条」都在这儿，边打边搜时只换这块的 innerHTML
 function searchHeadInner(kw) {
   return '<div>' +
@@ -1221,7 +1228,9 @@ function photoGrid(posts) {
 // 只有按钮和部分数字的可见性不同，所以拼一份，避免两处各写一遍又慢慢长歪。
 function profileHeadHtml(u, opts) {
   opts = opts || {};
-  const tab = state.profileTab === 'photos' ? 'photos' : 'posts';
+  const want = state.profileTab;
+  // 收藏是私人书签，只有自己主页才有这一栏；别人的主页即便状态残留也要落回饭帖
+  const tab = want === 'photos' ? 'photos' : (want === 'favs' && opts.showFavs ? 'favs' : 'posts');
   const act = opts.act || '';
   // 自定义封面：只认站内上传的地址，别的一律回落到默认渐变
   const cv = (u && /^\/uploads\/[A-Za-z0-9._-]+$/.test(String(u.cover || ''))) ? u.cover : '';
@@ -1243,6 +1252,7 @@ function profileHeadHtml(u, opts) {
       '<div class="profile-tabs">' +
         profileTabBtn('posts', '饭帖', opts.postCount || 0, tab) +
         profileTabBtn('photos', '相册', opts.photoCount || 0, tab) +
+        (opts.showFavs ? profileTabBtn('favs', '收藏', opts.favCount || 0, tab) : '') +
       '</div>' +
     '</div>';
 }
@@ -1254,7 +1264,8 @@ function viewMine() {
   const approved = posts.filter((p) => p.status === 'approved');
   const likes = approved.reduce((s, p) => s + (p.likeCount || 0), 0);
   const photos = approved.filter((p) => p.images && p.images.length);
-  const tab = state.profileTab === 'photos' ? 'photos' : 'posts';
+  const tab = state.profileTab === 'photos' ? 'photos'
+    : (state.profileTab === 'favs' ? 'favs' : 'posts');
 
   const act = '<a class="btn-ghost btn-sm" href="#/edit">' + icon('pencil') + '编辑资料</a>' +
     (isMod() ? '<a class="btn-ghost btn-sm" href="#/review">' + icon('shield') + '审核中心</a>' : '') +
@@ -1277,15 +1288,18 @@ function viewMine() {
 
   return profileHeadHtml(me, {
       act: act, stats: stats, joined: true, coverAct: coverAct,
-      postCount: posts.length, photoCount: photos.length
+      postCount: posts.length, photoCount: photos.length,
+      showFavs: true, favCount: state.data.favTotal || 0
     }) +
-    // 手机上左侧导航被底部 tab 取代，收藏没有入口 —— 主页顶上补一条，桌面端不显示
-    '<a class="card fav-entry hide-desk" href="#/favs">' + icon('star-fill') +
-      '<b>我的收藏</b><span>只有你自己能看到</span>' + icon('chev') + '</a>' +
     '<div id="profile-list">' +
       (tab === 'photos'
         ? photoGrid(photos)
-        : postList(posts, { showStatus: true, noMore: true, emptyText: '你还没有发布任何内容' })) +
+        : tab === 'favs'
+          ? postList(state.data.favs || [], {
+              noMore: true,
+              emptyText: '还没有收藏。看到喜欢的饭帖，点一下卡片下面的「收藏」就存到这儿了。'
+            })
+          : postList(posts, { showStatus: true, noMore: true, emptyText: '你还没有发布任何内容' })) +
     '</div>';
 }
 
@@ -2673,7 +2687,6 @@ function viewMain() {
   }
   switch (state.route.name) {
     case 'hot': return viewHot();
-    case 'favs': return viewFavs();
     case 'mine': return viewMine();
     case 'user': return viewUser();
     case 'review': return viewReview();
@@ -3100,16 +3113,20 @@ async function toggleFav(id, btn) {
       (d.post.favCount || '收藏');
     const local = (state.data.posts || []).find((p) => p.id === Number(id));
     if (local) { local.faved = on; local.favCount = d.post.favCount; }
+    const inFavs = (state.data.favs || []).find((p) => p.id === Number(id));
+    if (inFavs) { inFavs.faved = on; inFavs.favCount = d.post.favCount; }
     if (state.data.post && state.data.post.id === Number(id)) {
       state.data.post.faved = on;
       state.data.post.favCount = d.post.favCount;
     }
+    // 主页「收藏」页签上的数字跟着变，别收藏完还显示旧数
+    state.data.favTotal = Math.max(0, (state.data.favTotal || 0) + (on ? 1 : -1));
     toast(on ? '已收藏，去「我的收藏」就能找到' : '已取消收藏', 'ok', on ? 'star-fill' : 'star');
-    // 在收藏页取消收藏 → 这条要从列表里消失，不能只换个图标留着
-    if (!on && state.route.name === 'favs') {
-      state.data.posts = (state.data.posts || []).filter((p) => p.id !== Number(id));
-      render();
+    // 在收藏页签里取消收藏 → 这条要从列表里消失，不能只换个图标留着
+    if (!on && state.data.favs) {
+      state.data.favs = state.data.favs.filter((p) => p.id !== Number(id));
     }
+    if (state.route.name === 'mine' && state.profileTab === 'favs') render();
   } catch (e) {
     toast(e.message, 'err');
   } finally {
@@ -3826,9 +3843,17 @@ document.addEventListener('click', (e) => {
     }
     case 'cover-reset': resetCover(); break;
     case 'profile-tab': {
-      const t = el.getAttribute('data-tab') === 'photos' ? 'photos' : 'posts';
-      if (state.profileTab === t) break;
-      state.profileTab = t;
+      const t = el.getAttribute('data-tab');
+      const next = t === 'photos' ? 'photos' : (t === 'favs' ? 'favs' : 'posts');
+      if (state.profileTab === next) break;
+      state.profileTab = next;
+      // 地址栏跟着走但不触发路由重载：刷新还停在这个页签，从详情返回也能回到原页签
+      if (state.route.name === 'mine') {
+        try {
+          history.replaceState(null, '',
+            next === 'posts' ? '#/mine' : '#/mine?tab=' + next);
+        } catch (e) { /* 个别环境不让改，忽略即可，功能不受影响 */ }
+      }
       render();
       break;
     }

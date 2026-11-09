@@ -3541,25 +3541,7 @@ a:hover { color: var(--brand-2); }
   .topbar-right > .btn-ghost { display: none; }
   .profile-joined { padding: 0 12px 12px; }
   .hide-desk { display: inline-flex; }
-
-  /* 手机主页顶上的「我的收藏」入口。桌面上左侧导航已经有一项，这里 display:none 不重复。
-     用 inline-flex + width:100% 是为了在 hide-desk 的 inline-flex 基础上撑满一行。 */
-  .fav-entry {
-    width: 100%;
-    margin: 8px 0 10px;
-    padding: 13px 14px;
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    font-size: 14px;
-    color: var(--ink);
-  }
-  .fav-entry .ic { color: #ff9d3c; }
-  .fav-entry b { font-weight: 700; }
-  .fav-entry span { color: var(--ink-3); font-size: 12px; }
-  .fav-entry .ic:last-child { margin-left: auto; color: var(--ink-3); }
 }
-
 /* ---- 桌面细节：发布栏别挤爆、侧栏小卡片去边框 ---- */
 .composer-bar { flex-wrap: wrap; row-gap: 8px; }
 .composer-bar .btn-primary { flex: 0 0 auto; }
