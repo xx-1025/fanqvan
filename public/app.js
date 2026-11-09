@@ -133,6 +133,7 @@ const ICON_PATHS = {
   bell: '<path d="M12 3.4c-3.3 0-5.5 2.5-5.5 5.7 0 4.1-1.7 5.3-1.7 5.3h14.4s-1.7-1.2-1.7-5.3c0-3.2-2.2-5.7-5.5-5.7Z"/><path d="M9.9 17.6a2.1 2.1 0 0 0 4.2 0"/>',
   shield: '<path d="M12 3.2 5 6.1v5.7c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6.1L12 3.2Z"/><path d="M9.1 11.9l2.1 2.1 3.8-4.1"/>',
   back: '<path d="M14.8 4.8 7.6 12l7.2 7.2"/>',
+  chev: '<path d="M9.6 4.8 16.8 12l-7.2 7.2"/>',
   search: '<circle cx="10.7" cy="10.7" r="6"/><path d="M15.1 15.1 20 20"/>',
 
   /* AI 小饭 */
@@ -159,6 +160,8 @@ const ICON_PATHS = {
   comment: '<path d="M20.2 11.4c0 3.8-3.7 6.9-8.2 6.9-1 0-2-.2-2.9-.5l-4.8 1.8 1.4-3.4a6.5 6.5 0 0 1-2-4.8c0-3.8 3.7-6.9 8.3-6.9s8.2 3.1 8.2 6.9Z"/>',
   heart: '<path d="M12 20.4S3.5 15.2 3.5 9.5a4.7 4.7 0 0 1 4.7-4.7c1.6 0 3 .8 3.8 2.2a4.6 4.6 0 0 1 3.8-2.2 4.7 4.7 0 0 1 4.7 4.7c0 5.7-8.5 10.9-8.5 10.9Z"/>',
   'heart-fill': '<path d="M12 20.4S3.5 15.2 3.5 9.5a4.7 4.7 0 0 1 4.7-4.7c1.6 0 3 .8 3.8 2.2a4.6 4.6 0 0 1 3.8-2.2 4.7 4.7 0 0 1 4.7 4.7c0 5.7-8.5 10.9-8.5 10.9Z" fill="currentColor"/>',
+  star: '<path d="M12 4.1l2.6 5.2 5.7.8-4.1 4 1 5.7-5.2-2.7-5.2 2.7 1-5.7-4.1-4 5.7-.8L12 4.1Z"/>',
+  'star-fill': '<path d="M12 4.1l2.6 5.2 5.7.8-4.1 4 1 5.7-5.2-2.7-5.2 2.7 1-5.7-4.1-4 5.7-.8L12 4.1Z" fill="currentColor"/>',
   trash: '<path d="M4.8 6.9h14.4"/><path d="M9.5 6.9V5.3A1.5 1.5 0 0 1 11 3.8h2a1.5 1.5 0 0 1 1.5 1.5v1.6"/><path d="M6.7 6.9l.9 12.1a1.7 1.7 0 0 0 1.7 1.6h5.4a1.7 1.7 0 0 0 1.7-1.6l.9-12.1"/><path d="M10.4 11v5.6M13.6 11v5.6"/>',
   flag: '<path d="M6.1 20.7V4"/><path d="M6.1 5h10.7l-2 3.3 2 3.3H6.1"/>',
   sofa: '<path d="M4 12.4V9.2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3.2"/><path d="M2.9 12.4h18.2v4.4a2 2 0 0 1-2 2H4.9a2 2 0 0 1-2-2v-4.4Z"/><path d="M7.6 12.4v6.4M16.4 12.4v6.4"/>',
@@ -310,6 +313,7 @@ function listRequest() {
   if (r.name === 'user') return { scope: 'user', userId: Number(r.id) || 0 };
   if (r.name === 'search') return { scope: 'feed', q: state.keyword };
   if (r.name === 'hot') return { scope: 'hot' };
+  if (r.name === 'favs') return { scope: 'favs' };
   return { scope: state.homeTab === 'following' ? 'following' : 'feed' };
 }
 
@@ -462,8 +466,8 @@ async function router() {
   render();
 
   try {
-    if (r.name === 'feed' || r.name === 'hot' || r.name === 'mine' || r.name === 'user' || r.name === 'search') {
-      if (r.name === 'mine' && !state.me) { state.loading = false; go('#/login'); return; }
+    if (r.name === 'feed' || r.name === 'hot' || r.name === 'favs' || r.name === 'mine' || r.name === 'user' || r.name === 'search') {
+      if ((r.name === 'mine' || r.name === 'favs') && !state.me) { state.loading = false; go('#/login'); return; }
       if (r.name === 'user' && r.id === 'me') { state.loading = false; go('#/mine'); return; }
       const jobs = [
         loadList(false),
@@ -588,7 +592,7 @@ function tabbar() {
     '<a class="tab' + on(cur === 'messages') + '" href="#/messages">' +
       icon('chat') + '<span>消息</span>' +
       (dot ? '<i class="tb-dot">' + (dot > 99 ? '99+' : dot) + '</i>' : '') + '</a>' +
-    '<a class="tab' + on(cur === 'mine' || cur === 'user' || cur === 'edit') + '" href="#/mine">' +
+    '<a class="tab' + on(cur === 'mine' || cur === 'user' || cur === 'edit' || cur === 'favs') + '" href="#/mine">' +
       icon('user') + '<span>我</span></a>' +
   '</nav>';
 }
@@ -645,6 +649,7 @@ function sidebar() {
       item('hot', '#/hot', icon('fire'), '热门') +
       (me ? item('following', '#/?tab=following', icon('users'), '关注', '', onFollowing) : '') +
       item('mine', '#/mine', icon('user'), '我的主页') +
+      (me ? item('favs', '#/favs', icon('star'), '我的收藏') : '') +
       (me
         ? '<a class="nav-item' + (cur === 'messages' ? ' active' : '') + '" href="#/messages">' +
             '<span class="nav-icon">' + icon('chat') + '</span><span class="nav-label">私信</span>' +
@@ -936,6 +941,10 @@ function postCard(p, opts) {
           '<span class="ico">' + icon('repost') + '</span>转发</button>' +
         '<button class="act" data-action="comment-toggle" data-id="' + p.id + '">' +
           '<span class="ico">' + icon('comment') + '</span>' + (p.commentCount || '评论') + '</button>' +
+        '<button class="act ' + (p.faved ? 'on' : '') + '" data-action="fav" data-id="' + p.id + '"' +
+          ' title="' + (p.faved ? '取消收藏' : '收藏这条饭帖，之后在「我的收藏」里找') + '">' +
+          '<span class="ico">' + icon(p.faved ? 'star-fill' : 'star') + '</span>' +
+          (p.favCount || '收藏') + '</button>' +
         '<button class="act ' + (p.liked ? 'on on-like' : '') + '" data-action="like" data-id="' + p.id + '">' +
           '<span class="ico">' + icon(p.liked ? 'heart-fill' : 'heart') + '</span>' + (p.likeCount || '点赞') + '</button>' +
         (canFeature
@@ -1041,6 +1050,16 @@ function viewHot() {
   return '<div class="card page-head"><div>' +
       '<h2>' + icon('fire') + '热门</h2><div class="sub">按互动热度排序，看看大家都在做什么</div></div></div>' +
     viewComposer() + postList(state.data.posts || []);
+}
+
+function viewFavs() {
+  const list = state.data.posts || [];
+  return '<div class="card page-head"><div>' +
+      '<h2>' + icon('star-fill') + '我的收藏</h2>' +
+      '<div class="sub">只有你自己能看到。想找灵感的时候翻这儿，不用再翻聊天记录。</div></div></div>' +
+    postList(list, {
+      emptyText: '还没有收藏。看到喜欢的饭帖，点一下下面的「收藏」就存到这儿了。'
+    });
 }
 
 // 搜索结果页的标题区：关键词和「共找到 n 条」都在这儿，边打边搜时只换这块的 innerHTML
@@ -1260,6 +1279,9 @@ function viewMine() {
       act: act, stats: stats, joined: true, coverAct: coverAct,
       postCount: posts.length, photoCount: photos.length
     }) +
+    // 手机上左侧导航被底部 tab 取代，收藏没有入口 —— 主页顶上补一条，桌面端不显示
+    '<a class="card fav-entry hide-desk" href="#/favs">' + icon('star-fill') +
+      '<b>我的收藏</b><span>只有你自己能看到</span>' + icon('chev') + '</a>' +
     '<div id="profile-list">' +
       (tab === 'photos'
         ? photoGrid(photos)
@@ -2651,6 +2673,7 @@ function viewMain() {
   }
   switch (state.route.name) {
     case 'hot': return viewHot();
+    case 'favs': return viewFavs();
     case 'mine': return viewMine();
     case 'user': return viewUser();
     case 'review': return viewReview();
@@ -3059,6 +3082,39 @@ async function toggleLike(id, btn) {
       state.data.post.likeCount = d.post.likeCount;
     }
   } catch (e) { toast(e.message, 'err'); }
+}
+
+/* -------- 收藏 -------- */
+
+/* 收藏是「私人书签」：不通知作者、不在别人主页显示给谁看过，
+   只有本人能在「我的收藏」里翻到。所以这里只改自己的界面状态。 */
+async function toggleFav(id, btn) {
+  if (btn.dataset.busy) return;
+  btn.dataset.busy = '1';
+  try {
+    const d = await api('/api/posts/' + id + '/fav', { method: 'POST' });
+    const on = !!d.post.faved;
+    btn.classList.toggle('on', on);
+    btn.title = on ? '取消收藏' : '收藏这条饭帖，之后在「我的收藏」里找';
+    btn.innerHTML = '<span class="ico">' + icon(on ? 'star-fill' : 'star') + '</span>' +
+      (d.post.favCount || '收藏');
+    const local = (state.data.posts || []).find((p) => p.id === Number(id));
+    if (local) { local.faved = on; local.favCount = d.post.favCount; }
+    if (state.data.post && state.data.post.id === Number(id)) {
+      state.data.post.faved = on;
+      state.data.post.favCount = d.post.favCount;
+    }
+    toast(on ? '已收藏，去「我的收藏」就能找到' : '已取消收藏', 'ok', on ? 'star-fill' : 'star');
+    // 在收藏页取消收藏 → 这条要从列表里消失，不能只换个图标留着
+    if (!on && state.route.name === 'favs') {
+      state.data.posts = (state.data.posts || []).filter((p) => p.id !== Number(id));
+      render();
+    }
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    delete btn.dataset.busy;
+  }
 }
 
 /* -------- 优秀饭帖（审核员/管理员给别人的作品评优） -------- */
@@ -3729,6 +3785,7 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'like': toggleLike(id, el); break;
+    case 'fav': toggleFav(id, el); break;
     case 'feature': toggleFeature(id, el); break;
     case 'share': openShare(id); break;
     case 'share-to': shareTo(el.getAttribute('data-pid'), id); break;

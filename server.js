@@ -453,6 +453,8 @@ function migrate(d) {
     if (!Array.isArray(p.likes)) p.likes = [];
     if (!Array.isArray(p.comments)) p.comments = [];
     if (!Array.isArray(p.reposts)) p.reposts = [];
+    // 收藏：谁把这条收进了自己的收藏夹（只有本人能看到「我的收藏」列表）
+    if (!Array.isArray(p.favs)) p.favs = [];
     if (!Array.isArray(p.images)) p.images = [];
     // 「评优」：审核员/管理员把别人的佳作挂进右栏「优秀饭帖」
     if (typeof p.featured !== 'boolean') p.featured = false;
@@ -870,6 +872,9 @@ function serializePost(p, me, opts) {
     commentCount: (p.comments || []).length,
     repostCount: (p.reposts || []).length,
     reposted: me ? (p.reposts || []).includes(me.id) : false,
+    // 收藏：faved 只对本人有意义；favCount 是公开数字
+    favCount: (p.favs || []).length,
+    faved: me ? (p.favs || []).includes(me.id) : false,
     // 优秀饭帖：所有人可见的「优秀」徽标靠它
     featured: !!p.featured,
     featuredAt: p.featuredAt || 0,
@@ -3006,6 +3011,11 @@ async function handleApi(req, res, pathname, query) {
     } else if (scope === 'mine') {
       if (!me) return json(res, 401, { error: '请先登录' });
       list = list.filter((p) => p.authorId === me.id);
+    } else if (scope === 'favs') {
+      // 我的收藏：只有本人能看，自己还没过审的也能看到（带「待审核」标记）
+      if (!me) return json(res, 401, { error: '登录后才能看收藏' });
+      list = list.filter((p) => (p.favs || []).includes(me.id) &&
+        (p.status === 'approved' || p.authorId === me.id));
     } else if (scope === 'pending') {
       if (!me) return json(res, 401, { error: '请先登录' });
       if (rankOf(me) < 1) return json(res, 403, { error: '只有审核员可以查看待审核内容' });
@@ -3311,7 +3321,7 @@ async function handleApi(req, res, pathname, query) {
 
   /* ============ 点赞 / 评论 / 转发 / 举报 ============ */
 
-  const actionMatch = /^\/api\/posts\/(\d+)\/(like|comments|repost|report|feature)$/.exec(pathname);
+  const actionMatch = /^\/api\/posts\/(\d+)\/(like|fav|comments|repost|report|feature)$/.exec(pathname);
   if (actionMatch) {
     if (!me) return json(res, 401, { error: '请先登录' });
     if (me.banned) return json(res, 403, { error: '账号已被封禁' });
@@ -3330,6 +3340,18 @@ async function handleApi(req, res, pathname, query) {
         post.likes.push(me.id);
         pushNote(post.authorId, 'like', me.id, { postId: post.id });
       }
+      saveDB();
+      return json(res, 200, { post: serializePost(post, me) });
+    }
+
+    /* 收藏：纯个人行为，不进通知、不打扰作者。
+       用 post.favs 记「谁收了它」，而不是在 user 上挂一长串 id —— 删号时只要
+       把这个人从各帖的 favs 里摘掉，不会留下一堆指向已删用户的引用。 */
+    if (action === 'fav' && method === 'POST') {
+      post.favs = post.favs || [];
+      const i = post.favs.indexOf(me.id);
+      if (i >= 0) post.favs.splice(i, 1);
+      else post.favs.push(me.id);
       saveDB();
       return json(res, 200, { post: serializePost(post, me) });
     }
@@ -3603,6 +3625,7 @@ async function handleApi(req, res, pathname, query) {
         if (Array.isArray(p.comments)) p.comments = p.comments.filter((c) => c.userId !== uid);
         if (Array.isArray(p.likes)) p.likes = p.likes.filter((x) => x !== uid);
         if (Array.isArray(p.reposts)) p.reposts = p.reposts.filter((x) => x !== uid);
+        if (Array.isArray(p.favs)) p.favs = p.favs.filter((x) => x !== uid);
       }
       db.reports = db.reports.filter((r) => r.reporterId !== uid && !postIds.includes(r.targetId));
       db.notifications = db.notifications.filter((n) =>
