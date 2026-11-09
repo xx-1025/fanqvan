@@ -3335,23 +3335,26 @@ a:hover { color: var(--brand-2); }
   display: grid; place-items: center; color: #fff; font-size: 13px;
   background: rgba(0, 0, 0, .32);
 }
+/* 只有头像探出封面：早先是整行 margin-top:-34 把头像顶出去的，
+   名字也跟着被抬到图片上，用户传张深色封面就读不清。现在头像自己负边距上移。 */
 .profile-info {
-  display: flex; align-items: flex-end; gap: 12px;
-  padding: 0 16px;
-  margin-top: -34px;
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 16px 0;
+  margin-top: 0;
   position: relative;
 }
 .profile-info .avatar {
   width: 76px; height: 76px;
+  margin-top: -44px;
   border: 3px solid #fff;
   border-radius: 50%;
   box-shadow: 0 1px 4px rgba(0,0,0,.12);
   flex: none;
 }
-.profile-name { flex: 1; min-width: 0; padding-bottom: 4px; }
+.profile-name { flex: 1; min-width: 0; padding: 0 0 4px; }
 .profile-name h2 { font-size: 19px; font-weight: 700; margin: 0; line-height: 1.35; color: #333; }
 .profile-name p { margin: 2px 0 0; font-size: 12.5px; color: #939393; font-weight: 400; }
-.profile-act { padding-bottom: 4px; gap: 8px; flex: none; }
+.profile-act { padding: 0 0 4px; gap: 8px; flex: none; align-self: flex-end; }
 .profile-bio { padding: 10px 16px 0; font-size: 14px; color: #333; line-height: 1.65; font-weight: 400; }
 .profile-stats { display: flex; gap: 22px; padding: 12px 16px; flex-wrap: wrap; }
 .profile-stats > * {
@@ -3444,8 +3447,10 @@ a:hover { color: var(--brand-2); }
   .act { flex: 1; justify-content: center; font-size: 12.5px; }
 
   .profile-cover { height: 132px; }
-  .profile-info { padding: 0 12px; margin-top: -30px; gap: 10px; }
-  .profile-info .avatar { width: 68px; height: 68px; }
+  /* 同上：头像负边距上移，名字另起一行，不压封面 */
+  .profile-info { padding: 10px 12px 0; margin-top: 0; gap: 0 12px; }
+  .profile-info .avatar { width: 68px; height: 68px; margin-top: -42px; }
+  .profile-name { padding: 10px 0 0; }
   .profile-name h2 { font-size: 17.5px; }
   .profile-bio { padding: 8px 12px 0; font-size: 13.5px; }
   .profile-stats { padding: 10px 12px; gap: 18px; }
