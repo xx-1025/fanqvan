@@ -508,8 +508,8 @@ async function router() {
 
   state.loading = false;
   render();
-  // 进聊天页滚到底部，直接看到最新消息
-  if (r.name === 'messages' && r.id) setTimeout(scrollThread, 30);
+  // 进聊天页从第一条开始读（自上而下）
+  if (r.name === 'messages' && r.id) setTimeout(scrollThreadTop, 30);
 }
 
 async function loadReview() {
@@ -2099,7 +2099,7 @@ function bindMsgInput() {
   /* 聚焦后把输入条顶到可见区最下面：安卓 WebView 里软键盘弹起时
      浏览器有时只滚半截，光标就贴在键盘边。scrollIntoView 兜这一下。 */
   ta.addEventListener('focus', function () {
-    setTimeout(function () { ta.scrollIntoView({ block: 'nearest' }); scrollThread(); }, 260);
+    setTimeout(function () { ta.scrollIntoView({ block: 'nearest' }); }, 260);
   });
   grow();
 }
@@ -2160,6 +2160,11 @@ function paintConversations() {
 function scrollThread() {
   const body = $('#msg-body');
   if (body) body.scrollTop = body.scrollHeight;
+}
+// 回到第一条（进会话时用：记录从上往下读）
+function scrollThreadTop() {
+  const body = $('#msg-body');
+  if (body) body.scrollTop = 0;
 }
 
 let msgTimer = null;
@@ -2844,14 +2849,13 @@ function render() {
   // 私信页的高度要按「聊天框上方实际占了多少」算（见 syncMsgTop）
   syncMsgTop();
   watchMsgTop();
-  // 对话页：输入框长高 + 贴底显示最新消息（抖音那种一进来就看到最后一句）
+  // 对话页：输入框长高 + 从第一条开始显示（自上而下读）
   if (state.route.name === 'messages' && threadRouteId()) {
     bindMsgInput();
-    scrollThread();
-    /* 首帧量到的 scrollHeight 可能还没算上头像 / 图片的高度，滚一次就停在半路。
-       再补两枪（下一帧 + 200ms），慢机型也能稳稳停在最后一句。 */
-    requestAnimationFrame(scrollThread);
-    setTimeout(scrollThread, 200);
+    scrollThreadTop();
+    /* 首帧量到的 scrollHeight 可能还不准，补两枪保证真的停在顶部 */
+    requestAnimationFrame(scrollThreadTop);
+    setTimeout(scrollThreadTop, 200);
   }
 }
 

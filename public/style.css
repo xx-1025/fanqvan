@@ -3574,15 +3574,14 @@ a:hover { color: var(--brand-2); }
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-/* 贴底生长：消息少时贴着输入条，多了就自然从底部往上堆 */
+/* 自上而下排：第一条贴着标题栏，依次往下长（消息少时下方留白，不往上飘） */
 .msg-page .msg-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 100%;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
-.msg-page .msg-list > :first-child { margin-top: auto; }
 
 .msg-page .msg-row {
   display: flex;
