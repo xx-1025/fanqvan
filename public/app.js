@@ -50,6 +50,7 @@ const state = {
   modal: null,
   suggest: [],
   editAvatar: '',
+  editFrame: '',         // 编辑资料页里选中的头像框（'' = 不戴），点一下即时保存
   msgDraft: '',
   msgQuote: null,        // 正在引用的消息 {id, content, nickname, mine} —— 发送时带 quoteId
   msgMenu: 0,            // 当前打开操作菜单的消息 id（长按/点「⋯」弹出：撤回/删除/引用）
@@ -104,13 +105,19 @@ function avatarHtml(u, size) {
   if (size == null) size = 44;
   if (!u) u = { id: 0, nickname: '?' };
   const box = size ? 'width:' + size + 'px;height:' + size + 'px' : '';
+  // 头像框：class 只认纯小写名（后端也是白名单），环宽按头像尺寸走 ——
+  // 20px 的小头像套 3px 环就只剩中间一点了，所以固定比例而不是固定像素
+  const frame = /^[a-z]{3,10}$/.test(u.frame || '') ? u.frame : '';
+  const fw = size ? Math.max(1, Math.round(size * 0.05 * 10) / 10) : 3;
+  const fv = frame ? '--fb:' + fw + 'px;--fg:' + fw + 'px;' : '';
+  const fc = frame ? ' frame-' + frame : '';
   if (u.avatar) {
-    return '<span class="avatar" style="' + box + '">' +
+    return '<span class="avatar' + fc + '" style="' + fv + box + '">' +
       '<img src="' + esc(u.avatar) + '" alt="" loading="lazy"></span>';
   }
   const c = AV_COLORS[Math.abs(Number(u.id) || 0) % AV_COLORS.length];
   const ch = String(u.nickname || '?').slice(0, 1);
-  return '<span class="avatar txt" style="--av:' + c + ';' + box +
+  return '<span class="avatar txt' + fc + '" style="--av:' + c + ';' + fv + box +
     (size ? ';font-size:' + Math.round(size * 0.42) + 'px' : '') + '">' + esc(ch) + '</span>';
 }
 
@@ -511,6 +518,7 @@ async function router() {
     } else if (r.name === 'edit') {
       if (!state.me) { state.loading = false; go('#/login'); return; }
       state.editAvatar = state.me.avatar || '';
+      state.editFrame = state.me.frame || '';
       // 拉取最近一次审核员申请，决定显示「提交申请 / 等待审批 / 重新申请」
       state.data.myApp = null;
       if (state.me.role === 'user') {
@@ -2568,17 +2576,34 @@ function viewEdit() {
     '<button class="av-opt' + (state.editAvatar === a ? ' on' : '') + '" data-action="pick-avatar" data-av="' + a + '">' +
     '<img src="' + a + '" alt=""></button>').join('');
 
+  // 头像框：预览直接套在「当前头像」上，选之前就能看到效果。点一下立即存，和换头像一个节奏。
+  const FRAMES = [
+    ['', '不戴'], ['sunset', '落日橙'], ['gold', '香槟金'],
+    ['rose', '玫瑰粉'], ['mint', '薄荷绿'], ['violet', '葡萄紫'], ['night', '黑金']
+  ];
+  const frameRow = '<div class="frame-row"><b>头像框</b><div class="frame-opts">' +
+    FRAMES.map(([k, label]) => k === ''
+      ? '<button class="frame-opt none' + (state.editFrame === '' ? ' on' : '') +
+        '" data-action="pick-frame" data-frame="" title="' + label + '"><span class="frame-none">无</span></button>'
+      : '<button class="frame-opt' + (state.editFrame === k ? ' on' : '') +
+        '" data-action="pick-frame" data-frame="' + k + '" title="' + label + '">' +
+        avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: k }, 32) +
+        '</button>').join('') +
+    '</div></div>';
+
   return '<div class="card page-head" style="padding:14px 20px">' +
       '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a><div class="sub">编辑资料</div></div>' +
     '<div class="card edit-card">' +
       '<h3>' + icon('user') + '基本信息</h3>' +
       '<div class="edit-avatar-row">' +
-        '<div class="edit-avatar">' + avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar }, 72) + '</div>' +
+        '<div class="edit-avatar">' + avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: state.editFrame }, 72) + '</div>' +
         '<div class="av-picks">' + avRow +
           '<label class="av-opt upload"><input type="file" id="avatar-input" accept="image/*" hidden>＋<span>上传</span></label>' +
         '</div>' +
       '</div>' +
       '<p class="av-tip">' + icon('check') + ' 点头像或「上传」选一张，选完立即保存，不用再点下面的按钮</p>' +
+      frameRow +
+      '<p class="av-tip frame-tip">' + icon('check') + ' 头像框点一下立即生效，帖子和私信里都会显示</p>' +
       '<div class="field"><label>昵称</label><input id="edit-nickname" value="' + esc(me.nickname) + '" maxlength="24"></div>' +
       '<div class="field"><label>简介</label><textarea id="edit-bio" maxlength="160" placeholder="介绍一下你的拿手菜…">' + esc(me.bio || '') + '</textarea></div>' +
       '<button class="btn-primary" data-action="save-profile" style="height:40px;margin-top:6px">保存资料</button>' +
@@ -3450,6 +3475,33 @@ async function saveAvatar(url) {
   render();
 }
 
+/* 头像框也是选完即存：框只是装饰，不值得再让用户去找「保存资料」 */
+function paintFrameUi() {
+  const f = state.editFrame || '';
+  document.querySelectorAll('.frame-opt').forEach((b) => {
+    b.classList.toggle('on', (b.getAttribute('data-frame') || '') === f);
+  });
+  const box = document.querySelector('.edit-avatar');
+  if (box && state.me) {
+    box.innerHTML = avatarHtml(
+      { id: state.me.id, nickname: state.me.nickname, avatar: state.editAvatar, frame: f }, 72);
+  }
+}
+
+async function saveFrame(frame) {
+  try {
+    const d = await api('/api/me', { method: 'PATCH', body: { frame } });
+    if (d && d.user) state.me = d.user;
+    state.editFrame = frame;
+    paintFrameUi();
+    toast(frame ? '头像框已换上' : '头像框已去掉', 'ok', 'check');
+  } catch (e) {
+    state.editFrame = (state.me && state.me.frame) || '';
+    paintFrameUi();
+    toast(e.message, 'err');
+  }
+}
+
 async function changePassword() {
   const oldPassword = ($('#pw-old') || {}).value || '';
   const newPassword = ($('#pw-new') || {}).value || '';
@@ -3904,6 +3956,14 @@ document.addEventListener('click', (e) => {
       state.editAvatar = el.getAttribute('data-av');
       render();
       saveAvatar(state.editAvatar);
+      break;
+    }
+    case 'pick-frame': {
+      const f = el.getAttribute('data-frame') || '';
+      if (f === (state.me.frame || '')) break;
+      state.editFrame = f;
+      paintFrameUi();      // 只重画选择态和预览：整页 render 会把用户填了一半的昵称/简介清掉
+      saveFrame(f);
       break;
     }
     case 'review-mode': {

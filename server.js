@@ -174,6 +174,9 @@ function rid(n) { return crypto.randomBytes(n || 12).toString('hex'); }
 
 const MAX_PW = 72;            // scrypt 吃得住，再长没意义还费 CPU（这是技术上限，不是体验限制）
 
+/* 头像框：白名单，只认这几款（'' = 不戴框）。前端 CSS 里一一对应，别只加一边。 */
+const AVATAR_FRAMES = ['sunset', 'gold', 'rose', 'mint', 'violet', 'night'];
+
 /* 常见弱口令（含本项目的初始口令）。比对时忽略大小写。 */
 const WEAK_PW = new Set([
   '123456', '1234567', '12345678', '123456789', '1234567890', '12345678910',
@@ -834,14 +837,15 @@ function publicUser(u) {
   return {
     id: u.id, username: u.username, nickname: u.nickname,
     role: u.role, bio: u.bio, avatar: u.avatar, cover: u.cover || '', createdAt: u.createdAt,
+    frame: u.frame || '',
     followerCount: db.users.filter((x) => (x.follows || []).includes(u.id)).length,
     followingCount: (u.follows || []).length
   };
 }
 
 function briefUser(u) {
-  if (!u) return { id: 0, username: '', nickname: '已注销', role: 'user', avatar: '' };
-  return { id: u.id, username: u.username, nickname: u.nickname, role: u.role, avatar: u.avatar };
+  if (!u) return { id: 0, username: '', nickname: '已注销', role: 'user', avatar: '', frame: '' };
+  return { id: u.id, username: u.username, nickname: u.nickname, role: u.role, avatar: u.avatar, frame: u.frame || '' };
 }
 
 /** 两人之间的关系标签：互相关注 / 已关注 / 关注了你 / '' —— 聊天窗口顶部展示用 */
@@ -2863,6 +2867,14 @@ async function handleApi(req, res, pathname, query) {
         return json(res, 400, { error: '封面地址不合法' });
       }
       me.cover = cv;
+    }
+    // 头像框：只认白名单里的款式，空字符串 = 不戴
+    if (b.frame !== undefined) {
+      const f = String(b.frame || '');
+      if (f && !AVATAR_FRAMES.includes(f)) {
+        return json(res, 400, { error: '没有这个头像框' });
+      }
+      me.frame = f;
     }
     saveDB();
     return json(res, 200, { user: publicUser(me) });

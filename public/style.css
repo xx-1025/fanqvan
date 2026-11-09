@@ -3788,3 +3788,48 @@ a:hover { color: var(--brand-2); }
   body.msg-thread .msg-row { max-width: 84%; }
   body.msg-thread .msg-share { min-width: 0; max-width: 210px; }
 }
+
+/* =========================================================================
+   头像框（2026-11-09）
+   不戴框时和以前完全一样；戴上后 = 白衬边（border）+ 彩色外环（box-shadow）。
+   环宽 --fb / --fg 由 avatarHtml 按头像尺寸算，20px 的小头像不会被环糊成一坨。
+   只能在文件末尾定义：皮肤段里 .post .avatar / .profile-info .avatar 都写了 border，
+   这里要盖住它们（同权重靠后）。
+   ========================================================================= */
+.avatar[class*="frame-"] {
+  border-style: solid;
+  border-color: #fff;
+  border-width: var(--fb, 2px);
+  box-shadow:
+    0 0 0 var(--fg, 2px) var(--fc1),
+    0 0 0 calc(var(--fg, 2px) * 2) var(--fc2),
+    0 2px 6px rgba(0, 0, 0, .10);
+}
+.avatar.frame-sunset { --fc1: #ff8a3d; --fc2: #ffc9a6; }
+.avatar.frame-gold   { --fc1: #e3b23c; --fc2: #f8e3a8; }
+.avatar.frame-rose   { --fc1: #ff7aa2; --fc2: #ffc7d9; }
+.avatar.frame-mint   { --fc1: #2fbf9b; --fc2: #a9e8d7; }
+.avatar.frame-violet { --fc1: #8b6cf0; --fc2: #cfbdff; }
+.avatar.frame-night  { --fc1: #33333a; --fc2: #e9c46a; }
+
+/* ---------- 编辑资料里的头像框选择行 ---------- */
+.frame-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 0 2px; }
+.frame-row > b { font-size: 13px; color: #666; font-weight: 400; flex: none; }
+.frame-opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.frame-opt {
+  width: 42px; height: 42px; padding: 0;
+  border: 0; background: none; cursor: pointer;
+  border-radius: 50%;
+  display: grid; place-items: center;
+}
+.frame-opt .avatar { width: 32px; height: 32px; }
+.frame-opt.on { outline: 2px solid #ff8140; outline-offset: 2px; }
+.frame-opt:hover .avatar { transform: scale(1.06); }
+.frame-opt .avatar { transition: transform .15s ease; }
+.frame-none {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px dashed #cfcfcf; color: #999;
+  font-size: 12px; display: grid; place-items: center;
+}
+.frame-opt.on .frame-none { border-color: #ff8140; color: #ff8140; }
+.frame-tip { margin-top: 8px; }
