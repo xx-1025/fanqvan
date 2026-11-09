@@ -3557,3 +3557,184 @@ a:hover { color: var(--brand-2); }
 @media (max-width: 760px) {
   #profile-list { gap: 8px; margin-top: 8px; }
 }
+
+/* =========================================================================
+   私信 · 对话页（2026-11-09 重写）
+   照抖音私信的三段骨架重排：标题栏(定高) / 消息流(吃满剩余、贴底生长) / 输入条(定高)。
+   原来的问题不是「差几个像素」，而是消息流和输入条挤在同一个高度公式里，
+   消息一多、字号一变、键盘一弹，任何一处估算偏差都会算到输入条头上。
+   现在消息流自己滚、输入条自己定高，两者不再互相影响。
+   选择器统一带 .msg-page 前缀，压过前面那些旧规则（同权重时后写的赢，这里再加一层保险）。
+   ========================================================================= */
+.msg-page .msg-body {
+  display: block;
+  padding: 10px 14px 6px;
+  background: #f7f7f7;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+/* 贴底生长：消息少时贴着输入条，多了就自然从底部往上堆 */
+.msg-page .msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+  justify-content: flex-end;
+}
+.msg-page .msg-list > :first-child { margin-top: auto; }
+
+.msg-page .msg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 88%;
+}
+.msg-page .msg-row.their { align-self: flex-start; }
+.msg-page .msg-row.mine { align-self: flex-end; flex-direction: row-reverse; }
+.msg-page .msg-row .avatar {
+  flex: none; width: 36px; height: 36px; border-radius: 50%;
+  overflow: hidden; border: 0; box-shadow: none;
+}
+.msg-page .bubble-wrap {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 4px; min-width: 0; max-width: 100%;
+}
+.msg-page .msg-row.mine .bubble-wrap { align-items: flex-end; }
+
+.msg-page .bubble {
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  color: #1f1f1f;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+.msg-page .msg-row.their .bubble { border-top-left-radius: 4px; }
+.msg-page .msg-row.mine .bubble {
+  background: var(--brand);
+  color: #fff;
+  border-top-right-radius: 4px;
+  box-shadow: none;
+}
+.msg-page .msg-row.mine .bubble a { color: #fff; text-decoration: underline; }
+.msg-page .bubble-name { font-size: 11.5px; color: #9a9a9a; padding: 0 2px; }
+.msg-page .msg-stamp {
+  align-self: center;
+  font-size: 11.5px;
+  color: #a8a8a8;
+  font-weight: 400;
+  padding: 2px 0 0;
+  background: none;
+  border: 0;
+}
+.msg-page .msg-thread-empty {
+  margin: auto;
+  text-align: center;
+  font-size: 13px;
+  color: #9a9a9a;
+  line-height: 2;
+}
+.msg-page .recalled-row { align-self: center; }
+.msg-page .msg-recalled {
+  font-size: 11.5px; color: #a8a8a8;
+  background: rgba(0, 0, 0, .04);
+  border: 0; border-radius: 10px;
+  padding: 3px 10px;
+}
+
+/* ----- 输入条：定高、贴底、安全区留白 ----- */
+.msg-page .msg-form {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;   /* 老规则是 flex-end（行列式时代的写法），不覆盖会让输入框缩成 192 宽 */
+  gap: 8px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #efefef;
+}
+.msg-page .msg-form-row { display: flex; align-items: flex-end; gap: 8px; }
+.msg-page .msg-form textarea {
+  flex: 1; min-width: 0;
+  height: 38px; min-height: 38px; max-height: 96px;
+  padding: 8px 14px;
+  border: 0; border-radius: 19px;
+  background: #f4f4f4;
+  color: #1f1f1f;
+  font-size: 15px; line-height: 22px; font-weight: 400;
+  outline: none; resize: none; overflow-y: auto;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+}
+.msg-page .msg-form textarea:focus { background: #efefef; box-shadow: none; }
+.msg-page .msg-form textarea::placeholder { color: #b5b5b5; }
+.msg-page .msg-send {
+  flex: none;
+  height: 38px; min-width: 62px; padding: 0 16px;
+  border: 0; border-radius: 19px;
+  background: #f0f0f0; color: #b9b9b9;
+  font-size: 14.5px; font-weight: 600;
+  box-shadow: none;
+  transition: background .15s ease, color .15s ease;
+}
+.msg-page .msg-send.on,
+.msg-page .msg-send:active { background: var(--brand); color: #fff; }
+
+/* 点气泡弹出的操作条（撤回 / 引用 / 删除）：浮在气泡上方，
+   用绝对定位是因为它一旦参与布局，就会把气泡顶歪（菜单比气泡宽，flex-end 会把气泡推走），
+   浮在上方也正好不会被消息流的 overflow 裁掉。 */
+.msg-page .bubble-wrap { position: relative; }
+.msg-page .msg-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  width: max-content;
+  padding: 4px;
+  background: #fff;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .16);
+}
+.msg-page .msg-row.their .msg-menu { left: 0; right: auto; }
+.msg-page .msg-menu button {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 12px;
+  border: 0; border-radius: 8px;
+  background: none;
+  font-size: 12.5px; font-weight: 500; color: #444;
+}
+.msg-page .msg-menu button:hover { background: #f4f4f4; }
+.msg-page .msg-menu button.danger { color: #e0453c; }
+.msg-page .msg-menu button.danger:hover { background: #fdecea; }
+
+/* ----- 手机端：整屏对话页（顶栏与底部 tab 都收起） ----- */
+@media (max-width: 760px) {
+  body.msg-thread .msg-page {
+    height: var(--fq-vh, 100dvh);
+    max-height: none;
+    min-height: 0;
+  }
+  body.msg-thread .msg-head {
+    flex: 0 0 auto;
+    height: 52px;
+    padding: 0 10px 0 4px;
+    gap: 8px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  body.msg-thread .msg-head .avatar { flex: none; width: 32px; height: 32px; }
+  body.msg-thread .msg-head-name { font-size: 15.5px; font-weight: 600; }
+  body.msg-thread .msg-head-user { font-size: 12.5px; font-weight: 500; color: #8c8c8c; }
+  body.msg-thread .msg-back { width: 34px; height: 34px; margin: 0; }
+  body.msg-thread .msg-body { padding: 8px 12px 4px; }
+  body.msg-thread .msg-row { max-width: 84%; }
+  body.msg-thread .msg-share { min-width: 0; max-width: 210px; }
+}

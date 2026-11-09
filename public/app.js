@@ -1991,6 +1991,23 @@ function recalledHtml(m, t) {
 }
 
 // 聊天窗口里的消息气泡（带日期分隔 / 引用 / 撤回 / 群成员头像与昵称）
+/* ---------- 私信 · 对话页（2026-11-09 按抖音私信的结构重写） ----------
+   骨架三段，都是定死的：标题栏 / 消息流 / 输入条。
+   消息流外面多包一层 #msg-list，用 flex-end 把内容压到底部 —— 抖音、微信都这样，
+   只有几条消息时不会飘在顶上留一大片空白。
+   输入条是 flex:0 0 auto 的独立一行，textarea 按内容自己长高（1~4 行），
+   消息再多也压不到它 —— 「聊天框显示不完整」这类问题跟消息多少彻底脱钩。 */
+function stampLabel(ts) {
+  const d = new Date(ts), now = new Date();
+  const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  if (same(d, now)) return hm;
+  const yd = new Date(now.getTime() - 86400000);
+  if (same(d, yd)) return '昨天 ' + hm;
+  if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hm;
+  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hm;
+}
+
 function threadBodyHtml() {
   const t = state.data.thread;
   if (!t || (!t.peer && !t.group)) return '';
@@ -2001,34 +2018,90 @@ function threadBodyHtml() {
       '<br>' + icon('wave') + ' 打个招呼吧</div>';
   }
   let out = '';
-  let lastDay = '';
+  let lastAt = 0;
   for (const m of msgs) {
-    const day = dayLabel(m.createdAt);
-    if (day !== lastDay) { out += '<div class="msg-day">' + day + '</div>'; lastDay = day; }
-    const card = (!m.recalled && m.postId) ? shareCardHtml(m) : '';
-    const showMenu = state.msgMenu === m.id;
-    const menu = showMenu ? msgMenuHtml(m) : '';
+    /* 时间条只在「第一条」和「距上一条超过 10 分钟」时画，抖音就是这种疏密，
+       每条都挂时间会把屏幕变成日志。 */
+    if (!lastAt || m.createdAt - lastAt > 10 * 60 * 1000) {
+      out += '<div class="msg-stamp">' + stampLabel(m.createdAt) + '</div>';
+    }
+    lastAt = m.createdAt;
     // 撤回的：居中灰条占位，不画气泡
     if (m.recalled) {
       out += '<div class="msg-row recalled-row">' + recalledHtml(m, t) + '</div>';
       continue;
     }
+    const card = m.postId ? shareCardHtml(m) : '';
     const quote = m.quote ? quoteBlockHtml(m) : '';
     out += '<div class="msg-row ' + (m.mine ? 'mine' : 'their') + '" data-mid="' + m.id + '">' +
-      avatarHtml(m.mine ? state.me : (t.kind === 'group' ? (m.from || { id: 0, nickname: '群友' }) : t.peer), 34) +
+      avatarHtml(m.mine ? state.me : (t.kind === 'group' ? (m.from || { id: 0, nickname: '群友' }) : t.peer), 36) +
       '<div class="bubble-wrap">' +
         (t.kind === 'group' && !m.mine && m.from ? '<div class="bubble-name">' + esc(m.from.nickname) + '</div>' : '') +
         '<div class="bubble' + (card ? ' bubble-share' : '') + (quote ? ' has-quote' : '') + '" data-action="msg-menu" data-id="' + m.id + '">' +
           quote +
           (m.content ? richText(m.content) : '') +
           card +
-          '<span class="msg-t">' + hhmm(m.createdAt) + '</span>' +
         '</div>' +
-        menu +
+        (state.msgMenu === m.id ? msgMenuHtml(m) : '') +
       '</div>' +
     '</div>';
   }
   return out;
+}
+
+function threadHtml() {
+  const tid = threadRouteId();
+  if (!tid) {
+    return '<div class="msg-blank"><div class="msg-blank-ico">' + icon('chat') + '</div>' +
+      '<p>选一个聊天，或者去厨友主页点「私信」开始</p></div>';
+  }
+  const t = state.data.thread;
+  if (!t || (!t.peer && !t.group)) return '<div class="msg-blank"><p>加载中…</p></div>';
+
+  let head;
+  if (t.kind === 'group') {
+    head = '<div class="msg-head">' +
+        '<a class="msg-back" href="#/messages" title="返回">' + icon('back') + '</a>' +
+        groupAvatarHtml(t.group, 32) +
+        '<span class="msg-head-name">' + esc(t.group.name) +
+          '<span class="msg-gcount">' + icon('users') + t.group.memberCount + ' 人</span></span>' +
+        '<button class="msg-head-user" data-action="group-info">成员 ›</button>' +
+      '</div>';
+  } else {
+    head = '<div class="msg-head">' +
+        '<a class="msg-back" href="#/messages" title="返回">' + icon('back') + '</a>' +
+        avatarHtml(t.peer, 32) +
+        '<a class="msg-head-name" href="#/user/' + t.peer.id + '">' + esc(t.peer.nickname) + roleBadge(t.peer) + '</a>' +
+        '<a class="msg-head-user" href="#/user/' + t.peer.id + '">主页 ›</a>' +
+      '</div>';
+  }
+  const form = '<div class="msg-form" id="msg-form">' + quoteBarHtml() +
+      '<div class="msg-form-row">' +
+        '<textarea id="msg-input" rows="1" maxlength="1000" placeholder="发消息…" title="Enter 发送，Shift+Enter 换行">' + esc(state.msgDraft) + '</textarea>' +
+        '<button class="msg-send' + (state.msgDraft ? ' on' : '') + '" data-action="msg-send" data-id="' + tid + '">发送</button>' +
+      '</div>' +
+    '</div>';
+  return head + '<div class="msg-body" id="msg-body"><div class="msg-list" id="msg-list">' + threadBodyHtml() + '</div></div>' + form;
+}
+
+/* 输入框：按内容长高（1 行 → 最多 4 行），有字才点亮发送键。
+   每次重绘后重挂一次（元素是新建的），监听器随元素一起销毁，不会累积。 */
+function bindMsgInput() {
+  const ta = $('#msg-input');
+  if (!ta) return;
+  const grow = function () {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 96) + 'px';
+    const btn = $('.msg-send');
+    if (btn) btn.classList.toggle('on', !!ta.value.trim());
+  };
+  ta.addEventListener('input', grow);
+  /* 聚焦后把输入条顶到可见区最下面：安卓 WebView 里软键盘弹起时
+     浏览器有时只滚半截，光标就贴在键盘边。scrollIntoView 兜这一下。 */
+  ta.addEventListener('focus', function () {
+    setTimeout(function () { ta.scrollIntoView({ block: 'nearest' }); scrollThread(); }, 260);
+  });
+  grow();
 }
 
 // 点气泡弹出的操作菜单（撤回 / 引用 / 删除）
@@ -2054,41 +2127,6 @@ function quoteBarHtml() {
     '</div>';
 }
 
-function threadHtml() {
-  const tid = threadRouteId();
-  if (!tid) {
-    return '<div class="msg-blank"><div class="msg-blank-ico">' + icon('chat') + '</div>' +
-      '<p>选一个聊天，或者去厨友主页点「私信」开始</p></div>';
-  }
-  const t = state.data.thread;
-  if (!t || (!t.peer && !t.group)) return '<div class="msg-blank"><p>加载中…</p></div>';
-
-  let head;
-  if (t.kind === 'group') {
-    head = '<div class="msg-head">' +
-        '<a class="msg-back" href="#/messages" title="返回">' + icon('back') + '</a>' +
-        groupAvatarHtml(t.group, 38) +
-        '<span class="msg-head-name">' + esc(t.group.name) +
-          '<span class="msg-gcount">' + icon('users') + t.group.memberCount + ' 人</span></span>' +
-        '<button class="msg-head-user" data-action="group-info">成员 ›</button>' +
-      '</div>';
-  } else {
-    head = '<div class="msg-head">' +
-        '<a class="msg-back" href="#/messages" title="返回">' + icon('back') + '</a>' +
-        avatarHtml(t.peer, 38) +
-        '<a class="msg-head-name" href="#/user/' + t.peer.id + '">' + esc(t.peer.nickname) + roleBadge(t.peer) + '</a>' +
-        (t.relation ? '<span class="msg-rel">' + esc(t.relation) + '</span>' : '') +
-        '<a class="msg-head-user" href="#/user/' + t.peer.id + '">主页 ›</a>' +
-      '</div>';
-  }
-  const form = '<div class="msg-form">' + quoteBarHtml() +
-      '<div class="msg-form-row">' +
-        '<textarea id="msg-input" rows="1" maxlength="1000" placeholder="发条消息…" title="Enter 发送，Shift+Enter 换行">' + esc(state.msgDraft) + '</textarea>' +
-        '<button class="btn-primary msg-send" data-action="msg-send" data-id="' + tid + '">发送</button>' +
-      '</div>' +
-    '</div>';
-  return head + '<div class="msg-body" id="msg-body">' + threadBodyHtml() + '</div>' + form;
-}
 
 function viewMessages() {
   if (!state.me) return '';
@@ -2104,10 +2142,16 @@ function viewMessages() {
     '</div>';
 }
 
-// 只重绘消息区并滚到底部（发送 / 收到新消息时用，避免整页重渲染打断输入）
+// 只重绘消息流（发送 / 收到新消息时用，避免整页重渲染打断输入）
 function paintThread() {
+  const list = $('#msg-list');
   const body = $('#msg-body');
-  if (body) { body.innerHTML = threadBodyHtml(); body.scrollTop = body.scrollHeight; }
+  if (!list) return;
+  /* 只有当用户本来就在底部附近时才自动滚到底 —— 翻历史记录时来一条新消息，
+     不能把人从上面一把拽下来。 */
+  const nearBottom = !body || (body.scrollHeight - body.scrollTop - body.clientHeight < 96);
+  list.innerHTML = threadBodyHtml();
+  if (nearBottom) scrollThread();
 }
 function paintConversations() {
   const box = $('.msg-convs');
@@ -2800,6 +2844,15 @@ function render() {
   // 私信页的高度要按「聊天框上方实际占了多少」算（见 syncMsgTop）
   syncMsgTop();
   watchMsgTop();
+  // 对话页：输入框长高 + 贴底显示最新消息（抖音那种一进来就看到最后一句）
+  if (state.route.name === 'messages' && threadRouteId()) {
+    bindMsgInput();
+    scrollThread();
+    /* 首帧量到的 scrollHeight 可能还没算上头像 / 图片的高度，滚一次就停在半路。
+       再补两枪（下一帧 + 200ms），慢机型也能稳稳停在最后一句。 */
+    requestAnimationFrame(scrollThread);
+    setTimeout(scrollThread, 200);
+  }
 }
 
 /* ---------------------- 交互 ---------------------- */
