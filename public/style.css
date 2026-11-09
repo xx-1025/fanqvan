@@ -3461,7 +3461,8 @@ a:hover { color: var(--brand-2); }
   .profile-cover { height: 132px; }
   /* 同上：头像负边距上移，名字另起一行，不压封面 */
   .profile-info { padding: 10px 12px 0; margin-top: 0; gap: 0 12px; }
-  .profile-info .avatar { width: 68px; height: 68px; margin-top: -42px; }
+  /* 头像给足分量：手机上是主页第一个视觉落点，68px 看着太小；80px 与封面 132 的比例接近微博 */
+  .profile-info .avatar { width: 80px; height: 80px; margin-top: -52px; border-width: 3px; }
   .profile-name { padding: 10px 0 0; }
   .profile-name h2 { font-size: 17.5px; }
   .profile-bio { padding: 8px 12px 0; font-size: 13.5px; }
