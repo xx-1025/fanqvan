@@ -16,6 +16,8 @@ const state = {
   route: { name: 'feed', id: '' },
   postFrom: '',          // 进详情页之前在哪，用来让「返回」回到原页面
   data: {},
+  // 主页的页签：微博 / 相册（切换只重画列表，不重新拉数据）
+  profileTab: 'posts',
   draft: '',
   draftImages: [],
   upload: null,          // 正在上传时：{ done, total }，用来显示「上传中 x/y」
@@ -448,6 +450,8 @@ async function router() {
   // #/notifications 不是独立页面（通知是浮层），统一回到首页
   if (r.name === 'notifications') { state.loading = false; go('#/'); return; }
   state.loading = true;
+  // 换一个人（或回自己主页）时回到「微博」页签，别把上一个人的「相册」带过去
+  if (r.name === 'mine' || r.name === 'user') state.profileTab = 'posts';
   // 搜索页的关键词来自 URL（顶部搜索框、热搜话题、分享链接都走这里）
   state.keyword = r.name === 'search' ? (r.q.get('q') || '') : '';
   // 顶栏输入框只在这两个场景回填：进搜索页带关键词、离开搜索页清空
@@ -566,6 +570,29 @@ function notePanel() {
   '</div>';
 }
 
+/* 手机端底部导航：首页 / 发现 / 发布 / 消息 / 我 —— 微博 App 的五个位置。
+   桌面上这一条不显示（CSS 里 .tabbar 默认 display:none），左侧栏仍在。 */
+function tabbar() {
+  if (!state.me) return '';
+  const cur = state.route.name;
+  const msgUnread = state.data.unreadMsgs || 0;
+  const unread = state.data.unread || 0;
+  const dot = msgUnread || unread;
+  const on = (cond) => (cond ? ' on' : '');
+  return '<nav class="tabbar" aria-label="主导航">' +
+    '<a class="tab' + on(cur === 'feed' && state.homeTab !== 'following') + '" href="#/">' +
+      icon('home') + '<span>首页</span></a>' +
+    '<a class="tab' + on(cur === 'hot' || cur === 'search') + '" href="#/hot">' +
+      icon('fire') + '<span>发现</span></a>' +
+    '<button class="tab-plus" data-action="new-post" aria-label="发布"><span>+</span></button>' +
+    '<a class="tab' + on(cur === 'messages') + '" href="#/messages">' +
+      icon('chat') + '<span>消息</span>' +
+      (dot ? '<i class="tb-dot">' + (dot > 99 ? '99+' : dot) + '</i>' : '') + '</a>' +
+    '<a class="tab' + on(cur === 'mine' || cur === 'user' || cur === 'edit') + '" href="#/mine">' +
+      icon('user') + '<span>我</span></a>' +
+  '</nav>';
+}
+
 function shell() {
   const me = state.me;
   const unread = state.data.unread || 0;
@@ -591,7 +618,7 @@ function shell() {
         : '<a class="btn-primary" href="#/login" style="height:36px">登录 / 注册</a>') +
     '</div>' +
     notePanel() +
-  '</div></header>';
+  '</div></header>' + tabbar();
 }
 
 function sidebar() {
@@ -979,7 +1006,12 @@ function viewFeed() {
   // 顶部「首页 / 看看大家今天都做了什么好吃的」标题卡已删除：
   // 左侧（手机是横向）导航已经标明当前在哪一页，这块只占地方。
   // 「推荐 / 关注」切换同理，导航的「首页」「关注」就是入口。
-  return (minePending
+  // 微博式的「关注 / 推荐」切换条，钉在信息流顶部
+  const tabs = '<div class="feed-tabs">' +
+      '<a class="' + (following ? 'on' : '') + '" href="#/?tab=following">关注</a>' +
+      '<a class="' + (following ? '' : 'on') + '" href="#/">推荐</a>' +
+    '</div>';
+  return tabs + (minePending
       ? '<div class="card notice-pending">' + icon('clock') + ' 你有 <b>' + minePending + '</b> 条内容正在审核中 — 只有你自己能看到（带「待审核」标记），审核通过后所有人可见。</div>'
       : '') +
     // 「关注」流不显示发布框：那一屏是"看别人"的，放发布框反而让人以为没切过来
@@ -1147,36 +1179,81 @@ function relRowHtml(u) {
   '</div>';
 }
 
+/* ---------- 主页的公共零件 ---------- */
+
+// 微博式的两个页签：微博 / 相册
+function profileTabBtn(key, label, count, cur) {
+  return '<button type="button" data-action="profile-tab" data-tab="' + key + '"' +
+    (cur === key ? ' class="on"' : '') + '>' + label +
+    (count ? '<span class="cnt">' + count + '</span>' : '') + '</button>';
+}
+
+// 相册：把这个人所有微博里的图片摊平成九宫格
+function photoGrid(posts) {
+  const imgs = [];
+  (posts || []).forEach((p) => (p.images || []).forEach((u) => {
+    imgs.push('<img src="' + esc(u) + '" data-zoom="' + esc(u) + '" loading="lazy" alt="">');
+  }));
+  if (!imgs.length) return '<div class="photo-empty">还没有发过图片</div>';
+  return '<div class="photo-grid">' + imgs.join('') + '</div>';
+}
+
+// 主页那块「封面 + 头像 + 名字 + 简介 + 数字 + 页签」由本人和他人两页共用，
+// 只有按钮和部分数字的可见性不同，所以拼一份，避免两处各写一遍又慢慢长歪。
+function profileHeadHtml(u, opts) {
+  opts = opts || {};
+  const tab = state.profileTab === 'photos' ? 'photos' : 'posts';
+  const act = opts.act || '';
+  return '<div class="card profile-head">' +
+      '<div class="profile-cover"></div>' +
+      '<div class="profile-info">' + avatarHtml(u, 0) +
+        '<div class="profile-name">' +
+          '<h2>' + esc(u.nickname) + roleBadge(u) + '</h2>' +
+          '<p>@' + esc(u.username) + '</p>' +
+        '</div>' +
+        (act ? '<div class="profile-act">' + act + '</div>' : '') +
+      '</div>' +
+      (u.bio ? '<div class="profile-bio">' + esc(u.bio) + '</div>' : '') +
+      '<div class="profile-stats">' + (opts.stats || '') + '</div>' +
+      (opts.joined ? '<div class="profile-joined">' + icon('calendar') + ' 加入于 ' + timeAgo(u.createdAt) + '</div>' : '') +
+      '<div class="profile-tabs">' +
+        profileTabBtn('posts', '微博', opts.postCount || 0, tab) +
+        profileTabBtn('photos', '相册', opts.photoCount || 0, tab) +
+      '</div>' +
+    '</div>';
+}
+
 function viewMine() {
   const me = state.me;
   if (!me) return '';
   const posts = state.data.posts || [];
   const approved = posts.filter((p) => p.status === 'approved');
   const likes = approved.reduce((s, p) => s + (p.likeCount || 0), 0);
+  const photos = approved.filter((p) => p.images && p.images.length);
+  const tab = state.profileTab === 'photos' ? 'photos' : 'posts';
 
-  return '<div class="card profile-head">' +
-      '<div class="profile-cover"></div>' +
-      '<div class="profile-info">' + avatarHtml(me, 0) +
-        '<div class="profile-name"><h2>' + esc(me.nickname) + '</h2>' +
-          '<p>@' + esc(me.username) + '</p></div>' +
-        '<div class="profile-act">' +
-          '<a class="btn-ghost btn-sm" href="#/edit" style="display:inline-flex;align-items:center">' + icon('pencil') + '编辑资料</a>' +
-          (isMod() ? '<a class="btn-ghost btn-sm" href="#/review" style="display:inline-flex;align-items:center">' + icon('shield') + '审核中心</a>' : '') +
-        '</div>' +
-      '</div>' +
-      (me.bio ? '<div class="profile-bio">' + esc(me.bio) + '</div>' : '') +
-      '<div class="profile-stats">' +
-        '<div><b>' + approved.length + '</b>已发布</div>' +
-        '<div><b>' + likes + '</b>获赞</div>' +
-        relStat(me.followerCount || 0, '粉丝', 'followers', me.id) +
-        relStat(me.followingCount || 0, '关注', 'following', me.id) +
-        pendingStat(posts.filter((p) => p.status === 'pending').length) +
-      '</div>' +
-    '</div>' +
-    '<div class="card page-head" style="padding:14px 20px 10px">' +
-      '<div class="sub">我的全部内容（含审核状态）</div>' +
-    '</div>' +
-    postList(posts, { showStatus: true, noMore: true, emptyText: '你还没有发布任何内容' });
+  const act = '<a class="btn-ghost btn-sm" href="#/edit">' + icon('pencil') + '编辑资料</a>' +
+    (isMod() ? '<a class="btn-ghost btn-sm" href="#/review">' + icon('shield') + '审核中心</a>' : '') +
+    // 手机上顶栏只留头像/消息，退出挪到这儿
+    '<button class="btn-ghost btn-sm hide-desk" data-action="logout">退出</button>';
+
+  const stats =
+    '<div><b>' + approved.length + '</b>微博</div>' +
+    relStat(me.followingCount || 0, '关注', 'following', me.id) +
+    relStat(me.followerCount || 0, '粉丝', 'followers', me.id) +
+    '<div><b>' + likes + '</b>获赞</div>' +
+    (posts.filter((p) => p.status === 'pending').length
+      ? pendingStat(posts.filter((p) => p.status === 'pending').length) : '');
+
+  return profileHeadHtml(me, {
+      act: act, stats: stats, joined: true,
+      postCount: posts.length, photoCount: photos.length
+    }) +
+    '<div id="profile-list">' +
+      (tab === 'photos'
+        ? photoGrid(photos)
+        : postList(posts, { showStatus: true, noMore: true, emptyText: '你还没有发布任何内容' })) +
+    '</div>';
 }
 
 function viewUser() {
@@ -1184,39 +1261,39 @@ function viewUser() {
   if (!d) return '<div class="card empty">加载中…</div>';
   const u = d.user;
   const stats = d.stats || {};
-  return '<div class="card profile-head">' +
-      '<div class="profile-cover"></div>' +
-      '<div class="profile-info">' + avatarHtml(u, 0) +
-        '<div class="profile-name"><h2>' + esc(u.nickname) + '</h2>' +
-          '<p>@' + esc(u.username) + '</p></div>' +
-        (d.isSelf
-          ? '<div class="profile-act"><a class="btn-ghost btn-sm" href="#/edit" style="display:inline-flex;align-items:center">' + icon('pencil') + '编辑资料</a></div>'
-          : (state.me
-            ? '<div class="profile-act">' +
-                '<button class="btn-follow' + (d.isFollowing ? ' on' : '') +
-                  '" data-action="follow" data-id="' + u.id + '">' + (d.isFollowing ? '已关注' : '+ 关注') + '</button>' +
-                '<button class="btn-ghost btn-sm" data-action="msg-open" data-id="' + u.id +
-                  '" style="display:inline-flex;align-items:center">' + icon('chat') + '私信</button>' +
-              '</div>'
-            : '')) +
-      '</div>' +
-      (u.bio ? '<div class="profile-bio">' + esc(u.bio) + '</div>' : '') +
-      '<div class="profile-stats">' +
-        '<div><b>' + (stats.posts || 0) + '</b>作品</div>' +
-        '<div><b>' + (stats.likes || 0) + '</b>获赞</div>' +
-        // 粉丝 / 关注名单都只有本人能看，所以非本人这两项都是普通统计项（不是"点不动的按钮"）
-        (d.isSelf
-          ? relStat(u.followerCount || 0, '粉丝', 'followers', u.id)
-          : plainStat(u.followerCount || 0, '粉丝', 'TA 的粉丝名单不公开')) +
-        (d.isSelf
-          ? relStat(u.followingCount || 0, '关注', 'following', u.id)
-          : plainStat(u.followingCount || 0, '关注', 'TA 的关注名单不公开')) +
-      '</div>' +
-      // 「加入于」没有数字，留在统计行里会跟数字挤在同一基线；挪到下面单独一行
-      '<div class="profile-joined">' + icon('calendar') + ' 加入于 ' + timeAgo(u.createdAt) + '</div>' +
-      roleBadge(u) +
-    '</div>' +
-    postList(d.posts, { noMore: true, emptyText: 'TA 还没有公开的作品' });
+  const posts = d.posts || [];
+  const photos = posts.filter((p) => p.images && p.images.length);
+  const tab = state.profileTab === 'photos' ? 'photos' : 'posts';
+
+  const act = d.isSelf
+    ? '<a class="btn-ghost btn-sm" href="#/edit">' + icon('pencil') + '编辑资料</a>'
+    : (state.me
+      ? '<button class="btn-follow' + (d.isFollowing ? ' on' : '') +
+        '" data-action="follow" data-id="' + u.id + '">' + (d.isFollowing ? '已关注' : '+ 关注') + '</button>' +
+        '<button class="btn-ghost btn-sm" data-action="msg-open" data-id="' + u.id + '">' +
+          icon('chat') + '私信</button>'
+      : '');
+
+  // 粉丝 / 关注名单只有本人能看，非本人这两项只给数字（点不动的普通文字，不是灰按钮）
+  const statsHtml =
+    '<div><b>' + (stats.posts || 0) + '</b>微博</div>' +
+    (d.isSelf
+      ? relStat(u.followingCount || 0, '关注', 'following', u.id)
+      : plainStat(u.followingCount || 0, '关注', 'TA 的关注名单不公开')) +
+    (d.isSelf
+      ? relStat(u.followerCount || 0, '粉丝', 'followers', u.id)
+      : plainStat(u.followerCount || 0, '粉丝', 'TA 的粉丝名单不公开')) +
+    (stats.likes ? '<div><b>' + stats.likes + '</b>获赞</div>' : '');
+
+  return profileHeadHtml(u, {
+      act: act, stats: statsHtml, joined: true,
+      postCount: stats.posts || posts.length, photoCount: photos.length
+    }) +
+    '<div id="profile-list">' +
+      (tab === 'photos'
+        ? photoGrid(photos)
+        : postList(posts, { noMore: true, emptyText: 'TA 还没有公开的作品' })) +
+    '</div>';
 }
 
 function viewPost() {
@@ -3549,6 +3626,13 @@ document.addEventListener('click', (e) => {
     case 'user-unadmin': adminUser(id, 'unadmin'); break;
     case 'user-delete': adminUser(id, 'delete'); break;
     case 'follow': toggleFollow(id, el); break;
+    case 'profile-tab': {
+      const t = el.getAttribute('data-tab') === 'photos' ? 'photos' : 'posts';
+      if (state.profileTab === t) break;
+      state.profileTab = t;
+      render();
+      break;
+    }
     case 'relations': openRelations(el.getAttribute('data-tab'), id); break;
     case 'pending-posts': openPending(); break;
     case 'msg-open': {
