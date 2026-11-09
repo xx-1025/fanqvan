@@ -37,6 +37,11 @@
 - 主页交互实测：微博 3 条 → 相册 4 图 → 回微博 3 条；换人回到「微博」；关注按钮 `已关注 ↔ + 关注` 切换正常。
 - 登录页、私信页跟着新皮肤一起过了。
 
+**上线与安装包**
+- 已部署到线上分享链接，`app.js` / `style.css` 与本地 md5 逐字一致（139626 / 195523 字节），首页指纹 `app.js?v=f546ffaa72`。
+- 重打 `dist/fanqvan-1.8.apk`（versionCode 9 / versionName 1.8）。App 里的页面是打进包里的离线副本，不重打就还是旧界面；离线包 `app.js`/`style.css`/`index.html` 与 `public/` md5 一致，7 张图片齐全。
+- 包的硬指标复查：`resources.arsc` 偏移 320204、`classes.dex` 偏移 746416，均 %4=0；v1+v2+v3 `verified=true`；`minSdkVersion 16`（Android 4.1+）。
+
 ---
 
 ## 2026-11-04（四续）
