@@ -42,6 +42,11 @@
 - 重打 `dist/fanqvan-1.8.apk`（versionCode 9 / versionName 1.8）。App 里的页面是打进包里的离线副本，不重打就还是旧界面；离线包 `app.js`/`style.css`/`index.html` 与 `public/` md5 一致，7 张图片齐全。
 - 包的硬指标复查：`resources.arsc` 偏移 320204、`classes.dex` 偏移 746416，均 %4=0；v1+v2+v3 `verified=true`；`minSdkVersion 16`（Android 4.1+）。
 
+**文档与两处收尾（同日）**
+- 新增 **`饭圈-框架与设计.md`**：把技术框架、数据模型、每个功能的判断逻辑、50 多个接口、UI 设计令牌与组件规格、手机端与安卓包的约束，按代码实际实现整理成一份。写这份时逐段核对了 `server.js` 的 `handleApi` 分支、`app.js` 的 `parseHash` 与 `view*`、`style.css` 的 `:root`，数字都取自代码而不是印象。
+- `index.html` 的启动屏还留着旧的奶油底 + 2.5px 深棕粗描边（换肤时漏了，它是内联样式，不在 `style.css` 里）。改成白卡片 + 浅灰底 + `0 2px 10px` 柔投影，和现在的皮肤一致。
+- `style.css` 文件头注释还写着「Q 版设计系统 / 粗描边 + 硬阴影」，改成微博式的描述并注明换肤是在末尾追加覆盖段，免得下次读代码被注释带偏。
+
 ---
 
 ## 2026-11-04（四续）
