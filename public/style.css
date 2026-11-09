@@ -2944,6 +2944,36 @@ button.msg-head-user {
   .topbar-right .msg-ico { display: none; }
 }
 
+/* 手机端私信：按抖音的逻辑做「整屏对话页」。
+   会话列表是一屏，点进某个人就换成另一整屏：顶栏和底部 5 个 tab 全部收起，
+   只剩「返回 + 头像 + 名字」一条头、中间的消息流、底部输入条。
+   **为什么要这么改**：底部 tab 是 position:fixed 的 52px，独立压在页面之上；
+   而对页高度又一路算到屏幕底 —— 输入条正好被 tab 盖住下半截，
+   表现就是「点开一个人，聊天框显示不完整」。
+   高度直接吃满 visualViewport（--fq-vh，键盘弹起时会实时变小），
+   所以键盘顶上来时输入条会跟着上移，不会被盖。 */
+@media (max-width: 760px) {
+  body.msg-thread { padding-bottom: 0; overflow: hidden; }
+  body.msg-thread .topbar,
+  body.msg-thread .tabbar { display: none !important; }
+  body.msg-thread .layout { padding: 0; gap: 0; }
+  body.msg-thread .msg-page {
+    height: var(--fq-vh, 100dvh);
+    max-height: none;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  /* 顶部安全区（刘海 / 状态栏）让给标题栏，手指也好点 */
+  body.msg-thread .msg-head {
+    padding-top: calc(9px + env(safe-area-inset-top));
+    border-bottom: 1px solid var(--line);
+  }
+  body.msg-thread .msg-back { flex: none; width: 34px; height: 34px; margin-left: -4px; }
+  body.msg-thread .msg-body { padding-bottom: 10px; }
+}
+
 /* 窄屏的对话标题栏很挤（返回 + 头像 + 名字 + 角色 + 已关注 + 主页），
    名字会被挤成一字一行竖着排。把空间让给名字：先砍掉「已关注」这个可有可无的标 */
 @media (max-width: 420px) {
@@ -3037,6 +3067,12 @@ a:hover { color: var(--brand-2); }
 
 /* ---------- 三栏 ---------- */
 .layout { padding: 16px 16px 40px; gap: 16px; grid-template-columns: 180px minmax(0, 1fr) 280px; }
+
+/* 私信页必须在这里重新声明「两栏」。
+   .layout-msg 写在文件前面（第 253 行左右），只有 .layout 一个类的权重；这条 .layout 在它后面，
+   同权重后写的赢 —— 皮肤上线后私信页被打回三栏，主栏被右栏吃掉 280，聊天区只剩 300 出头。
+   以后改 .layout 的列定义，记得把下面这行一起改。 */
+.layout-msg { grid-template-columns: 180px minmax(0, 1fr); }
 .col-left, .col-right { top: 72px; }
 
 /* 左导航：微博网页版那种无边框灰字，选中变橙 */

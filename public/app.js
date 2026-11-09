@@ -2779,6 +2779,11 @@ function render() {
       modalHtml();
   }
 
+  // 手机端私信按抖音的逻辑：点开某个人 = 整屏对话页（顶栏、底部 tab 都收起）。
+  // 这里只负责挂标记，具体收起哪些、高度怎么算都在 style.css 的手机端私信段里。
+  document.body.classList.toggle('msg-thread',
+    state.route.name === 'messages' && !!threadRouteId());
+
   // 有弹窗时锁住背后的页面滚动（登录页不渲染弹窗，排除掉）
   setModalLock((!!state.modal || !!state.cook.open) && state.route.name !== 'login');
 
