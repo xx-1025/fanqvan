@@ -2,12 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<!-- maximum-scale=1 + user-scalable=no：手机上不许双指放大把布局撑开。
+     iOS Safari 会无视这两个属性（无障碍策略），所以 style.css 里还补了
+     touch-action 兜一层；android WebView 里这条是生效的。 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#ff8a3d">
 <meta name="description" content="饭圈 · 好好做饭的人都在这里。一个专门聊做菜的美食社区，发帖、关注、点赞、评论，内容经审核后公开。">
 <title>饭圈 · 好好做饭的人都在这里</title>
 <link rel="icon" href="/assets/mascot.webp">
 <link rel="apple-touch-icon" href="/assets/mascot.webp">
+<link rel="preload" as="image" href="/assets/mascot.webp">
 <link rel="stylesheet" href="/style.css?v=__FQ_V__">
 <!-- 关键路径并行化：app.js 是首屏必下载的大头，预加载让它在 HTML 解析阶段就和 HTML 一起并发下载，
      不再等 HTML 回来后再去请求，慢回源下能省掉一整轮 RTT+排队等待 -->
@@ -15,24 +19,68 @@
 <style>
 /* 启动屏：app.js 到之前先给个东西看，别让用户对着白屏等。
    样式内联在 head，不受 style.css 请求快慢影响；app.js 重绘 #app 时自动消失。
-   深色要在这里单独写一遍：启动屏在 style.css 之前就可能画出来。 */
-#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#f2f2f2;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
-#boot .boot-plate{width:76px;height:76px;border-radius:20px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;font-size:40px;line-height:1;animation:fq-bob 1.1s ease-in-out infinite}
-#boot .boot-txt{margin:0;color:#939393;font-size:13.5px;font-weight:400;letter-spacing:.3px}
-@keyframes fq-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-@media (prefers-reduced-motion:reduce){#boot .boot-plate{animation:none}}
+
+   动画分两拍，写成一条 keyframes 走完（两条 animation 会抢 transform，互相覆盖）：
+     0 ~ 58%：应用图标从 0.5 倍弹进来 → 停在正常大小，这一段只有图标没有字；
+     58% ~ 100%：图标缩到 0.56 倍、圆角收到 50%、轻转一点，像被摆进盘子里；
+                 同时外圈环亮起匀速转，文案淡入成「正在装盘…」。
+   缓存命中的时候 0.3s 就进页面，用户只看得到图标弹入这一拍，也不突兀。 */
+#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:#f2f2f2;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+#boot .boot-art{position:relative;width:104px;height:104px;display:grid;place-items:center}
+/* 图标用抠好的透明版 + CSS 白底：直接用白底 webp，深色模式下会是一块刺眼的白板 */
+#boot .boot-logo{
+  width:78px;height:78px;box-sizing:border-box;padding:7px;
+  background:#fff;border-radius:20px;object-fit:contain;display:block;
+  box-shadow:0 12px 28px rgba(255,138,61,.26), 0 0 0 1px rgba(120,60,20,.05);
+  animation:boot-life 1.5s cubic-bezier(.25,.9,.3,1) both;
+  will-change:transform,border-radius;
+}
+/* 装盘环：0.87s 之后才出现，之后一直转 */
+#boot .boot-ring{
+  position:absolute;width:80px;height:80px;border-radius:50%;
+  border:3px solid rgba(255,138,61,.20);
+  border-top-color:#ff8a3d;border-right-color:#ffb26b;
+  opacity:0;
+  animation:boot-ring-in .24s .87s both, boot-spin 1.05s .87s linear infinite;
+}
+#boot .boot-txt{margin:0;color:#939393;font-size:13.5px;font-weight:400;letter-spacing:.3px;opacity:0;animation:boot-txt-in .32s .95s both}
+@keyframes boot-life{
+  0%{opacity:0;transform:scale(.5) rotate(-14deg);border-radius:24px}
+  18%{opacity:1;transform:scale(1) rotate(0deg);border-radius:20px}
+  58%{opacity:1;transform:scale(1) rotate(0deg);border-radius:20px}
+  100%{opacity:1;transform:scale(.64) rotate(-6deg) translateY(-2px);border-radius:50%}
+}
+@keyframes boot-ring-in{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:scale(1)}}
+@keyframes boot-spin{to{transform:rotate(360deg)}}
+@keyframes boot-txt-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* 减少动态偏好：不弹不转，直接给最终态，文案立刻可见 */
+@media (prefers-reduced-motion:reduce){
+  #boot .boot-logo{animation:none;transform:scale(.64);border-radius:50%}
+  #boot .boot-ring{animation:boot-spin 1.5s linear infinite;opacity:1}
+  #boot .boot-txt{animation:none;opacity:1}
+}
+
 html[data-theme="dark"] #boot{background:#111114}
-html[data-theme="dark"] #boot .boot-plate{background:#1b1b20;box-shadow:0 2px 10px rgba(0,0,0,.5)}
+html[data-theme="dark"] #boot .boot-logo{background:#232329;box-shadow:0 12px 28px rgba(0,0,0,.55)}
 html[data-theme="dark"] #boot .boot-txt{color:#82828e}
+html[data-theme="dark"] #boot .boot-ring{border-color:rgba(255,138,61,.16);border-top-color:#ff8a3d;border-right-color:#ffb26b}
 @media (prefers-color-scheme:dark){
   html:not([data-theme="light"]) #boot{background:#111114}
-  html:not([data-theme="light"]) #boot .boot-plate{background:#1b1b20;box-shadow:0 2px 10px rgba(0,0,0,.5)}
+  html:not([data-theme="light"]) #boot .boot-logo{background:#232329;box-shadow:0 12px 28px rgba(0,0,0,.55)}
   html:not([data-theme="light"]) #boot .boot-txt{color:#82828e}
+  html:not([data-theme="light"]) #boot .boot-ring{border-color:rgba(255,138,61,.16);border-top-color:#ff8a3d;border-right-color:#ffb26b}
 }
 </style>
 </head>
 <body>
-  <div id="app"><div id="boot"><div class="boot-plate">🍳</div><p class="boot-txt">正在装盘…</p></div></div>
+  <div id="app"><div id="boot">
+    <div class="boot-art">
+      <span class="boot-ring"></span>
+      <img class="boot-logo" src="/assets/mascot-cut.webp" alt="饭圈">
+    </div>
+    <p class="boot-txt">正在装盘…</p>
+  </div></div>
   <div id="toast-wrap"></div>
   <script src="/app.js?v=__FQ_V__" fetchpriority="high"></script>
 </body>

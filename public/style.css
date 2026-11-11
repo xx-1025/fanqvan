@@ -65,6 +65,17 @@
    左右各挪 7~8px。常驻后两类页面宽度一致，切页不抖。 */
 html { scroll-behavior: smooth; scrollbar-gutter: stable; }
 
+/* 手机上禁止把页面缩放/拉伸：
+   · viewport 里的 maximum-scale=1 / user-scalable=no 在 Android 生效，iOS 会无视；
+   · touch-action: pan-x pan-y 是第二道闸 —— 只放行滚动（横竖都行），
+     把双击放大和双指捏合都关掉。这样「不小心两指一撑，整个布局跟着放大」不会发生。
+   · -webkit-text-size-adjust 防止横屏时系统自作主张把字放大。 */
+html, body {
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -1424,21 +1435,34 @@ img { display: block; }
    ========================================================= */
 
 .profile-head { overflow: hidden; padding-bottom: 18px; }
+/* 默认封面 = 一整幅插画（不是「一张小图贴在渐变上」）。
+   构成：暖橙天光 + 右侧站着的吉祥物 + 一圈内描边把画面框成「画」。
+   高度从 148 提到 196：之前那个尺寸里放什么都像缩略图。 */
 .profile-cover {
-  height: 132px;
-  background: linear-gradient(120deg, #ffd08a 0%, #ffab5e 45%, var(--brand) 100%);
-  border-bottom: var(--bw) solid var(--line);
+  height: 196px;
   position: relative;
+  background:
+    radial-gradient(300px 220px at 84% 12%, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 72%),
+    radial-gradient(520px 240px at 10% 112%, rgba(255, 231, 194, .6), rgba(255, 231, 194, 0) 70%),
+    linear-gradient(118deg, #ffd0a0 0%, #ff9d64 44%, #ff7040 100%);
+  border-bottom: var(--bw) solid var(--line);
   background-size: cover;
+  /* 内描边：让封面读起来是「一幅插画」而不是一块糊在卡片顶上的色块。
+     用 outline + 负 offset 而不是 ::before —— ::before 留给「上传中」遮罩用，
+     两者抢同一个伪元素的话，上传时描边会消失。 */
+  outline: 1.5px solid rgba(255, 255, 255, .45);
+  outline-offset: -9px;
+  border-radius: 7px;
 }
+/* 吉祥物站在封面右下角，脚踩封面下沿。
+   用透明抠图 mascot-cut.webp（原图是白底，直接用会压出一个白方块）。 */
 .profile-cover::after {
   content: "";
-  position: absolute; inset: 0;
-  background-image:
-    radial-gradient(circle, rgba(255, 255, 255, .35) 3px, transparent 3px),
-    radial-gradient(circle, rgba(64, 41, 27, .1) 2px, transparent 2px);
-  background-size: 44px 44px, 44px 44px;
-  background-position: 0 0, 22px 22px;
+  position: absolute; right: 14px; bottom: 0;
+  width: 168px; height: 168px;
+  background: url("/assets/mascot-cut.webp") center bottom / contain no-repeat;
+  filter: drop-shadow(0 6px 14px rgba(120, 52, 20, .22));
+  pointer-events: none;
 }
 
 .profile-info {
@@ -3316,22 +3340,7 @@ a:hover { color: var(--brand-2); }
   box-shadow: 0 1px 2px rgba(0,0,0,.035);
   background: var(--paper);
 }
-.profile-cover {
-  height: 148px;
-  background:
-    radial-gradient(420px 200px at 82% 20%, rgba(255, 255, 255, .38), rgba(255, 255, 255, 0) 70%),
-    linear-gradient(120deg, #ffb27a 0%, #ff8140 46%, #ff6a3d 100%);
-  position: relative;
-}
-.profile-cover::after {
-  content: ""; position: absolute; inset: 0;
-  background-image: url("/assets/mascot.webp");
-  background-repeat: no-repeat;
-  background-position: 88% 74%;
-  background-size: 96px 96px;
-  opacity: .28;
-}
-/* 用户自己传的封面：铺满居中裁切，吉祥物水印让位 */
+/* 用户自己传的封面：铺满居中裁切，吉祥物让位（内描边留着，框感一致） */
 .profile-cover.has-img {
   background-size: cover;
   background-position: center;
@@ -3340,8 +3349,9 @@ a:hover { color: var(--brand-2); }
 .profile-cover.has-img::after { display: none; }
 
 /* 封面右下角的操作：底色半透明，图片再花也认得出 */
+/* 封面的操作按钮放右上：右下角站着吉祥物，头像又从左下压上来，只有右上干净 */
 .cover-act {
-  position: absolute; right: 10px; bottom: 10px;
+  position: absolute; right: 14px; top: 14px;
   display: flex; gap: 6px; z-index: 2;
 }
 .cover-btn {
@@ -3363,7 +3373,7 @@ a:hover { color: var(--brand-2); }
 /* 只有头像探出封面：早先是整行 margin-top:-34 把头像顶出去的，
    名字也跟着被抬到图片上，用户传张深色封面就读不清。现在头像自己负边距上移。 */
 .profile-info {
-  display: flex; align-items: flex-start; gap: 12px;
+  display: flex; align-items: flex-start; gap: 18px;
   padding: 10px 16px 0;
   margin-top: 0;
   position: relative;
@@ -3471,10 +3481,13 @@ a:hover { color: var(--brand-2); }
   .post-bar { border-top: 1px solid var(--line-2); margin-top: 8px; padding-top: 4px; }
   .act { flex: 1; justify-content: center; font-size: 12.5px; }
 
-  .profile-cover { height: 132px; }
+  /* 手机封面 168：再矮吉祥物只剩个头，看不出是插画 */
+  .profile-cover { height: 168px; }
+  .profile-cover::after { width: 146px; height: 146px; right: 10px; }
+  .profile-cover { outline-offset: -7px; }
   /* 手机端头部：头像压封面，名字块与头像**底部对齐**（Twitter/微博都是这个关系），
      原来 align-items 走默认的 flex-start，名字块自己带 10px 上内边距，看上去浮在头像右侧中间、又和底部错开。 */
-  .profile-info { padding: 10px 12px 0; margin-top: 0; gap: 0 12px; align-items: flex-end; }
+  .profile-info { padding: 10px 12px 0; margin-top: 0; gap: 0 18px; align-items: flex-end; }
   /* 头像再给大一点：手机上它是主页第一个视觉落点，88px 压住封面 58px、露出 30px */
   .profile-info .avatar { width: 88px; height: 88px; margin-top: -58px; border-width: 3px; }
   .profile-name { padding: 0 0 6px; }
@@ -3804,88 +3817,99 @@ a:hover { color: var(--brand-2); }
 
 
 /* =========================================================================
-   头像框 V2（2026-11-09 重做视觉）
+   头像框（2026-11-11 换成真图相框）
    ---------------------------------------------------------------------------
-   上一版是 border + 两层 box-shadow 画环，两个毛病：
-     1) box-shadow 不占布局，环会往外溢出 4~6px。卡片只要有 overflow:hidden
-        （帖子卡、私信气泡、相册格）就被裁掉一半；挨着文字时还会压到字上。
-     2) 两圈实心色带 + 白 border，像套了个塑料圈。
-   这一版把环画在 .avatar 内部的 ::after 上：inset:0 铺满 + mask 挖空中间，
-   环永远长在头像盒子里，一个像素都溢不出去；颜色用 conic-gradient 转一圈，
-   是「光晕 / 金属」而不是两条色带；最外沿 1px 半透明白当玻璃边。
-   环宽 --fw 由 avatarHtml 按头像尺寸算（2~5px），小头像不会被环糊死。
+   素材是 17 张手绘 3D 摆件（南瓜马车、凤舞祥云、锦鲤龙门、醒狮、元宵灯坊…），
+   已经处理成 public/frames/<key>.webp：透明底、中间挖空成圆洞、洞固定占画布 72%。
+
+   三个必须同时成立的约束，缺一个就是 bug：
+     1) 洞和头像严丝合缝 —— 框层比头像大 1/0.72≈1.39 倍时，洞正好等于头像直径。
+        小头像给 1.30（34px 上再放大就吃掉半张脸，帖子头那圈间距也不够），
+        个人主页大头像给 1.42（地方大，让摆件完整露出来）。
+     2) 一个像素都不参与布局 —— 框层是绝对定位伪元素 + transform:scale()，
+        position/transform 都不触发重排。所以「别人戴不戴框」不会挤动昵称、
+        点赞按钮、行高、气泡宽度；同一行里有没有框，旁边元素的坐标完全一致。
+     3) 不能把圆头像顶成方的 —— .avatar 默认 overflow:hidden，戴框时要放成 visible，
+        但头像图自身有 border-radius:50%，所以露出来的仍是圆的，不会出现方角。
+
+   key 与 server.js 的 AVATAR_FRAMES、app.js 的 FRAMES 三处一一对应。
    ========================================================================= */
-.avatar[class*="frame-"] {
+.avatar[class*="pf-"] {
   position: relative;
-  border: 0;                 /* 皮肤段的 1px/3px 描边会让环边缘发毛 */
+  overflow: visible;         /* 允许框探出头像盒子 */
+  border: 0;                 /* 皮肤那 1px 描边会从框的缝隙里透出来，很难看 */
   background-clip: padding-box;
-  --fw: 3px;                 /* 默认环宽；avatarHtml 有具体尺寸时会写内联覆盖 */
 }
-/* size=0（宽度交给 CSS）的那几个位置，按真实尺寸给环宽：
-   顶栏头像 30px 给 2px，个人主页 76/88px 给 5px，编辑页预览 72px 给 4px。 */
-.user-chip .avatar[class*="frame-"] { --fw: 2px; }
-.profile-info .avatar[class*="frame-"] { --fw: 5px; }
-.edit-avatar .avatar[class*="frame-"] { --fw: 4px; }
-.avatar[class*="frame-"]::after {
+.avatar[class*="pf-"]::after {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 50%;
-  padding: var(--fw, 3px);
-  /* 两层：内边缘 1.5px 白线把「环」和「头像图」分开，剩下才是渐变本身。
-     白线画在 100%-fw 处（closest-side 的 100% 就是半径，正好是环的内沿）。 */
-  background:
-    radial-gradient(closest-side circle,
-      rgba(255, 255, 255, 0) calc(100% - var(--fw, 3px) - 2.5px),
-      rgba(255, 255, 255, .82) calc(100% - var(--fw, 3px) - 1.5px),
-      rgba(255, 255, 255, .82) calc(100% - var(--fw, 3px)),
-      rgba(255, 255, 255, 0) calc(100% - var(--fw, 3px))),
-    var(--fx);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-          mask-composite: exclude;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .34);
-  pointer-events: none;
+  transform: scale(var(--fs, 1.39));
+  transform-origin: 50% 50%;
+  background: var(--pf) center / 100% 100% no-repeat;
+  pointer-events: none;      /* 点击、长按、拖拽一律穿透到头像本身 */
 }
 
-/* —— 8 款 ——
-   同一段弧上 4~6 个色标、绕一圈闭合，所以从任何角度看都是连续过渡。
-   旧 key（sunset/gold/rose/mint/violet/night）保留不改名：线上 user.frame 存的就是它们，
-   换名字等于让老用户框全丢；只换视觉。新增 aurora / candy 两款。 */
-.avatar.frame-sunset { --fx: conic-gradient(from 205deg, #ffe7b8, #ffb457, #ff7448, #ff4f81, #ffb457, #ffe7b8); }
-.avatar.frame-gold   { --fx: conic-gradient(from 125deg, #fff6cd, #f4cc55, #c9922f, #ffe89a, #f4cc55, #fff6cd); }
-.avatar.frame-rose   { --fx: conic-gradient(from 160deg, #ffdcea, #ff9cc2, #ff6fa5, #c78bff, #ff9cc2, #ffdcea); }
-.avatar.frame-mint   { --fx: conic-gradient(from 200deg, #ccfad9, #5ee39b, #14b881, #3ad9a8, #5ee39b, #ccfad9); }
-.avatar.frame-violet { --fx: conic-gradient(from 240deg, #d3c6ff, #8b6cff, #4a2fd6, #a58bff, #e6dcff, #8b6cff); }
-.avatar.frame-night  { --fx: conic-gradient(from 180deg, #6b6b78, #26262e, #4a4a56, #14141a, #6b6b78); }
-.avatar.frame-aurora { --fx: conic-gradient(from 195deg, #8ef7d2, #35d6c8, #3f9bff, #9b6bff, #7ef0c8, #8ef7d2); }
-.avatar.frame-candy  { --fx: conic-gradient(from 30deg, #ffd0e0, #ffb06b, #ffe98a, #8fe3c0, #8fb9ff, #d7a8ff, #ffd0e0); }
+/* —— 17 款 —— */
+.avatar.pf-clouds    { --pf: url("/frames/clouds.webp"); }
+.avatar.pf-crown     { --pf: url("/frames/crown.webp"); }
+.avatar.pf-eaves     { --pf: url("/frames/eaves.webp"); }
+.avatar.pf-feast     { --pf: url("/frames/feast.webp"); }
+.avatar.pf-gate      { --pf: url("/frames/gate.webp"); }
+.avatar.pf-halloween { --pf: url("/frames/halloween.webp"); }
+.avatar.pf-jade      { --pf: url("/frames/jade.webp"); }
+.avatar.pf-koi       { --pf: url("/frames/koi.webp"); }
+.avatar.pf-lantern   { --pf: url("/frames/lantern.webp"); }
+.avatar.pf-lanterns  { --pf: url("/frames/lanterns.webp"); }
+.avatar.pf-lion      { --pf: url("/frames/lion.webp"); }
+.avatar.pf-magpie    { --pf: url("/frames/magpie.webp"); }
+.avatar.pf-mooncake  { --pf: url("/frames/mooncake.webp"); }
+.avatar.pf-osmanthus { --pf: url("/frames/osmanthus.webp"); }
+.avatar.pf-phoenix   { --pf: url("/frames/phoenix.webp"); }
+.avatar.pf-wreath    { --pf: url("/frames/wreath.webp"); }
+.avatar.pf-xmas      { --pf: url("/frames/xmas.webp"); }
+
+/* size=0（宽高交给 CSS）的三处，按真实尺寸给倍数 */
+.user-chip .avatar[class*="pf-"] { --fs: 1.3; }      /* 顶栏 30px */
+.profile-info .avatar[class*="pf-"] { --fs: 1.34; }  /* 个人主页 76px：外扩 13px，左侧 padding 16 兜得住 */
+/* 手机上主页头像是 88px 且左边距只有 12px：1.34 会让框左边顶出屏幕、
+   右边压到昵称上。收到 1.22 —— 洞是头像的 0.88 倍，头像四周被框压住一点点，
+   看起来才是「框住」而不是「框在旁边」。 */
+@media (max-width: 760px) {
+  .profile-info .avatar[class*="pf-"] { --fs: 1.22; }
+}
+.edit-avatar .avatar[class*="pf-"] { --fs: 1.39; }   /* 编辑页预览 72px */
 
 /* ---------- 编辑资料里的头像框选择行 ---------- */
-.frame-row { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 12px 0 2px; }
+.frame-row { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 0 4px; }
 .frame-row > b { font-size: 13px; color: var(--ink-2); font-weight: 400; flex: none; }
 .frame-row > b em { font-style: normal; color: var(--ink-4); font-size: 12px; margin-left: 6px; }
-.frame-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+/* 18 个选项（17 款 + 不戴）排 6 列 3 行；用 grid 而不是 flex-wrap，
+   否则最后一行会剩两三个孤零零靠左，看着没排完 */
+.frame-opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px 0; width: 100%; }
 .frame-opt {
-  width: 44px; height: 44px; padding: 0;
+  width: 56px; height: 56px; padding: 0; margin: 0 auto;
   border: 0; background: none; cursor: pointer;
   border-radius: 50%;
   display: grid; place-items: center;
-  transition: transform .15s ease;
+  transition: transform .16s ease, box-shadow .16s ease;
 }
-.frame-opt .avatar { width: 36px; height: 36px; transition: transform .15s ease; }
+/* 头像 40px + 框层 52px（1.30 倍），正好塞进 56px 的按钮里不碰邻居 */
+.frame-opt .avatar { width: 40px; height: 40px; }
 .frame-opt:hover { transform: translateY(-1px); }
-.frame-opt:hover .avatar { transform: scale(1.05); }
-/* 选中态用双层 box-shadow 画在 44px 的按钮里，不会顶到旁边那一格 */
 .frame-opt.on { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--brand); }
 .frame-none {
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   border: 1px dashed var(--ink-4); color: var(--ink-3);
-  font-size: 12px; display: grid; place-items: center;
+  font-size: 12.5px; display: grid; place-items: center;
 }
 .frame-opt.on .frame-none { border-style: solid; border-color: var(--brand); color: var(--brand); }
 .frame-tip { margin-top: 8px; }
+
+/* 手机上 4 列 5 行：56px × 4 = 224，390px 宽绰绰有余，手指也好点 */
+@media (max-width: 760px) {
+  .frame-opts { grid-template-columns: repeat(4, 1fr); gap: 6px 0; }
+}
 
 /* =========================================================================
    深色模式（2026-11-09）
@@ -3945,78 +3969,8 @@ html[data-theme="dark"] .sk-avatar, html[data-theme="dark"] .sk-line, html[data-
 html[data-theme="dark"] .avatar.frame-night { --fx: conic-gradient(from 180deg, #ffffff, #9a9aa8, #5a5a68, #d8d8e0, #ffffff); }
 html[data-theme="dark"] ::selection { background: #6a4a22; color: #fff; }
 
-/* 系统深色（用户没手动选过时） */
+/* 系统深色（用户没手动选过时）：同一套规则换选择器，别再写两遍 */
 @media (prefers-color-scheme: dark) {
-/* =========================================================================
-   头像框 V2（2026-11-09 重做视觉）
-   ---------------------------------------------------------------------------
-   上一版是 border + 两层 box-shadow 画环，两个毛病：
-     1) box-shadow 不占布局，环会往外溢出 4~6px。卡片只要有 overflow:hidden
-        （帖子卡、私信气泡、相册格）就被裁掉一半；挨着文字时还会压到字上。
-     2) 两圈实心色带 + 白 border，像套了个塑料圈。
-   这一版把环画在 .avatar 内部的 ::after 上：inset:0 铺满 + mask 挖空中间，
-   环永远长在头像盒子里，一个像素都溢不出去；颜色用 conic-gradient 转一圈，
-   是「光晕 / 金属」而不是两条色带；最外沿 1px 半透明白当玻璃边。
-   环宽 --fw 由 avatarHtml 按头像尺寸算（2~5px），小头像不会被环糊死。
-   ========================================================================= */
-.avatar[class*="frame-"] {
-  position: relative;
-  border: 0;                 /* 皮肤段的 1px/3px 描边会让环边缘发毛 */
-  background-clip: padding-box;
-}
-.avatar[class*="frame-"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  padding: var(--fw, 3px);
-  background: var(--fx);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-          mask-composite: exclude;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .34);
-  pointer-events: none;
-}
-
-/* —— 8 款 ——
-   同一段弧上 4~6 个色标、绕一圈闭合，所以从任何角度看都是连续过渡。
-   旧 key（sunset/gold/rose/mint/violet/night）保留不改名：线上 user.frame 存的就是它们，
-   换名字等于让老用户框全丢；只换视觉。新增 aurora / candy 两款。 */
-.avatar.frame-sunset { --fx: conic-gradient(from 205deg, #ffe7b8, #ffb457, #ff7448, #ff4f81, #ffb457, #ffe7b8); }
-.avatar.frame-gold   { --fx: conic-gradient(from 125deg, #fff6cd, #f4cc55, #c9922f, #ffe89a, #f4cc55, #fff6cd); }
-.avatar.frame-rose   { --fx: conic-gradient(from 160deg, #ffdcea, #ff9cc2, #ff6fa5, #c78bff, #ff9cc2, #ffdcea); }
-.avatar.frame-mint   { --fx: conic-gradient(from 200deg, #ccfad9, #5ee39b, #14b881, #3ad9a8, #5ee39b, #ccfad9); }
-.avatar.frame-violet { --fx: conic-gradient(from 240deg, #d3c6ff, #8b6cff, #4a2fd6, #a58bff, #e6dcff, #8b6cff); }
-.avatar.frame-night  { --fx: conic-gradient(from 180deg, #6b6b78, #26262e, #4a4a56, #14141a, #6b6b78); }
-.avatar.frame-aurora { --fx: conic-gradient(from 195deg, #8ef7d2, #35d6c8, #3f9bff, #9b6bff, #7ef0c8, #8ef7d2); }
-.avatar.frame-candy  { --fx: conic-gradient(from 30deg, #ffd0e0, #ffb06b, #ffe98a, #8fe3c0, #8fb9ff, #d7a8ff, #ffd0e0); }
-
-/* ---------- 编辑资料里的头像框选择行 ---------- */
-.frame-row { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 12px 0 2px; }
-.frame-row > b { font-size: 13px; color: var(--ink-2); font-weight: 400; flex: none; }
-.frame-row > b em { font-style: normal; color: var(--ink-4); font-size: 12px; margin-left: 6px; }
-.frame-opts { display: flex; gap: 6px; flex-wrap: wrap; }
-.frame-opt {
-  width: 44px; height: 44px; padding: 0;
-  border: 0; background: none; cursor: pointer;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  transition: transform .15s ease;
-}
-.frame-opt .avatar { width: 36px; height: 36px; transition: transform .15s ease; }
-.frame-opt:hover { transform: translateY(-1px); }
-.frame-opt:hover .avatar { transform: scale(1.05); }
-/* 选中态用双层 box-shadow 画在 44px 的按钮里，不会顶到旁边那一格 */
-.frame-opt.on { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--brand); }
-.frame-none {
-  width: 36px; height: 36px; border-radius: 50%;
-  border: 1px dashed var(--ink-4); color: var(--ink-3);
-  font-size: 12px; display: grid; place-items: center;
-}
-.frame-opt.on .frame-none { border-style: solid; border-color: var(--brand); color: var(--brand); }
-.frame-tip { margin-top: 8px; }
-
 /* =========================================================================
    深色模式（2026-11-09）
    ---------------------------------------------------------------------------
@@ -4074,44 +4028,4 @@ html:not([data-theme="light"]) .sk-avatar, html:not([data-theme="light"]) .sk-li
 /* 墨玉框在深底上会整块糊掉，换成浅银环 */
 html:not([data-theme="light"]) .avatar.frame-night { --fx: conic-gradient(from 180deg, #ffffff, #9a9aa8, #5a5a68, #d8d8e0, #ffffff); }
 html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
-}
-
-/* ---------- 深色专属：徽章色 ----------
-   徽章是「浅色软底 + 深色字」，深色主题下会变成几块发亮的小贴纸，
-   而且 .badge-admin 用 color: var(--ink)（深色主题里 ink 是浅色）压在粉底上直接看不见。
-   这里统一压暗底、提亮字。 */
-html[data-theme="dark"] .badge-admin    { background: #4b2433; color: #ffc0d3; }
-html[data-theme="dark"] .badge-reviewer { background: #16324f; color: #7ec2ff; }
-html[data-theme="dark"] .badge-pending  { background: #3d2c12; color: #ffc069; }
-html[data-theme="dark"] .badge-approved { background: #17351f; color: #86e08a; }
-html[data-theme="dark"] .badge-rejected { background: #3a1c1c; color: #ff9494; }
-html[data-theme="dark"] .badge-feat     { background: #3a2317; color: #ffb07a; }
-html[data-theme="dark"] .badge-ai       { background: #282242; color: #b9a8ff; }
-
-/* ---------- 手机：头像框选择 5 列两行 ----------
-   9 个选项在 390px 上按 flex 会排成 8+1，最后那个孤零零吊在第二行；
-   改 grid 固定 5 列 -> 5+4 两行，每格等宽对齐。 */
-@media (max-width: 760px) {
-  .frame-opts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 4px; width: 100%; }
-  .frame-opt { margin: 0 auto; }
-}
-
-/* ---------- 深色专属：徽章色 ----------
-   徽章是「浅色软底 + 深色字」，深色主题下会变成几块发亮的小贴纸，
-   而且 .badge-admin 用 color: var(--ink)（深色主题里 ink 是浅色）压在粉底上直接看不见。
-   这里统一压暗底、提亮字。 */
-html:not([data-theme="light"]) .badge-admin    { background: #4b2433; color: #ffc0d3; }
-html:not([data-theme="light"]) .badge-reviewer { background: #16324f; color: #7ec2ff; }
-html:not([data-theme="light"]) .badge-pending  { background: #3d2c12; color: #ffc069; }
-html:not([data-theme="light"]) .badge-approved { background: #17351f; color: #86e08a; }
-html:not([data-theme="light"]) .badge-rejected { background: #3a1c1c; color: #ff9494; }
-html:not([data-theme="light"]) .badge-feat     { background: #3a2317; color: #ffb07a; }
-html:not([data-theme="light"]) .badge-ai       { background: #282242; color: #b9a8ff; }
-
-/* ---------- 手机：头像框选择 5 列两行 ----------
-   9 个选项在 390px 上按 flex 会排成 8+1，最后那个孤零零吊在第二行；
-   改 grid 固定 5 列 -> 5+4 两行，每格等宽对齐。 */
-@media (max-width: 760px) {
-  .frame-opts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 4px; width: 100%; }
-  .frame-opt { margin: 0 auto; }
 }

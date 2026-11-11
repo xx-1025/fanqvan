@@ -174,10 +174,21 @@ function rid(n) { return crypto.randomBytes(n || 12).toString('hex'); }
 
 const MAX_PW = 72;            // scrypt 吃得住，再长没意义还费 CPU（这是技术上限，不是体验限制）
 
-/* 头像框：白名单，只认这几款（'' = 不戴框）。前端 CSS 里一一对应，别只加一边。
-   sunset/gold/rose/mint/violet/night 是 2026-11-09 第一批的老 key（只换了视觉没改名，
-   线上已存的 user.frame 才不会丢）；aurora / candy 是第二批新增的。 */
-const AVATAR_FRAMES = ['sunset', 'gold', 'rose', 'mint', 'violet', 'night', 'aurora', 'candy'];
+/* 头像框：白名单（'' = 不戴框）。这里是真图相框，一件一图，
+   图和 key 见 public/frames/<key>.webp；前端 app.js 的 FRAMES 数组、style.css 的
+   .avatar.pf-* 三处必须一一对应，只改一边就会出现「能选但看不见」。
+   2026-11-11 换掉旧的 8 款渐变环，老 key 在 migrate() 里一次性迁到新款，不丢用户设置。 */
+const AVATAR_FRAMES = [
+  'clouds', 'crown', 'eaves', 'feast', 'gate', 'halloween', 'jade', 'koi',
+  'lantern', 'lanterns', 'lion', 'magpie', 'mooncake', 'osmanthus', 'phoenix',
+  'wreath', 'xmas',
+];
+/* 旧 key -> 新 key：老版本是渐变色环，没有对应图。挑气质接近的顶上，
+   比直接清空友好 —— 用户不会某天发现自己的框没了。 */
+const FRAME_LEGACY = {
+  sunset: 'lantern', gold: 'crown', rose: 'magpie', mint: 'jade',
+  violet: 'clouds', night: 'mooncake', aurora: 'phoenix', candy: 'xmas',
+};
 
 /* 常见弱口令（含本项目的初始口令）。比对时忽略大小写。 */
 const WEAK_PW = new Set([
@@ -453,6 +464,11 @@ function migrate(d) {
     if (!Array.isArray(u.follows)) u.follows = [];
     if (typeof u.banned !== 'boolean') u.banned = false;
     if (!u.role) u.role = 'user';
+    // 头像框：旧版渐变环的 key 换成新相框，未知值一律清空（别让前端拿到野 class）
+    if (u.frame) {
+      if (FRAME_LEGACY[u.frame]) u.frame = FRAME_LEGACY[u.frame];
+      if (!AVATAR_FRAMES.includes(u.frame)) u.frame = '';
+    }
   }
   for (const p of d.posts) {
     if (!Array.isArray(p.likes)) p.likes = [];

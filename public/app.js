@@ -153,14 +153,17 @@ function avatarHtml(u, size) {
   if (size == null) size = 44;
   if (!u) u = { id: 0, nickname: '?' };
   const box = size ? 'width:' + size + 'px;height:' + size + 'px' : '';
-  // 头像框：class 只认纯小写名（后端也是白名单）
-  const frame = /^[a-z]{3,10}$/.test(u.frame || '') ? u.frame : '';
-  // 环宽：环是画在头像**内部**的一圈（见 style.css 的 frame 段），不往外溢。
-  // 有具体尺寸就按 6.5% 算（下限 3px，34px 以下 2px）；size=0 是「尺寸交给 CSS」
-  // 的大头像（顶栏 30px / 主页 76~88px），这时不写内联，由 CSS 按场景给。
-  const fw = size ? (size < 34 ? 2 : Math.max(3, Math.round(size * 0.065))) : 0;
-  const fv = frame && size ? '--fw:' + fw + 'px;' : '';
-  const fc = frame ? ' frame-' + frame : '';
+  // 头像框：真图相框（public/frames/<key>.webp），key 只认纯小写，后端也是白名单。
+  // 框层是绝对定位的伪元素，用 transform:scale() 放大一圈套在头像外面：
+  //   · 图里洞占 72%，所以 --fs = 1/0.72 ≈ 1.39 时洞正好等于头像本身；
+  //   · 小头像给 1.30 —— 34px 上放到 1.39 会盖掉太多脸，帖子头那圈间距也不够；
+  //   · 绝对定位 + scale 都不参与布局，所以「别人的头像有没有框」不会让
+  //     昵称、点赞按钮、行高发生任何位移。
+  // size=0（尺寸交给 CSS）时不写内联，由 style.css 按场景给（顶栏 1.30 / 主页 1.42）。
+  const frame = /^[a-z]{3,12}$/.test(u.frame || '') ? u.frame : '';
+  const fs = size ? (size <= 40 ? 1.3 : 1.39) : 0;
+  const fv = frame && fs ? '--fs:' + fs + ';' : '';
+  const fc = frame ? ' pf-' + frame : '';
   if (u.avatar) {
     return '<span class="avatar' + fc + '" style="' + fv + box + '">' +
       '<img src="' + esc(u.avatar) + '" alt="" loading="lazy"></span>';
@@ -2632,9 +2635,13 @@ function viewEdit() {
   // 头像框：预览直接套在「当前头像」上，选之前就能看到效果。点一下立即存，和换头像一个节奏。
   // key 与 server.js 的 AVATAR_FRAMES、style.css 的 .avatar.frame-* 三处必须一致。
   const FRAMES = [
-    ['', '不戴'], ['sunset', '日出'], ['gold', '鎏金'],
-    ['rose', '樱粉'], ['mint', '薄荷'], ['violet', '星河'],
-    ['aurora', '极光'], ['candy', '糖果'], ['night', '墨玉']
+    ['', '不戴'],
+    ['halloween', '万圣南瓜车'], ['phoenix', '凤舞祥云'], ['koi', '锦鲤龙门'],
+    ['magpie', '喜鹊登梅'], ['lion', '醒狮纳福'], ['lantern', '花灯初上'],
+    ['eaves', '屋檐灯火'], ['wreath', '圣诞松环'], ['mooncake', '中秋月团'],
+    ['jade', '青玉祥云'], ['gate', '朱漆牌坊'], ['osmanthus', '桂月流光'],
+    ['lanterns', '红笼高挂'], ['clouds', '祥云灯笼'], ['feast', '元宵灯坊'],
+    ['xmas', '圣诞星愿'], ['crown', '金冠明珠']
   ];
   const frameRow = '<div class="frame-row"><b>头像框<em>选一个，立即生效</em></b><div class="frame-opts">' +
     FRAMES.map(([k, label]) => k === ''
@@ -2642,7 +2649,7 @@ function viewEdit() {
         '" data-action="pick-frame" data-frame="" title="' + label + '"><span class="frame-none">无</span></button>'
       : '<button class="frame-opt' + (state.editFrame === k ? ' on' : '') +
         '" data-action="pick-frame" data-frame="' + k + '" title="' + label + '">' +
-        avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: k }, 32) +
+        avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: k }, 40) +
         '</button>').join('') +
     '</div></div>';
 
