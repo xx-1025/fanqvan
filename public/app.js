@@ -155,17 +155,18 @@ function avatarHtml(u, size) {
   const box = size ? 'width:' + size + 'px;height:' + size + 'px' : '';
   // 头像框：真图相框（public/frames/<key>.webp），key 只认纯小写，后端也是白名单。
   // 框层是绝对定位的伪元素，用 transform:scale() 放大一圈套在头像外面：
-  //   · 图里洞固定占画布 72%，所以 --fs = 1/0.72 ≈ 1.39 时洞正好等于头像本身，
-  //     头像不压框内圈，整个相框完整露出来（2026-11-11 从 1.30/1.34 提上来）；
-  //   · 中间尺寸（27~50px，帖子/私信列表这些）给 1.35 —— 洞只比头像小 3%，
-  //     肉眼看不出来，又能少外扩 1px 不去撞旁边的昵称；
-  //   · 26px 以下的极小头像（搜索建议、分享卡片）留 1.30，免得外扩压到字；
+  //   · 每框的洞不一样大（59%~77%），所以真实倍数 = 1/洞占比，写在 style.css 的 --fit 里；
+  //   · 这里只给「上限」--fsmax = 这个尺寸的容器最多能放多大框（超了会撞到旁边的字）：
+  //       26px 以下（搜索建议/分享卡片）1.40
+  //       27~50px（帖子/私信列表/编辑页选项）1.45
+  //       50px 以上（主页大头像/编辑预览）1.70
+  //   · 最终 CSS 取 min(--fit, --fsmax)：装得下就完整露出框，装不下才轻微压内圈；
   //   · 绝对定位 + scale 都不参与布局，所以「别人的头像有没有框」不会让
   //     昵称、点赞按钮、行高发生任何位移。
-  // size=0（尺寸交给 CSS）时不写内联，由 style.css 按场景给倍数。
+  // size=0（尺寸交给 CSS）时不写内联，由 style.css 按场景给上限。
   const frame = /^[a-z]{3,12}$/.test(u.frame || '') ? u.frame : '';
-  const fs = size ? (size <= 26 ? 1.3 : size <= 50 ? 1.35 : 1.39) : 0;
-  const fv = frame && fs ? '--fs:' + fs + ';' : '';
+  const fs = size ? (size <= 26 ? 1.4 : size <= 50 ? 1.45 : 1.7) : 0;
+  const fv = frame && fs ? '--fsmax:' + fs + ';' : '';
   const fc = frame ? ' pf-' + frame : '';
   if (u.avatar) {
     return '<span class="avatar' + fc + '" style="' + fv + box + '">' +

@@ -2207,6 +2207,8 @@ html.modal-open, body.modal-open { overflow: hidden; }
 }
 .av-tip svg { width: 13px; height: 13px; color: var(--ink-4); flex: none; }
 .edit-avatar .avatar { border-width: 3px; box-shadow: var(--sh); }
+/* 卡片左右内边距 22，72px 头像戴花环（1.68 倍）左右各外扩 24.5，会被裁掉 2.5px */
+.edit-avatar { margin-left: 4px; }
 .av-picks { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
 .av-opt {
   width: 52px; height: 52px;
@@ -2304,8 +2306,10 @@ html.modal-open, body.modal-open { overflow: hidden; }
   .topbar-right .bell,
   .topbar-right .msg-ico,
   .topbar-right .user-chip { width: 40px; height: 40px; }
-  .topbar-right .user-chip .avatar { width: 40px; height: 40px; }
-  .topbar-right .user-chip .avatar.txt { font-size: 16px; }
+  /* 头像 32 而不是 40：40 戴最大的一款框（花环 1.68 倍）要 67，顶栏只有 56 高，
+     要么切外圈要么压内圈。32×1.68=53.8，框和洞都能完整；容器还是 40，居中不跑位。 */
+  .topbar-right .user-chip .avatar { width: 32px; height: 32px; }
+  .topbar-right .user-chip .avatar.txt { font-size: 14px; }
 
   /* 横向导航：保持可左右滑动，别把 6 项压扁。
      每项按内容定宽（4 字标签也留足内边距），滑到下一张卡露个边就是可滑提示；
@@ -3104,7 +3108,8 @@ a:hover { color: var(--brand-2); }
 }
 .user-chip {
   border: 0; background: none; box-shadow: none;
-  padding: 0; gap: 6px;
+  /* gap 12：30px 头像戴最大的一款框（1.68 倍）时右边缘外扩 10.2px，6 会压到昵称开头 */
+  padding: 0; gap: 12px;
   font-size: 13px; font-weight: 500; color: var(--ink-2);
 }
 .user-chip:hover { background: none; color: #ff8140; }
@@ -3371,8 +3376,10 @@ a:hover { color: var(--brand-2); }
 /* 只有头像探出封面：早先是整行 margin-top:-34 把头像顶出去的，
    名字也跟着被抬到图片上，用户传张深色封面就读不清。现在头像自己负边距上移。 */
 .profile-info {
-  display: flex; align-items: flex-start; gap: 22px;
-  padding: 10px 22px 0;
+  display: flex; align-items: flex-start; gap: 28px;
+  /* 左内边距 28：76px 头像戴最大的一款框（花环 1.68 倍）时左右各外扩 25.8px，
+     22 会让框左边被 .profile-head 卡片裁掉 4px（桌面版「装饰被切一半」就是这个）。 */
+  padding: 10px 22px 0 28px;
   margin-top: 0;
   position: relative;
 }
@@ -3451,7 +3458,12 @@ a:hover { color: var(--brand-2); }
   body { padding-bottom: calc(52px + env(safe-area-inset-bottom)); }
 
   .topbar { border-bottom: 1px solid var(--line); }
-  .topbar-inner { height: 48px; padding: 0 12px; gap: 10px; max-width: none; }
+  /* 56 而不是 48：顶栏头像 40px 戴框后最大外径 40×1.4≈56，
+     48 高会把框上下各切 4px（右上角那个框看起来「被削平了」就是这个）。 */
+  .topbar-inner { height: 56px; padding: 0 12px; gap: 10px; max-width: none; }
+  /* 手机顶栏 56 高、头像 32 —— 最大的一款框 1.68 倍只有 53.8，
+     框和洞都能完整露出来（不用再压缩内圈了）。 */
+  .topbar-right .user-chip .avatar[class*="pf-"] { --fsmax: 1.70; }
   .logo-mark { width: 30px; height: 30px; border-radius: 9px; }
   .logo-text b { font-size: 17px; }
   .search { max-width: none; }
@@ -3484,14 +3496,18 @@ a:hover { color: var(--brand-2); }
   .profile-cover::after { width: 146px; height: 146px; right: 10px; }
   /* 手机端头部：头像压封面，名字块与头像**底部对齐**（Twitter/微博都是这个关系），
      原来 align-items 走默认的 flex-start，名字块自己带 10px 上内边距，看上去浮在头像右侧中间、又和底部错开。 */
-  .profile-info { padding: 10px 22px 0; margin-top: 0; gap: 0 26px; align-items: flex-end; }
+  .profile-info { padding: 10px 22px 0 30px; margin-top: 0; gap: 0 26px; align-items: flex-end; }
   /* 头像再给大一点：手机上它是主页第一个视觉落点，88px 压住封面 58px、露出 30px */
   .profile-info .avatar { width: 88px; height: 88px; margin-top: -58px; border-width: 3px; }
+  /* 左内边距从 22 提到 30，就是为了给框让位：88px 头像放大后左右会各多出 20~30px，
+     22 的话框左边会被屏幕切掉（「头像框不完整」最典型的一处）。
+     上限 1.55 写在文件末尾的头像框那一段（同选择器必须写在后面才生效）。
+     同一行下面的 .profile-act 上边距 24 也是照这个外扩量给的。 */
   .profile-name { padding: 0 0 6px; }
   .profile-name h2 { font-size: 19px; line-height: 1.3; }
-  /* 88px 头像戴框后比头像外扩 17px，按钮行换到第二行时会正好压在框底上
-     （「编辑资料」左边被框盖住），往下让开 */
-  .profile-info .profile-act { margin-top: 24px; }
+  /* 88px 头像戴框后比头像外扩 24px，按钮行换到第二行时会正好压在框底上
+     （「编辑资料」左边被框盖住），往下让开 28 */
+  .profile-info .profile-act { margin-top: 28px; }
   .profile-name p { margin-top: 3px; }
   .profile-bio { padding: 8px 12px 0; font-size: 13.5px; }
   .profile-stats { padding: 10px 12px; gap: 18px; }
@@ -3820,18 +3836,21 @@ a:hover { color: var(--brand-2); }
    头像框（2026-11-11 换成真图相框）
    ---------------------------------------------------------------------------
    素材是 17 张手绘 3D 摆件（南瓜马车、凤舞祥云、锦鲤龙门、醒狮、元宵灯坊…），
-   已经处理成 public/frames/<key>.webp：透明底、中间挖空成圆洞、洞固定占画布 72%。
+   已经处理成 public/frames/<key>.webp：透明底、中间挖空成圆洞。
 
-   三个必须同时成立的约束，缺一个就是 bug：
-     1) 洞和头像严丝合缝 —— 框层比头像大 1/0.72≈1.39 倍时，洞正好等于头像直径。
-        倍数写小（比如 1.22）头像就会压住框的内圈，看起来「框没显示完整」，
-        所以 2026-11-11 起统一提上来：大图 1.39、27~50px 给 1.35、26px 以下 1.30。
-        ⚠️ 放大倍数后要同步把容器边距留够（.profile-info 的 padding、.post-head 的 gap），
-        否则框会被卡片 overflow:hidden 裁掉一条边。
-     2) 一个像素都不参与布局 —— 框层是绝对定位伪元素 + transform:scale()，
+   ⚠️ 关键：**每张图的洞不一样大**（实测洞占画布 59.4%~76.6%，不是统一的 72%）。
+   以前用同一个 1.39 倍，洞小的框（金冠 60.4%、牌坊 60.4%、花环 59.4%）里，
+   头像会压住框内圈一整圈 —— 这就是「头像框不完整」的真正原因，越小的头像越明显。
+   现在每个框自己带一个 --fit = 1/洞占比：
+     洞 59.4% → 1.68   洞 72.4% → 1.38   洞 76.6% → 1.31
+   缩放取 min(--fit, --fsmax)：--fsmax 是「这个位置的容器最多能容下多大」，
+   装得下就按 --fit 让洞严丝合缝、框完整露出；装不下才退一步（此时头像会轻微压内圈）。
+
+   另外两个必须成立的约束：
+     1) 一个像素都不参与布局 —— 框层是绝对定位伪元素 + transform:scale()，
         position/transform 都不触发重排。所以「别人戴不戴框」不会挤动昵称、
         点赞按钮、行高、气泡宽度；同一行里有没有框，旁边元素的坐标完全一致。
-     3) 不能把圆头像顶成方的 —— .avatar 默认 overflow:hidden，戴框时要放成 visible，
+     2) 不能把圆头像顶成方的 —— .avatar 默认 overflow:hidden，戴框时要放成 visible，
         但头像图自身有 border-radius:50%，所以露出来的仍是圆的，不会出现方角。
 
    key 与 server.js 的 AVATAR_FRAMES、app.js 的 FRAMES 三处一一对应。
@@ -3846,37 +3865,47 @@ a:hover { color: var(--brand-2); }
   content: "";
   position: absolute;
   inset: 0;
-  transform: scale(var(--fs, 1.39));
+  /* min() 里每个 var 都要带兜底值，否则变量缺失会让整条 transform 失效（框直接不显示） */
+  transform: scale(min(var(--fit, 1.39), var(--fsmax, 1.5)));
   transform-origin: 50% 50%;
   background: var(--pf) center / 100% 100% no-repeat;
   pointer-events: none;      /* 点击、长按、拖拽一律穿透到头像本身 */
 }
 
-/* —— 17 款 —— */
-.avatar.pf-clouds    { --pf: url("/frames/clouds.webp"); }
-.avatar.pf-crown     { --pf: url("/frames/crown.webp"); }
-.avatar.pf-eaves     { --pf: url("/frames/eaves.webp"); }
-.avatar.pf-feast     { --pf: url("/frames/feast.webp"); }
-.avatar.pf-gate      { --pf: url("/frames/gate.webp"); }
-.avatar.pf-halloween { --pf: url("/frames/halloween.webp"); }
-.avatar.pf-jade      { --pf: url("/frames/jade.webp"); }
-.avatar.pf-koi       { --pf: url("/frames/koi.webp"); }
-.avatar.pf-lantern   { --pf: url("/frames/lantern.webp"); }
-.avatar.pf-lanterns  { --pf: url("/frames/lanterns.webp"); }
-.avatar.pf-lion      { --pf: url("/frames/lion.webp"); }
-.avatar.pf-magpie    { --pf: url("/frames/magpie.webp"); }
-.avatar.pf-mooncake  { --pf: url("/frames/mooncake.webp"); }
-.avatar.pf-osmanthus { --pf: url("/frames/osmanthus.webp"); }
-.avatar.pf-phoenix   { --pf: url("/frames/phoenix.webp"); }
-.avatar.pf-wreath    { --pf: url("/frames/wreath.webp"); }
-.avatar.pf-xmas      { --pf: url("/frames/xmas.webp"); }
+/* —— 17 款 ——
+   --fit = 1 / 洞占画布比例（tools/measure_frames.py 实测得出）。
+   洞越小的框 fit 越大，框外径也就越大 —— 这是几何必然（框边更粗），不是 bug。 */
+.avatar.pf-clouds    { --pf: url("/frames/clouds.webp");    --fit: 1.41; }
+.avatar.pf-crown     { --pf: url("/frames/crown.webp");     --fit: 1.66; }
+.avatar.pf-eaves     { --pf: url("/frames/eaves.webp");     --fit: 1.39; }
+.avatar.pf-feast     { --pf: url("/frames/feast.webp");     --fit: 1.47; }
+.avatar.pf-gate      { --pf: url("/frames/gate.webp");      --fit: 1.66; }
+.avatar.pf-halloween { --pf: url("/frames/halloween.webp"); --fit: 1.39; }
+.avatar.pf-jade      { --pf: url("/frames/jade.webp");      --fit: 1.55; }
+.avatar.pf-koi       { --pf: url("/frames/koi.webp");       --fit: 1.38; }
+.avatar.pf-lantern   { --pf: url("/frames/lantern.webp");   --fit: 1.31; }
+.avatar.pf-lanterns  { --pf: url("/frames/lanterns.webp");  --fit: 1.41; }
+.avatar.pf-lion      { --pf: url("/frames/lion.webp");      --fit: 1.42; }
+.avatar.pf-magpie    { --pf: url("/frames/magpie.webp");    --fit: 1.54; }
+.avatar.pf-mooncake  { --pf: url("/frames/mooncake.webp");  --fit: 1.44; }
+.avatar.pf-osmanthus { --pf: url("/frames/osmanthus.webp"); --fit: 1.54; }
+.avatar.pf-phoenix   { --pf: url("/frames/phoenix.webp");   --fit: 1.38; }
+.avatar.pf-wreath    { --pf: url("/frames/wreath.webp");    --fit: 1.68; }
+.avatar.pf-xmas      { --pf: url("/frames/xmas.webp");      --fit: 1.59; }
 
-/* size=0（宽高交给 CSS）的三处。倍数一律按「洞 = 头像」来：洞占画布 72%，
-   所以 1/0.72 ≈ 1.39。小于这个数，头像会把框内圈盖掉一圈，看着就是「框没显示完整」，
-   1.22 那版最明显。改了倍数就得同步把容器边距留够（见 .profile-info 的 padding）。 */
-.user-chip .avatar[class*="pf-"] { --fs: 1.36; }      /* 顶栏 30/40px：顶栏只有 56 高，留 2px 余量 */
-.profile-info .avatar[class*="pf-"] { --fs: 1.39; }  /* 个人主页 76/88px，左侧 padding 22 兜得住 */
-.edit-avatar .avatar[class*="pf-"] { --fs: 1.39; }   /* 编辑页预览 72px */
+/* size=0（宽高交给 CSS）的三处：这里给的是「上限」，实际取 min(--fit, 上限)。
+   上限的算法 = 该位置能容纳的框外径 / 头像直径，改之前先量容器。 */
+.user-chip .avatar[class*="pf-"] { --fsmax: 1.80; }   /* 桌面顶栏 30px / 顶栏 56 高，装得下 */
+.profile-info .avatar[class*="pf-"] { --fsmax: 1.70; }/* 个人主页 76px，卡片宽，左右都兜得住 */
+.edit-avatar .avatar[class*="pf-"] { --fsmax: 1.70; } /* 编辑页预览 72px */
+
+/* ⚠️ 这几条必须写在上面三条**之后**：选择器优先级相同，靠后定义才生效
+   （之前把手机 1.55 写在前面的媒体查询里，被这里的 1.70 覆盖掉了）。
+   手机主页 88px：1.55 倍时左右各外扩 24px，正好落在 padding-left 30 给的空间里；
+   再大就会像之前那样左边被屏幕切掉一条边。 */
+@media (max-width: 760px) {
+  .profile-info .avatar[class*="pf-"] { --fsmax: 1.55; }
+}
 
 /* ---------- 编辑资料里的封面预览 ----------
    封面设置从主页搬到这里：主页上不再压两个按钮，只留干净的图。
@@ -3905,14 +3934,16 @@ a:hover { color: var(--brand-2); }
    否则最后一行会剩两三个孤零零靠左，看着没排完 */
 .frame-opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px 0; width: 100%; }
 .frame-opt {
-  width: 60px; height: 60px; padding: 0; margin: 0 auto;
+  width: 70px; height: 70px; padding: 0; margin: 0 auto;
   border: 0; background: none; cursor: pointer;
   border-radius: 50%;
   display: grid; place-items: center;
   transition: transform .16s ease, box-shadow .16s ease;
 }
-/* 头像 40px + 框层 55.6px（1.39 倍），按钮给 60 才不贴边 */
+/* 头像 40px + 框层最大 1.70 倍（68px），按钮给 68 才能让最大的那几款（金冠/花环）
+   完整放下。avatarHtml 给 40px 头像写的内联上限是 1.45，这里要放开。 */
 .frame-opt .avatar { width: 40px; height: 40px; }
+.frame-opt .avatar[class*="pf-"] { --fsmax: 1.70 !important; }
 .frame-opt:hover { transform: translateY(-1px); }
 .frame-opt.on { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--brand); }
 .frame-none {
