@@ -18,69 +18,72 @@
 <link rel="preload" as="script" href="/app.js?v=__FQ_V__">
 <style>
 /* 启动屏：app.js 到之前先给个东西看，别让用户对着白屏等。
-   样式内联在 head，不受 style.css 请求快慢影响；app.js 重绘 #app 时自动消失。
+   它在 #app 外面（body 直接子元素），所以 app.js 重绘 #app 时它不会被顺手清掉 ——
+   启动帘一直盖着，等首屏数据真的渲染好了再由 app.js 加 .out 淡出（见 app.js 的 boot()）。
+   这样中间不会再闪一下骨架屏「加载页」。
 
-   动画分两拍，写成一条 keyframes 走完（两条 animation 会抢 transform，互相覆盖）：
-     0 ~ 58%：应用图标从 0.5 倍弹进来 → 停在正常大小，这一段只有图标没有字；
-     58% ~ 100%：图标缩到 0.56 倍、圆角收到 50%、轻转一点，像被摆进盘子里；
-                 同时外圈环亮起匀速转，文案淡入成「正在装盘…」。
-   缓存命中的时候 0.3s 就进页面，用户只看得到图标弹入这一拍，也不突兀。 */
-#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:#f2f2f2;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
-#boot .boot-art{position:relative;width:104px;height:104px;display:grid;place-items:center}
+   动画严格两拍（一条 keyframes 走完，两条 animation 抢 transform 会互相覆盖）：
+     第一拍 0 ~ 58%：应用图标淡入 + 微微弹起，然后**停住单独展示**约 0.6s —— 就是「打开应用看到图标」；
+     第二拍 58% ~ 100%：图标缩到盘中央、边缘收圆，同时外圈环亮起匀速转、「正在装盘…」淡入。
+   缓存命中的时候 0.3s 就进页面，用户只看得到第一拍的图标。 */
+#boot{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:#f2f2f2;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;transition:opacity .34s ease}
+#boot.out{opacity:0;pointer-events:none}
+#boot .boot-art{position:relative;width:108px;height:108px;display:grid;place-items:center}
 /* 图标用抠好的透明版 + CSS 白底：直接用白底 webp，深色模式下会是一块刺眼的白板 */
 #boot .boot-logo{
-  width:78px;height:78px;box-sizing:border-box;padding:7px;
-  background:#fff;border-radius:20px;object-fit:contain;display:block;
-  box-shadow:0 12px 28px rgba(255,138,61,.26), 0 0 0 1px rgba(120,60,20,.05);
-  animation:boot-life 1.5s cubic-bezier(.25,.9,.3,1) both;
+  width:92px;height:92px;box-sizing:border-box;padding:8px;
+  background:#fff;border-radius:24px;object-fit:contain;display:block;
+  box-shadow:0 14px 30px rgba(255,138,61,.26), 0 0 0 1px rgba(120,60,20,.05);
+  animation:boot-life 1.6s cubic-bezier(.3,.85,.35,1) both;
   will-change:transform,border-radius;
 }
-/* 装盘环：0.87s 之后才出现，之后一直转 */
+/* 装盘环：1s 之后才出现（正好接上图标收缩那一拍），之后一直转 */
 #boot .boot-ring{
-  position:absolute;width:80px;height:80px;border-radius:50%;
+  position:absolute;width:82px;height:82px;border-radius:50%;
   border:3px solid rgba(255,138,61,.20);
   border-top-color:#ff8a3d;border-right-color:#ffb26b;
   opacity:0;
-  animation:boot-ring-in .24s .87s both, boot-spin 1.05s .87s linear infinite;
+  animation:boot-ring-in .26s 1s both, boot-spin 1.05s 1s linear infinite;
 }
-#boot .boot-txt{margin:0;color:#939393;font-size:13.5px;font-weight:400;letter-spacing:.3px;opacity:0;animation:boot-txt-in .32s .95s both}
+#boot .boot-txt{margin:0;color:#939393;font-size:13.5px;font-weight:400;letter-spacing:.3px;opacity:0;animation:boot-txt-in .34s 1.08s both}
 @keyframes boot-life{
-  0%{opacity:0;transform:scale(.5) rotate(-14deg);border-radius:24px}
-  18%{opacity:1;transform:scale(1) rotate(0deg);border-radius:20px}
-  58%{opacity:1;transform:scale(1) rotate(0deg);border-radius:20px}
-  100%{opacity:1;transform:scale(.64) rotate(-6deg) translateY(-2px);border-radius:50%}
+  0%{opacity:0;transform:scale(.86) translateY(6px);border-radius:26px}
+  22%{opacity:1;transform:scale(1) translateY(0);border-radius:24px}
+  58%{opacity:1;transform:scale(1) translateY(0);border-radius:24px}
+  100%{opacity:1;transform:scale(.63) translateY(-3px);border-radius:50%}
 }
-@keyframes boot-ring-in{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:scale(1)}}
+@keyframes boot-ring-in{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
 @keyframes boot-spin{to{transform:rotate(360deg)}}
 @keyframes boot-txt-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
 /* 减少动态偏好：不弹不转，直接给最终态，文案立刻可见 */
 @media (prefers-reduced-motion:reduce){
-  #boot .boot-logo{animation:none;transform:scale(.64);border-radius:50%}
+  #boot .boot-logo{animation:none;transform:scale(.63);border-radius:50%}
   #boot .boot-ring{animation:boot-spin 1.5s linear infinite;opacity:1}
   #boot .boot-txt{animation:none;opacity:1}
 }
 
 html[data-theme="dark"] #boot{background:#111114}
-html[data-theme="dark"] #boot .boot-logo{background:#232329;box-shadow:0 12px 28px rgba(0,0,0,.55)}
+html[data-theme="dark"] #boot .boot-logo{background:#232329;box-shadow:0 14px 30px rgba(0,0,0,.55)}
 html[data-theme="dark"] #boot .boot-txt{color:#82828e}
 html[data-theme="dark"] #boot .boot-ring{border-color:rgba(255,138,61,.16);border-top-color:#ff8a3d;border-right-color:#ffb26b}
 @media (prefers-color-scheme:dark){
   html:not([data-theme="light"]) #boot{background:#111114}
-  html:not([data-theme="light"]) #boot .boot-logo{background:#232329;box-shadow:0 12px 28px rgba(0,0,0,.55)}
+  html:not([data-theme="light"]) #boot .boot-logo{background:#232329;box-shadow:0 14px 30px rgba(0,0,0,.55)}
   html:not([data-theme="light"]) #boot .boot-txt{color:#82828e}
   html:not([data-theme="light"]) #boot .boot-ring{border-color:rgba(255,138,61,.16);border-top-color:#ff8a3d;border-right-color:#ffb26b}
 }
 </style>
 </head>
 <body>
-  <div id="app"><div id="boot">
+  <div id="boot">
     <div class="boot-art">
       <span class="boot-ring"></span>
       <img class="boot-logo" src="/assets/mascot-cut.webp" alt="饭圈">
     </div>
     <p class="boot-txt">正在装盘…</p>
-  </div></div>
+  </div>
+  <div id="app"></div>
   <div id="toast-wrap"></div>
   <script src="/app.js?v=__FQ_V__" fetchpriority="high"></script>
 </body>

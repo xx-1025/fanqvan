@@ -155,13 +155,16 @@ function avatarHtml(u, size) {
   const box = size ? 'width:' + size + 'px;height:' + size + 'px' : '';
   // 头像框：真图相框（public/frames/<key>.webp），key 只认纯小写，后端也是白名单。
   // 框层是绝对定位的伪元素，用 transform:scale() 放大一圈套在头像外面：
-  //   · 图里洞占 72%，所以 --fs = 1/0.72 ≈ 1.39 时洞正好等于头像本身；
-  //   · 小头像给 1.30 —— 34px 上放到 1.39 会盖掉太多脸，帖子头那圈间距也不够；
+  //   · 图里洞固定占画布 72%，所以 --fs = 1/0.72 ≈ 1.39 时洞正好等于头像本身，
+  //     头像不压框内圈，整个相框完整露出来（2026-11-11 从 1.30/1.34 提上来）；
+  //   · 中间尺寸（27~50px，帖子/私信列表这些）给 1.35 —— 洞只比头像小 3%，
+  //     肉眼看不出来，又能少外扩 1px 不去撞旁边的昵称；
+  //   · 26px 以下的极小头像（搜索建议、分享卡片）留 1.30，免得外扩压到字；
   //   · 绝对定位 + scale 都不参与布局，所以「别人的头像有没有框」不会让
   //     昵称、点赞按钮、行高发生任何位移。
-  // size=0（尺寸交给 CSS）时不写内联，由 style.css 按场景给（顶栏 1.30 / 主页 1.42）。
+  // size=0（尺寸交给 CSS）时不写内联，由 style.css 按场景给倍数。
   const frame = /^[a-z]{3,12}$/.test(u.frame || '') ? u.frame : '';
-  const fs = size ? (size <= 40 ? 1.3 : 1.39) : 0;
+  const fs = size ? (size <= 26 ? 1.3 : size <= 50 ? 1.35 : 1.39) : 0;
   const fv = frame && fs ? '--fs:' + fs + ';' : '';
   const fc = frame ? ' pf-' + frame : '';
   if (u.avatar) {
@@ -1340,14 +1343,10 @@ function viewMine() {
     (posts.filter((p) => p.status === 'pending').length
       ? pendingStat(posts.filter((p) => p.status === 'pending').length) : '');
 
-  const coverAct = '<div class="cover-act">' +
-      '<button class="cover-btn" data-action="cover-pick">' + icon('image') + (me.cover ? '换封面' : '设置封面') + '</button>' +
-      (me.cover ? '<button class="cover-btn plain" data-action="cover-reset">恢复默认</button>' : '') +
-    '</div>' +
-    '<input type="file" id="cover-input" accept="image/*" hidden>';
-
+  // 封面上不再挂「换封面 / 恢复默认」——那两个按钮搬到「编辑资料」里了，
+  // 主页只留一张干净的图。
   return profileHeadHtml(me, {
-      act: act, stats: stats, joined: true, coverAct: coverAct,
+      act: act, stats: stats, joined: true,
       postCount: posts.length, photoCount: photos.length,
       showFavs: true, favCount: state.data.favTotal || 0
     }) +
@@ -2632,6 +2631,10 @@ function viewEdit() {
     '<button class="av-opt' + (state.editAvatar === a ? ' on' : '') + '" data-action="pick-avatar" data-av="' + a + '">' +
     '<img src="' + a + '" alt=""></button>').join('');
 
+  // 封面设置搬到编辑资料里了：主页上不再挂「换封面 / 恢复默认」两个按钮，
+  // 免得压在自己那张图或默认插画上。这里给一块预览，改完立即看到效果。
+  const cover = /^\/uploads\/[A-Za-z0-9._-]+$/.test(String(me.cover || '')) ? me.cover : '';
+
   // 头像框：预览直接套在「当前头像」上，选之前就能看到效果。点一下立即存，和换头像一个节奏。
   // key 与 server.js 的 AVATAR_FRAMES、style.css 的 .avatar.frame-* 三处必须一致。
   const FRAMES = [
@@ -2669,6 +2672,18 @@ function viewEdit() {
       '<div class="field"><label>昵称</label><input id="edit-nickname" value="' + esc(me.nickname) + '" maxlength="24"></div>' +
       '<div class="field"><label>简介</label><textarea id="edit-bio" maxlength="160" placeholder="介绍一下你的拿手菜…">' + esc(me.bio || '') + '</textarea></div>' +
       '<button class="btn-primary" data-action="save-profile" style="height:40px;margin-top:6px">保存资料</button>' +
+    '</div>' +
+    '<div class="card edit-card">' +
+      '<h3>' + icon('image') + '主页封面</h3>' +
+      '<p class="edit-hint">选一张图铺在你主页的最上面。不设就用默认的那幅插画。</p>' +
+      '<div class="profile-cover edit-cover' + (cover ? ' has-img' : '') + '"' +
+        (cover ? " style=\"background-image:url('" + cover + "')\"" : '') + '>' +
+        '<div class="cover-act">' +
+          '<button class="cover-btn" data-action="cover-pick">' + icon('image') + (cover ? '换封面' : '设置封面') + '</button>' +
+          '<button class="cover-btn plain" data-action="cover-reset">恢复默认</button>' +
+        '</div>' +
+      '</div>' +
+      '<input type="file" id="cover-input" accept="image/*" hidden>' +
     '</div>' +
     '<div class="card edit-card">' +
       '<h3>' + icon('lock') + '修改密码</h3>' +
@@ -3100,27 +3115,43 @@ async function uploadImage(file) {
   return r.url;
 }
 
-/* 主页封面：选一张图上传后写进 /api/me，空字符串 = 恢复默认渐变 */
+/* 主页封面：选一张图上传后写进 /api/me，空字符串 = 恢复默认渐变。
+   入口只在「编辑资料」里，改完就地刷预览，不整页 render() ——
+   否则用户正填着的昵称、简介会被一起清空。 */
+function paintCover(box, url) {
+  if (!box) return;
+  box.classList.remove('busy');
+  if (url) {
+    box.classList.add('has-img');
+    box.style.backgroundImage = "url('" + url + "')";
+  } else {
+    box.classList.remove('has-img');
+    box.style.backgroundImage = '';
+  }
+  const pick = box.querySelector('[data-action="cover-pick"]');
+  if (pick) pick.innerHTML = icon('image') + (url ? '换封面' : '设置封面');
+}
 async function pickCover(file) {
-  const box = $('.profile-cover');
+  const box = $('.edit-cover');
   if (box) box.classList.add('busy');
   try {
     const url = await uploadImage(file);
     const d = await api('/api/me', { method: 'PATCH', body: { cover: url } });
     state.me.cover = d.user.cover;
-    render();
+    paintCover(box, d.user.cover);
     toast('封面换好了', 'ok', 'check');
   } catch (e) {
-    const b = $('.profile-cover');
-    if (b) b.classList.remove('busy');
+    if (box) box.classList.remove('busy');
     toast(e.message, 'err');
   }
 }
 async function resetCover() {
+  if (!state.me.cover) { toast('现在用的就是默认封面', 'ok', 'check'); return; }
+  const box = $('.edit-cover');
   try {
     const d = await api('/api/me', { method: 'PATCH', body: { cover: '' } });
     state.me.cover = d.user.cover;
-    render();
+    paintCover(box, '');
     toast('已恢复默认封面', 'ok');
   } catch (e) { toast(e.message, 'err'); }
 }
@@ -4388,7 +4419,25 @@ document.addEventListener('focusin', (e) => {
 
 /* ---------------------- 启动 ---------------------- */
 
+/* 启动帘：#boot 在 index.html 里，是 #app 的兄弟节点，所以 render() 重绘首页时
+   不会把它顺手清掉。首屏数据真渲染完了才撤帘 —— 撤太快会露出中间那张骨架屏，
+   就是用户说的「进去先有个加载页，好奇怪」。 */
+function hideBoot(startedAt) {
+  const boot = document.getElementById('boot');
+  if (!boot || boot.classList.contains('out')) return;
+  // 两拍动画一共 1.6s（图标单独展示 → 缩进盘子转圈 + 「正在装盘…」）：
+  // 少于 1.7s 就撤帘，第二拍根本来不及看见，用户会觉得"闪了一下就没了"
+  const wait = Math.max(0, 1700 - (Date.now() - (startedAt || Date.now())));
+  setTimeout(() => {
+    boot.classList.add('out');
+    setTimeout(() => { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 420);
+  }, wait);
+}
+
 (async function boot() {
+  const bootStart = Date.now();
+  // 兜底：不管哪一步卡死，8 秒后都撤帘，不能把用户永远关在启动动画里
+  setTimeout(() => hideBoot(0), 8000);
   localStorage.removeItem('fq_token');   // 旧版本遗留，会话已改为 Cookie
   // 先判断登录态，再决定后续。这里的重试很重要：
   //   线上服务会冷启动 / 偶发抖动，只发一次请求时，第一次失败就把用户
@@ -4417,6 +4466,7 @@ document.addEventListener('focusin', (e) => {
   await loadNotes();
   await loadUnreadMsgs();
   await router();
+  hideBoot(bootStart);            // 首屏已经画好了，这时候撤帘用户直接看到内容
   setInterval(() => {
     if (!state.me) return;
     loadNotes().then(() => { if (state.data.unread) updateBell(); });
@@ -4454,6 +4504,7 @@ function renderBootError() {
     '</div>';
   const btn = $('#boot-retry');
   if (btn) btn.onclick = () => { state.data.bootErr = ''; app.innerHTML = ''; location.reload(); };
+  hideBoot(0);                   // 错误页也是"首屏"，启动帘得让开
 }
 
 function updateBell() {

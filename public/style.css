@@ -1436,8 +1436,9 @@ img { display: block; }
 
 .profile-head { overflow: hidden; padding-bottom: 18px; }
 /* 默认封面 = 一整幅插画（不是「一张小图贴在渐变上」）。
-   构成：暖橙天光 + 右侧站着的吉祥物 + 一圈内描边把画面框成「画」。
-   高度从 148 提到 196：之前那个尺寸里放什么都像缩略图。 */
+   构成：暖橙天光 + 右侧站着的吉祥物。
+   高度 196：之前那个尺寸里放什么都像缩略图。
+   2026-11-11 去掉了那圈白色内描边 —— 压在自己上传的照片上是一道白框，很丑。 */
 .profile-cover {
   height: 196px;
   position: relative;
@@ -1447,11 +1448,6 @@ img { display: block; }
     linear-gradient(118deg, #ffd0a0 0%, #ff9d64 44%, #ff7040 100%);
   border-bottom: var(--bw) solid var(--line);
   background-size: cover;
-  /* 内描边：让封面读起来是「一幅插画」而不是一块糊在卡片顶上的色块。
-     用 outline + 负 offset 而不是 ::before —— ::before 留给「上传中」遮罩用，
-     两者抢同一个伪元素的话，上传时描边会消失。 */
-  outline: 1.5px solid rgba(255, 255, 255, .45);
-  outline-offset: -9px;
   border-radius: 7px;
 }
 /* 吉祥物站在封面右下角，脚踩封面下沿。
@@ -3182,7 +3178,8 @@ a:hover { color: var(--brand-2); }
 .post:active { transform: none; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
 .post .avatar { width: 44px; height: 44px; border: 0; }
 
-.post-head { gap: 6px; position: relative; padding-right: 24px; }
+/* gap 10：44px 头像戴框后外扩 7.7px，6px 的间距会让框右沿压到昵称头上 */
+.post-head { gap: 10px; position: relative; padding-right: 24px; }
 .post-name { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.3; }
 .post-name:hover { color: #ff8140; text-decoration: none; }
 .post-meta { font-size: 12px; color: var(--ink-3); font-weight: 400; }
@@ -3362,7 +3359,8 @@ a:hover { color: var(--brand-2); }
   -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
 }
 .cover-btn:hover { background: rgba(0, 0, 0, .56); }
-.cover-btn.plain { background: rgba(255, 255, 255, .92); color: var(--ink); }
+/* 颜色写死深灰：深色模式下 var(--ink) 是浅色，配白底就成白字白底看不见了 */
+.cover-btn.plain { background: rgba(255, 255, 255, .92); color: #333; }
 .cover-btn svg { width: 13px; height: 13px; }
 .profile-cover.busy { opacity: .65; }
 .profile-cover.busy::before {
@@ -3373,8 +3371,8 @@ a:hover { color: var(--brand-2); }
 /* 只有头像探出封面：早先是整行 margin-top:-34 把头像顶出去的，
    名字也跟着被抬到图片上，用户传张深色封面就读不清。现在头像自己负边距上移。 */
 .profile-info {
-  display: flex; align-items: flex-start; gap: 18px;
-  padding: 10px 16px 0;
+  display: flex; align-items: flex-start; gap: 22px;
+  padding: 10px 22px 0;
   margin-top: 0;
   position: relative;
 }
@@ -3484,14 +3482,16 @@ a:hover { color: var(--brand-2); }
   /* 手机封面 168：再矮吉祥物只剩个头，看不出是插画 */
   .profile-cover { height: 168px; }
   .profile-cover::after { width: 146px; height: 146px; right: 10px; }
-  .profile-cover { outline-offset: -7px; }
   /* 手机端头部：头像压封面，名字块与头像**底部对齐**（Twitter/微博都是这个关系），
      原来 align-items 走默认的 flex-start，名字块自己带 10px 上内边距，看上去浮在头像右侧中间、又和底部错开。 */
-  .profile-info { padding: 10px 12px 0; margin-top: 0; gap: 0 18px; align-items: flex-end; }
+  .profile-info { padding: 10px 22px 0; margin-top: 0; gap: 0 26px; align-items: flex-end; }
   /* 头像再给大一点：手机上它是主页第一个视觉落点，88px 压住封面 58px、露出 30px */
   .profile-info .avatar { width: 88px; height: 88px; margin-top: -58px; border-width: 3px; }
   .profile-name { padding: 0 0 6px; }
   .profile-name h2 { font-size: 19px; line-height: 1.3; }
+  /* 88px 头像戴框后比头像外扩 17px，按钮行换到第二行时会正好压在框底上
+     （「编辑资料」左边被框盖住），往下让开 */
+  .profile-info .profile-act { margin-top: 24px; }
   .profile-name p { margin-top: 3px; }
   .profile-bio { padding: 8px 12px 0; font-size: 13.5px; }
   .profile-stats { padding: 10px 12px; gap: 18px; }
@@ -3824,8 +3824,10 @@ a:hover { color: var(--brand-2); }
 
    三个必须同时成立的约束，缺一个就是 bug：
      1) 洞和头像严丝合缝 —— 框层比头像大 1/0.72≈1.39 倍时，洞正好等于头像直径。
-        小头像给 1.30（34px 上再放大就吃掉半张脸，帖子头那圈间距也不够），
-        个人主页大头像给 1.42（地方大，让摆件完整露出来）。
+        倍数写小（比如 1.22）头像就会压住框的内圈，看起来「框没显示完整」，
+        所以 2026-11-11 起统一提上来：大图 1.39、27~50px 给 1.35、26px 以下 1.30。
+        ⚠️ 放大倍数后要同步把容器边距留够（.profile-info 的 padding、.post-head 的 gap），
+        否则框会被卡片 overflow:hidden 裁掉一条边。
      2) 一个像素都不参与布局 —— 框层是绝对定位伪元素 + transform:scale()，
         position/transform 都不触发重排。所以「别人戴不戴框」不会挤动昵称、
         点赞按钮、行高、气泡宽度；同一行里有没有框，旁边元素的坐标完全一致。
@@ -3869,16 +3871,31 @@ a:hover { color: var(--brand-2); }
 .avatar.pf-wreath    { --pf: url("/frames/wreath.webp"); }
 .avatar.pf-xmas      { --pf: url("/frames/xmas.webp"); }
 
-/* size=0（宽高交给 CSS）的三处，按真实尺寸给倍数 */
-.user-chip .avatar[class*="pf-"] { --fs: 1.3; }      /* 顶栏 30px */
-.profile-info .avatar[class*="pf-"] { --fs: 1.34; }  /* 个人主页 76px：外扩 13px，左侧 padding 16 兜得住 */
-/* 手机上主页头像是 88px 且左边距只有 12px：1.34 会让框左边顶出屏幕、
-   右边压到昵称上。收到 1.22 —— 洞是头像的 0.88 倍，头像四周被框压住一点点，
-   看起来才是「框住」而不是「框在旁边」。 */
-@media (max-width: 760px) {
-  .profile-info .avatar[class*="pf-"] { --fs: 1.22; }
-}
+/* size=0（宽高交给 CSS）的三处。倍数一律按「洞 = 头像」来：洞占画布 72%，
+   所以 1/0.72 ≈ 1.39。小于这个数，头像会把框内圈盖掉一圈，看着就是「框没显示完整」，
+   1.22 那版最明显。改了倍数就得同步把容器边距留够（见 .profile-info 的 padding）。 */
+.user-chip .avatar[class*="pf-"] { --fs: 1.36; }      /* 顶栏 30/40px：顶栏只有 56 高，留 2px 余量 */
+.profile-info .avatar[class*="pf-"] { --fs: 1.39; }  /* 个人主页 76/88px，左侧 padding 22 兜得住 */
 .edit-avatar .avatar[class*="pf-"] { --fs: 1.39; }   /* 编辑页预览 72px */
+
+/* ---------- 编辑资料里的封面预览 ----------
+   封面设置从主页搬到这里：主页上不再压两个按钮，只留干净的图。
+   预览直接复用 .profile-cover 的渐变 + 吉祥物，所以「不设封面」和主页看到的一致。 */
+.edit-cover {
+  height: 132px;
+  margin-top: 10px;
+  border-radius: 10px;
+  border-bottom: 0;
+  overflow: hidden;
+}
+.edit-cover::after { width: 118px; height: 118px; right: 12px; }
+.edit-cover .cover-act { right: 10px; top: 10px; }
+@media (max-width: 760px) {
+  .edit-cover { height: 124px; }
+  .edit-cover::after { width: 96px; height: 96px; }
+  /* 手机上封面很矮，按钮放右上会正好盖住吉祥物的帽子 —— 挪到左上 */
+  .edit-cover .cover-act { left: 10px; right: auto; }
+}
 
 /* ---------- 编辑资料里的头像框选择行 ---------- */
 .frame-row { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 0 4px; }
@@ -3886,15 +3903,15 @@ a:hover { color: var(--brand-2); }
 .frame-row > b em { font-style: normal; color: var(--ink-4); font-size: 12px; margin-left: 6px; }
 /* 18 个选项（17 款 + 不戴）排 6 列 3 行；用 grid 而不是 flex-wrap，
    否则最后一行会剩两三个孤零零靠左，看着没排完 */
-.frame-opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px 0; width: 100%; }
+.frame-opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px 0; width: 100%; }
 .frame-opt {
-  width: 56px; height: 56px; padding: 0; margin: 0 auto;
+  width: 60px; height: 60px; padding: 0; margin: 0 auto;
   border: 0; background: none; cursor: pointer;
   border-radius: 50%;
   display: grid; place-items: center;
   transition: transform .16s ease, box-shadow .16s ease;
 }
-/* 头像 40px + 框层 52px（1.30 倍），正好塞进 56px 的按钮里不碰邻居 */
+/* 头像 40px + 框层 55.6px（1.39 倍），按钮给 60 才不贴边 */
 .frame-opt .avatar { width: 40px; height: 40px; }
 .frame-opt:hover { transform: translateY(-1px); }
 .frame-opt.on { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--brand); }
@@ -3908,7 +3925,7 @@ a:hover { color: var(--brand-2); }
 
 /* 手机上 4 列 5 行：56px × 4 = 224，390px 宽绰绰有余，手指也好点 */
 @media (max-width: 760px) {
-  .frame-opts { grid-template-columns: repeat(4, 1fr); gap: 6px 0; }
+  .frame-opts { grid-template-columns: repeat(4, 1fr); gap: 14px 0; }
 }
 
 /* =========================================================================
