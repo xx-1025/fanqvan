@@ -3380,12 +3380,15 @@ a:hover { color: var(--brand-2); }
 /* 只有头像探出封面：早先是整行 margin-top:-34 把头像顶出去的，
    名字也跟着被抬到图片上，用户传张深色封面就读不清。现在头像自己负边距上移。 */
 .profile-info {
-  display: flex; align-items: flex-start; gap: 72px;
-  /* 框最大 2.48 倍（喜鹊 2.48 / 灯笼 2.44）：76px 头像 → 188px，左右各外扩 56px。
-     左内边距 64 = 56 + 8：不留够，框左缘会被 .profile-head 卡片裁掉一条（就是
-     「装饰被切一半」在桌面主页的版本）；和昵称之间也留 64，框不会压在字上。
-     底部 56 同理 —— 框向下伸出 56px，不留就把昵称/简介那行占了。 */
-  padding: 10px 22px 56px 64px;
+  display: flex; align-items: flex-start; gap: 50px;
+  /* 间距按「框的实测外径」定，不再一味放大留白（2.21：用户反馈昵称离头像太远）：
+     这里的 --fsmax 已收到 2.15 → 76px 头像的框最大 163px，左右各外扩 43.5px。
+     左内边距 52 = 43.5 + 8.5：不留够，框左缘会被 .profile-head 卡片裁掉一条（就是
+     「装饰被切一半」在桌面主页的版本）。
+     和昵称之间 50 = 43.5 + 6.5：最大的框也不会压在字上，小框（皇冠 1.6 → 外扩 23）
+     则贴得更近，昵称/简介和头像是「一组」，不再像两块分开的内容。
+     底部 48 同理 —— 框向下伸出 43.5px，留够才不会占住简介那行。 */
+  padding: 10px 22px 48px 52px;
   margin-top: 0;
   position: relative;
 }
@@ -3913,9 +3916,10 @@ a:hover { color: var(--brand-2); }
 .avatar.pf-xmas      { --pf: url("/frames/xmas.webp?v=3");      --fit: 1.68; }
 
 /* size=0（宽高交给 CSS）的场景：给「物理装得下」的上限。
-   主页是大卡片，2.6 倍也放得下（76px → 198px），17 款全完整 —— 这是用户最常看的地方。
-   编辑预览同理。 */
-.profile-info .avatar[class*="pf-"] { --fsmax: 2.6; }
+   主页是大卡片，但 2.6 倍（76→198px）会把昵称推得太远（2.21 用户反馈），
+   收到 2.15 → 最大 163px：外轮廓仍完整，最大的几款（喜鹊 2.48 / 灯笼 2.44 /
+   万圣 2.32）只是内圈被头像多压一点点，看不出来。 */
+.profile-info .avatar[class*="pf-"] { --fsmax: 2.15; }
 .edit-avatar .avatar[class*="pf-"] { --fsmax: 2.6; }
 /* 顶栏只有 56 高、头像 30px：最多 1.85 倍（55.5px），再多上下就被屏幕顶切掉。
    顶栏是导航位、不是展示位，个别大框在这里压一点点内圈看不出来。 */
@@ -4094,4 +4098,29 @@ html:not([data-theme="light"]) .sk-avatar, html:not([data-theme="light"]) .sk-li
 /* 墨玉框在深底上会整块糊掉，换成浅银环 */
 html:not([data-theme="light"]) .avatar.frame-night { --fx: conic-gradient(from 180deg, #ffffff, #9a9aa8, #5a5a68, #d8d8e0, #ffffff); }
 html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
+}
+
+/* =========================================================================
+   手机端个人主页（2.21）：修「昵称/简介离头像太远、比例怪」
+   .profile-info 的桌面规则写在文件靠后，同优先级会盖掉 @media(max-width:760px)
+   里早先那版（gap:0 14 / padding:0 16 / 头像 64 全被顶掉）→ 手机上昵称被
+   72px 的 gap 推到一边、头像也被撑成 76、按钮独占一行留一大块白。
+   这里在文件末尾重新声明一遍，保证是最终生效的那份。
+   ========================================================================= */
+@media (max-width: 760px) {
+  .profile-info {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0 30px;                 /* 列间距 30：框上限 1.55 → 64 头像外扩 17.5，不压字 */
+    padding: 10px 16px 42px 32px;
+    margin-top: -32px;
+  }
+  .profile-info .avatar { width: 64px; height: 64px; margin-top: -32px; }
+  .profile-info .avatar[class*="pf-"] { --fsmax: 1.55; }
+  .profile-name { flex: 1 1 auto; min-width: 0; padding: 6px 0 0; }
+  .profile-name h2 { font-size: 19px; line-height: 1.3; }
+  .profile-name p { margin-top: 1px; }
+  /* 编辑/关注按钮跟昵称同一行靠右，不再单独占一行留一大块空 */
+  .profile-act { width: auto; flex: none; align-self: flex-start; margin: 0 0 0 auto; padding: 6px 0 0; }
+  .profile-bio { padding-top: 6px; }
 }
