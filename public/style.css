@@ -2209,9 +2209,9 @@ html.modal-open, body.modal-open { overflow: hidden; }
 }
 .av-tip svg { width: 13px; height: 13px; color: var(--ink-4); flex: none; }
 .edit-avatar .avatar { border-width: 3px; box-shadow: var(--sh); }
-/* 卡片左右内边距 22，72px 头像戴最大框（2.32 倍 = 167px）左右各外扩 47.5px。
-   不给 26 的左边距，框左缘会跑出卡片甚至出屏（手机上就是「被切掉一条」）。 */
-.edit-avatar { margin-left: 26px; }
+/* 卡片左右内边距 22，72px 头像戴最大框（2.48 倍 = 179px）左右各外扩 53.5px。
+   左边距要给到 32（22 + 32 = 54），否则框左缘会跑出卡片、出屏。 */
+.edit-avatar { margin-left: 32px; }
 .av-picks { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
 .av-opt {
   width: 52px; height: 52px;
@@ -3380,7 +3380,7 @@ a:hover { color: var(--brand-2); }
 /* 只有头像探出封面：早先是整行 margin-top:-34 把头像顶出去的，
    名字也跟着被抬到图片上，用户传张深色封面就读不清。现在头像自己负边距上移。 */
 .profile-info {
-  display: flex; align-items: flex-start; gap: 64px;
+  display: flex; align-items: flex-start; gap: 72px;
   /* 框最大 2.48 倍（喜鹊 2.48 / 灯笼 2.44）：76px 头像 → 188px，左右各外扩 56px。
      左内边距 64 = 56 + 8：不留够，框左缘会被 .profile-head 卡片裁掉一条（就是
      「装饰被切一半」在桌面主页的版本）；和昵称之间也留 64，框不会压在字上。
@@ -3506,7 +3506,7 @@ a:hover { color: var(--brand-2); }
   /* 手机上头像从 88 收回到 72：框按几何要放到 2.48 倍，88 × 2.48 = 218px，
      390 宽的屏幕根本放不下（左内边距要 65、右边还得留昵称）。72 倍出 179，
      左边 56、右边 54 刚好，视觉上也还是主页最大的那个元素。 */
-  .profile-info { padding: 10px 22px 54px 56px; margin-top: 0; gap: 0 54px; align-items: flex-end; }
+  .profile-info { padding: 10px 22px 54px 58px; margin-top: 0; gap: 0 60px; align-items: flex-end; }
   .profile-info .avatar { width: 72px; height: 72px; margin-top: -46px; border-width: 3px; }
   /* 左内边距 56 / 昵称间距 54 = 框外扩的 53.5px + 一点余量。
      底部 54 是给框下缘留的位置，不留就会被卡片 overflow 切掉。 */
