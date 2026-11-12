@@ -1301,10 +1301,14 @@ function profileHeadHtml(u, opts) {
         (cv ? " style=\"background-image:url('" + cv + "')\"" : '') + '>' +
         (opts.coverAct || '') +
       '</div>' +
-      '<div class="profile-info">' + avatarHtml(u, 0) +
-        '<div class="profile-name">' +
-          '<h2>' + esc(u.nickname) + roleBadge(u) + '</h2>' +
-          '<p>@' + esc(u.username) + '</p>' +
+      '<div class="profile-info">' +
+        // 头像 + 昵称包一层：手机上要当成「一组」做底部对齐（桌面 display:contents，布局不变）
+        '<div class="profile-id">' + avatarHtml(u, 0) +
+          '<div class="profile-name">' +
+            // 昵称单独一层 .pn：h2 改 flex 后省略号要挂在文字上，徽标才不会被一起裁掉
+            '<h2><span class="pn">' + esc(u.nickname) + '</span>' + roleBadge(u) + '</h2>' +
+            '<p>@' + esc(u.username) + '</p>' +
+          '</div>' +
         '</div>' +
         (act ? '<div class="profile-act">' + act + '</div>' : '') +
       '</div>' +

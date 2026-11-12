@@ -3187,8 +3187,10 @@ a:hover { color: var(--brand-2); }
 .post:active { transform: none; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
 .post .avatar { width: 44px; height: 44px; border: 0; }
 
-/* gap 10：44px 头像戴框后外扩 7.7px，6px 的间距会让框右沿压到昵称头上 */
-.post-head { gap: 26px; position: relative; padding-right: 24px; }
+/* gap 6：徽标紧跟昵称。之前写 26 是想给头像框留位置，但头像框是 .post 里的兄弟节点，
+   这里 26 只是把「审核员 / 优秀 / 时间」互相撑开 26px，看起来像散落一地（2026-11-12 用户反馈）。 */
+.post-head { gap: 6px; position: relative; padding-right: 24px; }
+.post-head > .badge { flex: none; }
 .post-name { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.3; }
 .post-name:hover { color: #ff8140; text-decoration: none; }
 .post-meta { font-size: 12px; color: var(--ink-3); font-weight: 400; }
@@ -4101,26 +4103,60 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
 }
 
 /* =========================================================================
-   手机端个人主页（2.21）：修「昵称/简介离头像太远、比例怪」
-   .profile-info 的桌面规则写在文件靠后，同优先级会盖掉 @media(max-width:760px)
-   里早先那版（gap:0 14 / padding:0 16 / 头像 64 全被顶掉）→ 手机上昵称被
-   72px 的 gap 推到一边、头像也被撑成 76、按钮独占一行留一大块白。
-   这里在文件末尾重新声明一遍，保证是最终生效的那份。
+   个人主页头部（2.22）：昵称与头像成一组、徽标贴昵称、手机端按钮不再悬空
+   —— 2.21 那版仍有两个毛病（2026-11-12 用户第二次反馈「头像位置跟名字不对、
+   审核员/优秀标签位置不对」）：
+     1) 按钮上方 margin-top:30（来自 3520 的 .profile-info .profile-act）
+        + 头部 padding-bottom:42，两段空白叠出近 100px，按钮像浮在半空；
+     2) 昵称是普通块，垂直位置取决于内容高度，头像又用 -32 的负边距上移，
+        两者中心差 20 多 px，看起来「名字掉在头像下半边」。
+   改法：头像和昵称包进 .profile-id（桌面 display:contents，布局一模一样），
+   手机端把它做成「底部对齐的一行」，头像正好骑在封面边线上，按钮接着排在下面。
    ========================================================================= */
-@media (max-width: 760px) {
-  .profile-info {
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0 30px;                 /* 列间距 30：框上限 1.55 → 64 头像外扩 17.5，不压字 */
-    padding: 10px 16px 42px 32px;
-    margin-top: -32px;
-  }
-  .profile-info .avatar { width: 64px; height: 64px; margin-top: -32px; }
-  .profile-info .avatar[class*="pf-"] { --fsmax: 1.55; }
-  .profile-name { flex: 1 1 auto; min-width: 0; padding: 6px 0 0; }
-  .profile-name h2 { font-size: 19px; line-height: 1.3; }
-  .profile-name p { margin-top: 1px; }
-  /* 编辑/关注按钮跟昵称同一行靠右，不再单独占一行留一大块空 */
-  .profile-act { width: auto; flex: none; align-self: flex-start; margin: 0 0 0 auto; padding: 6px 0 0; }
-  .profile-bio { padding-top: 6px; }
+
+/* 桌面：这层只是给手机端分组用的，不产生盒子 —— 桌面布局保持 76px 头像 + 50px gap 原样 */
+.profile-id { display: contents; }
+
+/* 昵称行：flex 之后省略号必须挂到文字那一层，否则徽标会跟着被裁 */
+.profile-name h2 {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0; margin: 0;
 }
+/* padding-right 3：省略号是画在盒子右缘的，紧贴徽标时最后一点会被切掉半个 */
+.profile-name h2 .pn { min-width: 0; padding-right: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-name h2 .badge { flex: none; }
+
+@media (max-width: 760px) {
+  /* 桌面是 .profile-info 直接排三个孩子；这里靠 display:contents 让 .profile-id
+     在桌面不产生盒子，只有手机端才把它变成一行。 */
+  .profile-info {
+    display: block;
+    padding: 0 14px 12px;
+    margin-top: 0;
+  }
+  .profile-id {
+    display: flex; align-items: flex-end;
+    gap: 26px;                 /* 26 = 68 头像的框外扩 18.7 + 7 余量，框不压字 */
+    margin-top: -34px;         /* 68 的一半：头像正好骑在封面下沿 */
+    padding-left: 14px;        /* 加上 .profile-info 的 14 = 头像左缘 28，框左缘还有 9px */
+  }
+  .profile-id .avatar { width: 68px; height: 68px; margin: 0; flex: none; }
+  .profile-id .avatar[class*="pf-"] { --fsmax: 1.55; }
+  .profile-name { flex: 1 1 auto; min-width: 0; padding: 0 0 6px; }
+  .profile-name h2 { font-size: 20px; line-height: 1.3; }
+  .profile-name p { margin-top: 3px; font-size: 13px; }
+
+  /* 按钮：占满一行、等宽排开。上间距 22 是为了避开框的下沿（框底 ≈ 昵称底 +19）。 */
+  .profile-info .profile-act {
+    width: 100%; margin: 22px 0 0; padding: 0;
+    display: flex; gap: 8px; align-self: stretch;
+  }
+  .profile-act .btn-sm, .profile-act .btn-follow {
+    flex: 1 1 0; min-width: 0;
+    height: 32px; padding: 0 8px;
+    font-size: 13px;
+    justify-content: center; align-items: center;
+  }
+  .profile-bio { padding: 10px 2px 0; font-size: 14px; }
+}
+
