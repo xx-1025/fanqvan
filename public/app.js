@@ -154,18 +154,15 @@ function avatarHtml(u, size) {
   if (!u) u = { id: 0, nickname: '?' };
   const box = size ? 'width:' + size + 'px;height:' + size + 'px' : '';
   // 头像框：真图相框（public/frames/<key>.webp），key 只认纯小写，后端也是白名单。
-  // 框层是绝对定位的伪元素，用 transform:scale() 放大一圈套在头像外面：
-  //   · 每框的洞不一样大（59%~77%），所以真实倍数 = 1/洞占比，写在 style.css 的 --fit 里；
-  //   · 这里只给「上限」--fsmax = 这个尺寸的容器最多能放多大框（超了会撞到旁边的字）：
-  //       26px 以下（搜索建议/分享卡片）1.40
-  //       27~50px（帖子/私信列表/编辑页选项）1.45
-  //       50px 以上（主页大头像/编辑预览）1.70
-  //   · 最终 CSS 取 min(--fit, --fsmax)：装得下就完整露出框，装不下才轻微压内圈；
-  //   · 绝对定位 + scale 都不参与布局，所以「别人的头像有没有框」不会让
-  //     昵称、点赞按钮、行高发生任何位移。
-  // size=0（尺寸交给 CSS）时不写内联，由 style.css 按场景给上限。
+  // 框层是绝对定位的伪元素，真实倍数 --fit = 1/洞占比（1.47~2.48），写在 style.css。
+  // 这里只给「上限」--fsmax = 这个尺寸的容器物理上能放多大框（超了会被容器切边）：
+  //   · ≤26px（搜索建议/分享卡片）1.6 —— 这两处一行只有 40 多高；
+  //   · 27~50px（帖子头/私信列表/编辑页选项）2.0；
+  //   · >50px（编辑页大预览）2.6 —— 主页 size=0，由 style.css 给 2.6。
+  // CSS 取 min(--fit, --fsmax)：装得下就完整露出整幅框；实在装不下才压内圈，
+  // 但外轮廓不会被切（「装饰被裁一半」是图片生成阶段的问题，已修）。
   const frame = /^[a-z]{3,12}$/.test(u.frame || '') ? u.frame : '';
-  const fs = size ? (size <= 26 ? 1.4 : size <= 50 ? 1.45 : 1.7) : 0;
+  const fs = size ? (size <= 26 ? 1.6 : size <= 50 ? 2.0 : 2.6) : 0;
   const fv = frame && fs ? '--fsmax:' + fs + ';' : '';
   const fc = frame ? ' pf-' + frame : '';
   if (u.avatar) {

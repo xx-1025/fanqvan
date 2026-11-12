@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""touxiangkuang/*.png -> public/frames/*.webp（可直接套头像的圆形相框）
+"""框素材 -> public/frames/<key>.webp（可直接套头像的相框）
 
 素材的三个特性决定了算法：
 1) 底不是纯白，是「边缘纯白 → 中心暖白(约244)」的径向渐变，每张还不一样。
@@ -12,22 +12,36 @@
    量洞 = 纯几何射线（洞都是正圆且居中），以内容 bbox 中心为起点，
           遇到连续 8 个非底色像素才算撞墙，抗噪点。
 
-洞在输出图上固定占 76%，CSS 里框层取 1/0.76≈1.316 倍头像尺寸，洞正好套住头像。
+⚠️ 2026-11-12 修正（这是「头像框装饰被裁一半」的真正原因）
+   旧版按「洞占画布 72%」反推方形窗口 = 洞径/0.72。
+   但实测素材里洞只占原图 46%~70%，窗口比原图还小 —— 等于把整幅图放大 1.5~1.9 倍后
+   只取中心一块，四周装饰（金冠顶饰、凤凰翅膀、牌坊屋檐）被整块切掉。
+   现在改成：以洞心为中心，取一个**完整包住所有内容像素**的方形窗口（+3% 余量），
+   洞占比是多少就记多少，配合 CSS 里每款自己的 --fit = 1/洞占比。
+   这样任何一款框都不会被切，只是「框比头像大多少」各款不同（1.5~2.5 倍）。
+
+输出：384×384 透明 webp；meta 里给出每款的 fit（= 画布边长/洞径）。
 """
 import numpy as np, os, json, math
 from PIL import Image
 from scipy import ndimage
 
-SRC, DST, OUT, HOLE_RATIO = "touxiangkuang", "public/frames", 384, 0.72
-TOL = 30          # 与背景色的容差
+# 原始素材：优先 touxiangkuang/*.png，其次 .workbuddy/src/touxiangkuang/*.webp
+SRC = "touxiangkuang"
+if not os.path.isdir(SRC):
+    SRC = ".workbuddy/src/touxiangkuang"
+EXT = ".png" if os.path.exists(f"{SRC}/1.png") else ".webp"
+DST, OUT, PAD_RATIO = "public/frames", 384, 0.03
+TOL = 30
 NAMES = {1:'halloween',2:'phoenix',3:'koi',4:'magpie',5:'lion',6:'lantern',
          7:'eaves',8:'wreath',9:'mooncake',10:'jade',11:'gate',12:'osmanthus',
          13:'lanterns',14:'clouds',15:'feast',16:'xmas',17:'crown'}
 os.makedirs(DST, exist_ok=True)
+os.makedirs(".workbuddy/tmp", exist_ok=True)
 meta = []
 
 for idx in sorted(NAMES):
-    im = Image.open(f'{SRC}/{idx}.png').convert('RGBA')
+    im = Image.open(f'{SRC}/{idx}{EXT}').convert('RGBA')
     a = np.asarray(im).astype(np.float32)
     H, W = a.shape[:2]
 
@@ -42,12 +56,10 @@ for idx in sorted(NAMES):
     border = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1])
     border.discard(0)
     transparent = np.isin(lab, list(border)) if border else np.zeros((H, W), bool)
-    # 内部底色大区（= 洞），面积超过画布 5% 才算
     for i in range(1, n + 1):
         if i in border:
             continue
-        area = int((lab == i).sum())
-        if area > W * H * 0.05:
+        if int((lab == i).sum()) > W * H * 0.05:
             transparent |= (lab == i)
 
     # ---------- 量洞（几何）----------
@@ -72,8 +84,7 @@ for idx in sorted(NAMES):
     ds = [ray(math.cos(t), math.sin(t)) for t in np.linspace(0, 2 * math.pi, 90, endpoint=False)]
     ds = np.array([d for d in ds if d > 20])
     r = float(np.median(ds)) if len(ds) else min(W, H) * 0.3
-    L, R = ray(-1, 0), ray(1, 0)
-    U, D = ray(0, -1), ray(0, 1)
+    L, R, U, D = ray(-1, 0), ray(1, 0), ray(0, -1), ray(0, 1)
     hcx = cx + (R - L) / 2.0
     hcy = cy + (D - U) / 2.0
     hd = 2 * r
@@ -83,17 +94,31 @@ for idx in sorted(NAMES):
     out[:, :, 3] = alpha * 255.0
     im2 = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), 'RGBA')
 
-    win = hd / HOLE_RATIO
-    box = (hcx - win / 2, hcy - win / 2, hcx + win / 2, hcy + win / 2)
+    # ---------- 输出窗口：完整包住所有内容 ----------
+    dist = np.hypot(xs - hcx, ys - hcy)
+    Rc = float(dist.max())                 # 最远一个内容像素也要包住，宁可多留白
+    side = 2.0 * Rc * (1.0 + PAD_RATIO)
+
+    # 先把图放大到「四周至少 side 的透明边」，再按 box 重采样，避免 box 越界丢内容
+    pad = int(math.ceil(side)) + 2
+    big = Image.new('RGBA', (W + 2 * pad, H + 2 * pad), (0, 0, 0, 0))
+    big.alpha_composite(im2, (pad, pad))
+    hcx2, hcy2 = hcx + pad, hcy + pad
+    box = (hcx2 - side / 2, hcy2 - side / 2, hcx2 + side / 2, hcy2 + side / 2)
     canvas = Image.new('RGBA', (OUT, OUT), (0, 0, 0, 0))
-    canvas.alpha_composite(im2.resize((OUT, OUT), Image.LANCZOS, box=box))
+    canvas.alpha_composite(big.resize((OUT, OUT), Image.LANCZOS, box=box))
 
     name = NAMES[idx]
     path = f'{DST}/{name}.webp'
     canvas.save(path, 'WEBP', quality=88, method=6)
-    kb = os.path.getsize(path) // 1024
-    meta.append(dict(key=name, kb=kb, hole_ratio=round(hd / W, 2)))
-    print(f'{idx:2d}.png -> {name:10s} bg={bg.astype(int)} 洞心({hcx:6.1f},{hcy:6.1f}) 洞径{hd:6.1f}({hd/W:.2f}W) {kb:4d}KB')
 
+    hole_ratio = hd / side                 # 洞占输出画布的比例
+    fit = side / hd                        # CSS 里框层要放大的倍数
+    kb = os.path.getsize(path) // 1024
+    meta.append(dict(key=name, fit=round(fit, 2), hole_ratio=round(hole_ratio, 3), kb=kb))
+    print(f'{idx:2d}.png -> {name:10s} 洞径{hd:6.1f}({hd/W*100:4.1f}%W) 画布{side:6.1f} '
+          f'洞占比{hole_ratio*100:5.1f}% fit={fit:4.2f} {kb:4d}KB')
+
+meta.sort(key=lambda m: m['fit'])
 json.dump(meta, open('.workbuddy/tmp/frames_meta.json', 'w'), ensure_ascii=False, indent=1)
-print('总计', sum(m['kb'] for m in meta), 'KB')
+print('---  总计 %d KB  fit 范围 %.2f ~ %.2f' % (sum(m['kb'] for m in meta), meta[0]['fit'], meta[-1]['fit']))
