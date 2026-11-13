@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-11-13 上午（2.28 · 手机 App 最上面那条状态栏不跟深色模式）
+
+用户反馈：「手机端最上面的深色模式不变色」。
+
+**真因在原生，不在网页**：`MainActivity.tintBars()` 把状态栏/导航栏颜色写死成米白
+`0xFFFFF8EE`，还加了 `SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`（深色图标）。网页顶栏在深色下确实变黑了，
+但它上面那条系统状态栏由原生画，网页的 `<meta name="theme-color">` 在 WebView 里管不到它，
+于是「页面全黑、最上面一条米白」。
+
+**改法**：
+- 原生加 `darkUI`：进页面先按系统 `uiMode` 猜一次（冷启动那一帧就能对上），
+  之后网页每次应用主题都通过 `FQNative.setTheme('dark'|'light')` 上报，`tintBars()` 按它上色；
+  深色时清掉 `LIGHT_STATUS_BAR` / `LIGHT_NAVIGATION_BAR`，否则黑底配黑图标等于没有。
+- 网页补 `matchMedia('(prefers-color-scheme: dark)')` 的 change 监听：跟随系统时系统在深浅之间切，
+  页面靠 CSS 自己会变，但 theme-color 与 App 状态栏原来不会跟着动（顺带修掉这个）。
+- 新增 `res/values-night/colors.xml`，把 `cream` 覆盖成 `#111114`：冷启动网页还没画的那一下
+  不再闪米白；`values-v21/styles.xml` 里引用 cream 的 statusBar/navigationBar 也一并变深。
+- 浏览器端行为不变：`window.FQNative` 不存在，桥接调用在 try/catch 里静默跳过。
+
+APK 重打到 **2.28 / versionCode 38**（状态栏是原生画的，只改网页修不好）。
+
+---
+
 ## 2026-11-13 上午（2.27 · 手机主页：头像放大，并与昵称首行对齐）
 
 用户反馈：「手机端主页的头跟名字也没有对齐，头像跟头像框有点偏上，还有点小」。

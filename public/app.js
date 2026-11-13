@@ -84,6 +84,12 @@ function applyTheme(t) {
   // 手机浏览器的状态栏 / 地址栏颜色跟着走，不然深色页面顶上是条白带
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', THEME_COLOR[t] || THEME_COLOR[currentTheme()]);
+  // 安卓 App 里状态栏不听 theme-color（那是系统栏，由原生画），得显式告诉它一声；
+  // 浏览器里没有 FQNative，这行静默跳过。
+  try {
+    const now = (t === 'light' || t === 'dark') ? t : currentTheme();
+    if (window.FQNative && window.FQNative.setTheme) window.FQNative.setTheme(now);
+  } catch (e) { /* 老内核/无桥接：忽略 */ }
 }
 function themeBtnHtml() {
   const dark = currentTheme() === 'dark';
@@ -105,6 +111,17 @@ function toggleTheme() {
 }
 
 applyTheme(savedTheme());   // 脚本在 body 末尾，这行执行时 <html> 一定已存在
+
+/* 跟随系统的时候，系统在深浅之间切：页面靠 CSS 的 @media 自己就变了，
+   但 theme-color 和 App 的状态栏不会跟着动 —— 所以补一个监听。
+   手动选过 light/dark 就不理系统（savedTheme() 有值）。 */
+(function watchSystemTheme() {
+  if (!window.matchMedia) return;
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const on = () => { if (!savedTheme()) applyTheme(''); };
+  if (mq.addEventListener) mq.addEventListener('change', on);
+  else if (mq.addListener) mq.addListener(on);
+})();
 
 /* ---------------------- 基础工具 ---------------------- */
 
