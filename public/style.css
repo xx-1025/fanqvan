@@ -563,7 +563,7 @@ img { display: block; }
   transition: .12s;
 }
 .ai-btn .ai-short { display: none; }
-.ai-btn:hover { background: #e9e3ff; border-style: solid; transform: none; }
+.ai-btn:hover { background: var(--ai-soft); border-style: solid; transform: none; }
 .ai-btn:active { transform: none; box-shadow: none; }
 
 .ai-box {
@@ -3183,7 +3183,13 @@ a:hover { color: var(--brand-2); }
   gap: 10px;
   background: var(--paper);
 }
-.post:hover { background: #fcfcfc; }
+/* 深色模式的 bug：这条原来写死 #fcfcfc，手机上没有 hover 设备的概念 ——
+   手指按住卡片就会触发 :hover，整张帖子从深底翻成近白，松手才回来。
+   ① 换成语义变量（深色下 --fill-1 = #17171b，比卡片亮一档，仍是深色）；
+   ② 并且只在真有指针的设备上生效，触屏交给 :active 的缩放反馈。 */
+@media (hover: hover) and (pointer: fine) {
+  .post:hover { background: var(--fill-1); }
+}
 .post:active { transform: none; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
 .post .avatar { width: 44px; height: 44px; border: 0; }
 
@@ -4180,7 +4186,8 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
   .profile-head {
     padding-top: 0;
     margin: 0;
-    border-radius: 12px;
+    /* 只有下边两角是圆的：上边两角贴屏顶，保持直角（2.24 补） */
+    border-radius: 0 0 12px 12px;
     overflow: hidden;
   }
   .profile-head .profile-cover {

@@ -18,6 +18,8 @@ node_modules/
 
 # ---- 构建产物 ----
 dist/
+# 官网下载用的安装包副本（1.4MB/版，随部署上传，不重复入 git）
+public/download/*.apk
 
 # ---- 用户放的设计素材原图（已处理成 public/frames，原图不入库也不部署）----
 touxiangkuang/

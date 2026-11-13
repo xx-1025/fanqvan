@@ -385,6 +385,74 @@
     });
   });
 
+  /* ---------- AI 演示区 ----------
+     纯前端：文本全部写死在这里，点按钮只是逐字打出来。
+     不发请求、不读 localStorage、不碰 /api/ai，页面上也标了「不联网」。 */
+  var AI_EX = {
+    polish: [
+      { q: '今天炒了个蛋炒饭 挺好吃的 就是有点咸 下次少放点盐',
+        a: '今天炒了个蛋炒饭，挺好吃的，就是有点咸。下次少放点盐，味道就正好了。' },
+      { q: '红烧肉火太大 糖色炒糊了 肉有点苦',
+        a: '红烧肉这次火大了，糖色炒糊，肉也带了点苦味。\n记下来：糖色一变成枣红就得立刻下肉，晚一秒就苦。' },
+      { q: '第一次做戚风 没塌 开心',
+        a: '第一次做戚风，居然没塌，开心。\n关键是蛋白打到硬性发泡，翻拌时从底部兜起来、别画圈。' }
+    ],
+    cook: [
+      { q: '冰箱里只有鸡蛋 两个番茄 半碗米饭',
+        a: '就这些也能做一顿：\n\n1. 番茄切块，鸡蛋打散，加一小撮盐。\n2. 热锅凉油，鸡蛋滑到半凝固先盛出来。\n3. 补一点油，番茄下锅炒到出沙，加半碗水煮开。\n4. 倒回鸡蛋，连汁浇在热米饭上。\n\n前后约 10 分钟，不用再买菜。' },
+      { q: '一块鸡胸肉 一个土豆 半根胡萝卜',
+        a: '一锅炖最省事：\n\n1. 鸡胸切块，用盐和一点生抽抓匀。\n2. 土豆、胡萝卜切滚刀块。\n3. 先煎鸡肉到上色，下蔬菜翻炒两下。\n4. 加水没过一半，小火 15 分钟，开盖收汁。' },
+      { q: '剩的两片吐司 一个鸡蛋 一点芝士',
+        a: '做个热三明治：\n\n1. 鸡蛋煎到边缘微焦，蛋黄别全熟。\n2. 吐司一面抹薄薄一层黄油。\n3. 铺芝士和蛋，盖上另一片。\n4. 小火两面各烙 1 分钟，芝士化开就好。' }
+    ]
+  };
+  var aiMode = 'polish', aiIdx = 0, aiTimer = null;
+  var aiIn = $('#ai-in'), aiOut = $('#ai-out'), aiNote = $('#ai-note'), aiLabel = $('#ai-label');
+  function aiPaint(){
+    if(!aiIn || !aiOut) return;
+    var set = AI_EX[aiMode], it = set[aiIdx % set.length];
+    if(aiTimer){ clearInterval(aiTimer); aiTimer = null; }
+    aiIn.value = it.q;
+    aiOut.innerHTML = '<span class="ph">点「让 AI 改一遍」试试。</span>';
+    if(aiLabel) aiLabel.textContent = aiMode === 'cook' ? '手里有什么食材' : '你写的原话';
+    if(aiNote) aiNote.textContent = '示例 ' + ((aiIdx % set.length) + 1) + ' / ' + set.length + ' · 预置文本，不联网、不调用模型';
+  }
+  function aiType(text){
+    if(aiTimer) clearInterval(aiTimer);
+    aiOut.textContent = '';
+    var caret = document.createElement('span');
+    caret.className = 'caret';
+    aiOut.appendChild(caret);
+    var i = 0;
+    aiTimer = setInterval(function(){
+      i++;
+      aiOut.textContent = text.slice(0, i);
+      aiOut.appendChild(caret);
+      if(i >= text.length){
+        clearInterval(aiTimer); aiTimer = null;
+        setTimeout(function(){ if(caret.parentNode) caret.parentNode.removeChild(caret); }, 1000);
+      }
+    }, 16);
+  }
+  if(aiIn && aiOut && $('#ai-run')){
+    aiPaint();
+    $$('#ai-tabs .ai-tab').forEach(function(b){
+      b.addEventListener('click', function(){
+        $$('#ai-tabs .ai-tab').forEach(function(x){ x.classList.remove('on'); });
+        b.classList.add('on');
+        aiMode = b.dataset.ai || 'polish';
+        aiIdx = 0;
+        aiPaint();
+      });
+    });
+    $('#ai-run').addEventListener('click', function(){
+      var set = AI_EX[aiMode];
+      aiType(set[aiIdx % set.length].a);
+    });
+    var rs = $('#ai-reset');
+    if(rs) rs.addEventListener('click', function(){ aiIdx++; aiPaint(); });
+  }
+
   // 恢复上次状态：解锁标记 + 版本选择；也支持 #dev / #user 直达
   try{ if(localStorage.getItem(LS_UNLOCK) === '1') setUnlocked(true); }catch(e){}
   var init = 'user';

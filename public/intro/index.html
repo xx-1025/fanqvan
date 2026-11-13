@@ -4,7 +4,7 @@
 <meta charset="UTF-8" data-page-node-id="KWhcGBjahPEPzKF1ltQXrG">
 <meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="Al9LugKUJl3M8aXlj49InP">
 <title>饭圈 · 好好做饭的人都在这里</title>
-<meta name="description" content="饭圈 —— 一个会做饭的人聚在一起、互相评优的美食社区。发帖审核、人工评优、私信转发、图片九宫格。" data-page-node-id="udJP4VQriQiOyAj8DHbfoc">
+<meta name="description" content="饭圈 —— 一个会做饭的人聚在一起、互相评优的美食社区。发帖先审后发、人工评优、九宫格配图、AI 只说人话的润色助手、17 款头像框、深色模式，还有能一键封爬虫的安全控制台。" data-page-node-id="udJP4VQriQiOyAj8DHbfoc">
 <style>
 /* =========================================================
    饭圈 · 介绍页
@@ -573,11 +573,78 @@ html[data-mode="dev"]:not([data-dev-unlocked]) [data-only="dev"]{display:none !i
 .cta-dark .btn:active{box-shadow:0 2px 0 #1c1009;}
 .foot{padding:40px 0 50px;text-align:center;color:var(--ink-3);font-size:13px;}
 .foot b{color:var(--ink-2);}
+
+/* ---------- 真实饭帖 ---------- */
+.real-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.real-card{
+  display:block;text-decoration:none;color:inherit;background:var(--paper);
+  border:var(--bw) solid var(--ink);border-radius:var(--r-sm);overflow:hidden;
+  box-shadow:var(--sh-sm);transition:transform .18s,box-shadow .18s;
+}
+.real-card:hover{transform:translate(-2px,-3px);box-shadow:var(--sh-lg);}
+.real-thumb{position:relative;aspect-ratio:4/3;background:var(--cream);overflow:hidden;}
+.real-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.real-badge{
+  position:absolute;left:10px;top:10px;padding:3px 10px;border-radius:var(--pill);
+  background:rgba(255,255,255,.94);color:#3f9f57;font-size:11.5px;font-weight:900;
+  border:1.5px solid #3f9f57;
+}
+.real-body{padding:12px 14px 14px;}
+.real-who{font-size:14px;font-weight:900;display:flex;align-items:baseline;gap:8px;}
+.real-who span{font-size:11.5px;font-weight:700;color:var(--ink-3);}
+.real-text{
+  margin:5px 0 0;font-size:13.5px;color:var(--ink-2);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.real-meta{margin-top:9px;display:flex;gap:14px;font-size:11.5px;font-weight:800;color:var(--ink-3);}
+.real-note{margin:16px 0 0;text-align:center;font-size:12px;color:var(--ink-3);}
+@media(max-width:900px){ .real-grid{grid-template-columns:repeat(2,1fr);} }
+@media(max-width:560px){ .real-grid{grid-template-columns:1fr;} }
+
+/* ---------- AI 演示（纯前端预置，不联网） ---------- */
+.ai-demo{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+.ai-panel{
+  background:var(--paper);border:var(--bw) solid var(--ink);border-radius:var(--r-sm);
+  padding:18px 18px 16px;box-shadow:var(--sh-sm);
+}
+.ai-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.ai-tab{
+  font:inherit;font-size:13px;font-weight:900;cursor:pointer;padding:6px 14px;
+  border:2px solid var(--ink);border-radius:var(--pill);background:var(--cream);color:var(--ink-2);
+}
+.ai-tab.on{background:var(--brand);color:#fff;box-shadow:var(--sh-sm);}
+.ai-label{font-size:12px;font-weight:900;color:var(--ink-3);margin-bottom:6px;}
+.ai-in{
+  width:100%;resize:vertical;font:inherit;font-size:13.5px;line-height:1.7;
+  border:2px solid var(--line);border-radius:var(--r-xs);padding:10px 12px;
+  background:var(--cream);color:var(--ink);
+}
+.ai-in:focus{outline:none;border-color:var(--brand);}
+.ai-foot{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap;}
+.ai-note{margin-top:10px;font-size:11.5px;color:var(--ink-3);}
+.ai-out{
+  min-height:150px;border:2px dashed var(--line);border-radius:var(--r-xs);
+  padding:12px 13px;background:var(--cream);font-size:13.5px;line-height:1.75;white-space:pre-wrap;
+}
+.ai-out .ph{color:var(--ink-3);}
+.ai-out .caret{
+  display:inline-block;width:7px;height:15px;background:var(--brand-2);
+  vertical-align:-2px;animation:blink .9s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0;}}
+.ai-badge{
+  display:inline-block;margin-top:10px;padding:3px 10px;border-radius:var(--pill);
+  background:#eef7ff;color:#2c7bbd;font-size:11.5px;font-weight:900;border:1.5px solid #9ccdf0;
+}
+.ai-rules{margin:12px 0 0;padding-left:18px;font-size:12.5px;color:var(--ink-2);}
+.ai-rules li{margin:3px 0;}
+@media(max-width:840px){ .ai-demo{grid-template-columns:1fr;} }
+
 @media(max-width:640px){
   .sec{padding:60px 0;}
   .wrap{padding:0 18px;}
   .cta-inner{padding:38px 22px;}
-  .hero{padding:48px 0 40px;}
+  .hero{padding:48px 18px 40px;}   /* 原来左右 0：.hero 的简写会盖掉 .wrap 的 18px，手机上标题会贴边被裁 */
 }
 </style>
 </head>
@@ -600,6 +667,8 @@ html[data-mode="dev"]:not([data-dev-unlocked]) [data-only="dev"]{display:none !i
     </div>
     <nav class="top-nav" data-page-node-id="BnxaUBNZksILSHQ214F9SO">
       <a href="#features" data-only="user" data-page-node-id="tQvetm1Grs8z7YJF4SpTUv">能干什么</a>
+      <a href="#real" data-only="user">真实饭帖</a>
+      <a href="#ai" data-only="user">AI 助手</a>
       <a href="#play" data-only="user" data-page-node-id="36nUFQc8u9t7gWxLBUv7JN">动手玩</a>
       <a href="#flow" data-only="user" data-page-node-id="hPgkBY74NF4jJWoCQ78dDz">怎么运作</a>
       <a href="#guard" data-only="dev" data-page-node-id="fDvGVz47kWPFZFtUqjBKFx">怎么保障</a>
@@ -629,27 +698,28 @@ html[data-mode="dev"]:not([data-dev-unlocked]) [data-only="dev"]{display:none !i
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="VhmqYFcYx5c25wmOobkEu4"><path d="M8 5l11 7-11 7z" data-page-node-id="AuA3v1eMJE9LnJmakDRXhi"/></svg>
         </a>
         <a class="btn" href="#features" data-page-node-id="9ACG1eYE0PlDRnETizo1qR">它好玩在哪</a>
+        <a class="btn" href="/download/fanqvan.apk" download>安卓版下载</a>
       </div>
       <div class="hero-note" data-page-node-id="zO8onWTv3go2HNhAQFxgAo">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="b4GdmsQetQXRLhIOZNjmfx"><path d="M12 22s8-4.5 8-11V5l-8-3-8 3v6c0 6.5 8 11 8 11Z" data-page-node-id="QyTEhlvj7DL2QNTprf0YDR"/><path d="M9 12l2 2 4-4" data-page-node-id="dVme1fzUnCgrC89vkrLxby"/></svg>
         发布先审后发 · 优秀作品人工评优 · 名单隐私保护
       </div>
       <div class="stats" data-page-node-id="6CS5p25lJcoAZKps8zSgmD">
-        <div class="stat" data-page-node-id="GmekgpOllWXrlY1L3f7PJR"><b data-count="99" data-plus="1" data-page-node-id="AizcA5RNjZluVXfUKpV2KX">0</b><span data-page-node-id="BUsvEfIZ1JBKWe5dbV7FKI">菜品分类</span></div>
-        <div class="stat" data-page-node-id="WQjBAAhhcyvV6746Ew4Tjq"><b data-count="99" data-plus="1" data-page-node-id="O2AyfrfKSoVgERctdBspSs">0</b><span data-page-node-id="QPpp4lqWgy6mRP3oAfoq2g">优秀作品</span></div>
-        <div class="stat" data-page-node-id="o8zPCkVemFyFWpJoaUwqHl"><b data-count="100" data-suffix="%" data-page-node-id="MoLgTG5FRWUhvBw2zQUN2k">0</b><span data-page-node-id="dqmey7yET75YBGkRBzQzIn">人工审核</span></div>
+        <div class="stat" data-page-node-id="GmekgpOllWXrlY1L3f7PJR"><b data-count="17" data-page-node-id="AizcA5RNjZluVXfUKpV2KX">0</b><span data-page-node-id="BUsvEfIZ1JBKWe5dbV7FKI">已公开饭帖</span></div>
+        <div class="stat" data-page-node-id="WQjBAAhhcyvV6746Ew4Tjq"><b data-count="7" data-page-node-id="O2AyfrfKSoVgERctdBspSs">0</b><span data-page-node-id="QPpp4lqWgy6mRP3oAfoq2g">人工评优</span></div>
+        <div class="stat" data-page-node-id="o8zPCkVemFyFWpJoaUwqHl"><b data-count="100" data-suffix="%" data-page-node-id="MoLgTG5FRWUhvBw2zQUN2k">0</b><span data-page-node-id="dqmey7yET75YBGkRBzQzIn">先审后发</span></div>
       </div>
     </div>
 
     <div class="hero-visual" data-page-node-id="SHKPiRZWqb4wRaT7JFApR0">
       <span class="badge-float" data-page-node-id="PtECDAdQzNXqXuw9FwbG54">✓ 已通过审核</span>
       <div class="food-float f1" data-page-node-id="RoNMOBenqrHIBMmUuuYmYY">
-        <div style="height:100%;background:linear-gradient(135deg,#ffb27a,#ff8a3d);display:grid;place-items:center;font-size:64px" data-page-node-id="9Z07smBYcnKZ4ufkvGcp4h">🍖</div>
-        <div class="cap" data-page-node-id="C6lnKPMhLsusgSl3pAWIjH">老张头 · 红烧肉 · 火候三个数</div>
+        <img src="/intro/shots/food-01.webp" alt="站内真实投稿：一顿家常饭" loading="eager" data-page-node-id="9Z07smBYcnKZ4ufkvGcp4h">
+        <div class="cap" data-page-node-id="C6lnKPMhLsusgSl3pAWIjH">Aholic · 真实投稿 · 9 张图的一顿饭</div>
       </div>
       <div class="food-float f2" data-page-node-id="vb1fLzFLAYUMagaPTBWKnR">
-        <div style="height:100%;background:linear-gradient(135deg,#ffe6a8,#ffd166);display:grid;place-items:center;font-size:48px" data-page-node-id="eL4iMyPtNAsQgptVgaTtZV">🍰</div>
-        <div class="cap" data-page-node-id="SBrdco0PX1ibTLNJLNrMEi">戚风 160℃ 稳住</div>
+        <img src="/intro/shots/food-06.webp" alt="站内真实投稿：披萨与炸物" loading="eager" data-page-node-id="eL4iMyPtNAsQgptVgaTtZV">
+        <div class="cap" data-page-node-id="SBrdco0PX1ibTLNJLNrMEi">阿谀小小 · 今日份碳水</div>
       </div>
       <div class="food-float f3" data-page-node-id="pmdzCIl1BbAZEPxVIofmGJ">
         <svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#f2682a" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="aceq1HYvFmCjQ1zMlqVKax"><circle cx="12" cy="15" r="6" data-page-node-id="KqeErgUqwsuP7FCCqzJxxg"/><path d="M12 9V4M8.5 6.5 12 9l3.5-2.5M4 21h16" data-page-node-id="ElREq2zsCJDX0kwmlhGvMP"/></svg>
@@ -722,6 +792,146 @@ html[data-mode="dev"]:not([data-dev-unlocked]) [data-only="dev"]{display:none !i
       </div>
       <h3 data-page-node-id="ibhGdNmIelrwz1eCrW8azG">三种身份</h3>
       <p data-page-node-id="tY1falQ1y3AAEczR5l8Aj1">普通厨友发帖互动；<b data-page-node-id="QQWpRdPEgaT8Cz6GJ7KLpE">审核员</b>把关内容；<b data-page-node-id="TcXDTAQmPATWHe5D5dvIOo">管理员</b>管人管事。申请审核员走审批流。</p>
+    </div>
+    <div class="feat reveal">
+      <div class="feat-ic" style="background:#f2eeff">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#6f5cd0" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/><path d="M18.5 15.5l.9 2.2 2.1.8-2.1.8-.9 2.2-.9-2.2-2.1-.8 2.1-.8.9-2.2Z"/></svg>
+      </div>
+      <h3>AI 写帖助手</h3>
+      <p>只<b>润色不代写</b>：把你自己的话改顺、补上配比火候的表述，三道闸把关。另有「做饭模式」，手里有什么食材就给你排步骤。</p>
+    </div>
+    <div class="feat reveal">
+      <div class="feat-ic" style="background:#ffeef3">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#e05a86" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="12" cy="12" r="4.2"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2"/></svg>
+      </div>
+      <h3>头像框</h3>
+      <p>17 款整幅相框（灯笼、锦鲤、年画…），选一款套在头像上，主页、帖子和顶栏都是同一套。</p>
+    </div>
+    <div class="feat reveal">
+      <div class="feat-ic" style="background:#eef0f4">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#5b6472" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"/></svg>
+      </div>
+      <h3>深色模式</h3>
+      <p>顶栏月/日一键切换，也可以跟随系统。夜里刷饭帖不刺眼，配色全部走语义变量，不是简单反色。</p>
+    </div>
+    <div class="feat reveal">
+      <div class="feat-ic" style="background:#eef5ff">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#4a8fd4" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="11" rx="2.5"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9"/><path d="M12 13.5v2.5"/></svg>
+      </div>
+      <h3>安全与运营后台</h3>
+      <p>独立安全控制台 <b>/ops</b>：谁在爬、封了谁、异常登录一目了然，可疑 IP 一键封禁。站内内容对未登录用户全部关闭。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 真实饭帖 ========== -->
+<section class="sec wrap" id="real" data-only="user">
+  <div class="sec-head reveal">
+    <span class="kicker">📸 站里真的在发</span>
+    <h2>这些不是素材图</h2>
+    <p>下面每一张都来自本站真实投稿：昵称、文案、点赞数都是当时的原样。点一张进站看原帖。</p>
+  </div>
+  <div class="real-grid">
+    <a class="real-card reveal" href="/">
+      <div class="real-thumb">
+        <img src="/intro/shots/food-07.webp" alt="站内真实投稿" loading="lazy">
+        <span class="real-badge">✓ 已通过</span>
+      </div>
+      <div class="real-body">
+        <div class="real-who">阿谀小小 <span>9 张图</span></div>
+        <p class="real-text">？嘴巴吃不过来怎么办</p>
+        <div class="real-meta"><span>♥ 4</span><span>💬 0</span><span>审过</span></div>
+      </div>
+    </a>
+    <a class="real-card reveal" href="/">
+      <div class="real-thumb">
+        <img src="/intro/shots/food-02.webp" alt="站内真实投稿" loading="lazy">
+        <span class="real-badge">✓ 已通过</span>
+      </div>
+      <div class="real-body">
+        <div class="real-who">阿谀小小 <span>9 张图</span></div>
+        <p class="real-text">近期肠胃有点火辣辣啊🔥</p>
+        <div class="real-meta"><span>♥ 4</span><span>💬 0</span><span>审过</span></div>
+      </div>
+    </a>
+    <a class="real-card reveal" href="/">
+      <div class="real-thumb">
+        <img src="/intro/shots/food-03.webp" alt="站内真实投稿" loading="lazy">
+        <span class="real-badge">✓ 已通过</span>
+      </div>
+      <div class="real-body">
+        <div class="real-who">红豆沙 <span>9 张图</span></div>
+        <p class="real-text">来喝酒</p>
+        <div class="real-meta"><span>♥ 3</span><span>💬 2</span><span>审过</span></div>
+      </div>
+    </a>
+    <a class="real-card reveal" href="/">
+      <div class="real-thumb">
+        <img src="/intro/shots/food-05.webp" alt="站内真实投稿" loading="lazy">
+        <span class="real-badge">✓ 已通过</span>
+      </div>
+      <div class="real-body">
+        <div class="real-who">红豆沙 <span>4 张图</span></div>
+        <p class="real-text">最近亏待嘴巴了</p>
+        <div class="real-meta"><span>♥ 4</span><span>💬 0</span><span>审过</span></div>
+      </div>
+    </a>
+    <a class="real-card reveal" href="/">
+      <div class="real-thumb">
+        <img src="/intro/shots/food-01.webp" alt="站内真实投稿" loading="lazy">
+        <span class="real-badge">✓ 已通过</span>
+      </div>
+      <div class="real-body">
+        <div class="real-who">Aholic <span>9 张图</span></div>
+        <p class="real-text">（没写配文，直接上图）</p>
+        <div class="real-meta"><span>♥ 2</span><span>💬 1</span><span>审过</span></div>
+      </div>
+    </a>
+    <a class="real-card reveal" href="/">
+      <div class="real-thumb">
+        <img src="/intro/shots/food-04.webp" alt="站内真实投稿" loading="lazy">
+        <span class="real-badge">✓ 已通过</span>
+      </div>
+      <div class="real-body">
+        <div class="real-who">稀稀大王 <span>9 张图</span></div>
+        <p class="real-text">（没写配文，直接上图）</p>
+        <div class="real-meta"><span>♥ 2</span><span>💬 0</span><span>审过</span></div>
+      </div>
+    </a>
+  </div>
+  <p class="real-note reveal">图片按长边 720 压成 webp，只为了网页加载快；昵称与文案未做任何改写。</p>
+</section>
+
+<!-- ========== AI 演示 ========== -->
+<section class="sec wrap" id="ai" data-only="user">
+  <div class="sec-head reveal">
+    <span class="kicker">✨ AI 厨房助手</span>
+    <h2>它帮你把话说顺，不替你做饭</h2>
+    <p>下面两个是<b>页面内置的示例</b>：点一下就有结果，但既不联网、也不调用任何模型，不花一分钱额度。</p>
+  </div>
+  <div class="ai-demo reveal">
+    <div class="ai-panel">
+      <div class="ai-tabs" id="ai-tabs">
+        <button class="ai-tab on" data-ai="polish" type="button">润色原话</button>
+        <button class="ai-tab" data-ai="cook" type="button">做饭模式</button>
+      </div>
+      <div class="ai-label" id="ai-label">你写的原话</div>
+      <textarea class="ai-in" id="ai-in" rows="3"></textarea>
+      <div class="ai-foot">
+        <button class="btn btn-primary" id="ai-run" type="button">让 AI 改一遍</button>
+        <button class="btn" id="ai-reset" type="button">换个例子</button>
+      </div>
+      <div class="ai-note" id="ai-note">示例 1 / 3 · 全部为预置文本</div>
+    </div>
+    <div class="ai-panel ai-out-panel">
+      <div class="ai-label">结果</div>
+      <div class="ai-out" id="ai-out"><span class="ph">点左边的「让 AI 改一遍」试试。</span></div>
+      <div class="ai-badge">演示环境 · 不联网</div>
+      <ul class="ai-rules">
+        <li>只用你自己的话，不凭空加菜谱</li>
+        <li>配比、火候没写就不替你编</li>
+        <li>改完还是你的口吻</li>
+      </ul>
     </div>
   </div>
 </section>
@@ -862,9 +1072,12 @@ html[data-mode="dev"]:not([data-dev-unlocked]) [data-only="dev"]{display:none !i
     </span>
     <h2 data-page-node-id="SCfyokKQoLA0HUDC2MVBO5">下一锅好菜，端上来吧</h2>
     <p data-page-node-id="l1WncTMBYpE7lkHUkw2tjx">不管是一碗蛋炒饭，还是一次成功的戚风。</p>
-    <a class="btn" id="cta-btn" href="/" data-page-node-id="FCo4M4ebSM9EdZLbVn02Sr">进站逛逛
-      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="BmwuPHPMtGU1p9Mkfbb6FW"><path d="M5 12h13M13 6l6 6-6 6" data-page-node-id="un0G8eFJfrnWE6nuKDBQVg"/></svg>
-    </a>
+    <div class="hero-actions" style="justify-content:center">
+      <a class="btn" id="cta-btn" href="/" data-page-node-id="FCo4M4ebSM9EdZLbVn02Sr">进站逛逛
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="BmwuPHPMtGU1p9Mkfbb6FW"><path d="M5 12h13M13 6l6 6-6 6" data-page-node-id="un0G8eFJfrnWE6nuKDBQVg"/></svg>
+      </a>
+      <a class="btn" href="/download/fanqvan.apk" download>下载安卓版</a>
+    </div>
     <div class="cta-foot" data-page-node-id="PjDkhvG1ZpHgFwWEu7G8md">
       <span data-page-node-id="i42Tia5ctGCkBmTnFTLlnN">免费注册</span>
       <span data-page-node-id="hmutNdY1U6EXfVrQvkBY6n">·</span>
@@ -1058,11 +1271,12 @@ html[data-mode="dev"]:not([data-dev-unlocked]) [data-only="dev"]{display:none !i
 <footer class="foot wrap" data-page-node-id="ATc8ZsqF9zA3AEbhpbZcJP">
   <p data-page-node-id="YY5hWu5p1zFeQYfEAxqDI9"><b data-page-node-id="3C5wVV06isqnmSeyrVCml4">饭圈</b> · 好好做饭的人都在这里</p>
   <p style="margin-top:4px" data-page-node-id="FSk0OwaPhZKhOGDnInzUgl">人工审核 · 优秀饭帖 · 隐私优先 &nbsp;|&nbsp; 一个认真对待每道菜的地方</p>
+  <p style="margin-top:10px;font-size:12px">页面里的照片、昵称与文案均来自站内真实投稿，未做美化或替换。</p>
 </footer>
 
 </main>
 
-<script src="/intro/intro.js"></script>
+<script src="/intro/intro.js?v=20261113"></script>
 
 </body>
 </html>
