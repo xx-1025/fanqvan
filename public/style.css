@@ -4147,23 +4147,26 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
     padding: 0 28px 12px;
     margin-top: 0;
   }
-  /* 2.23：改成 flex-start —— 昵称整块往下挪到封面下沿之下，不再被封面吃掉上半行。
-     头像是自己 -34 上移（64/2），所以只有头像骑在封面上，文字全在白底上。 */
+  /* 2.27：头像中心对齐**昵称首行中心**（2.25 之前是头像中心压在封面下沿，比昵称首行
+     高 17px，用户反馈「头像跟名字没对齐、头像和框有点偏上、还有点小」）。算式：
+       昵称首行中心 = 封面底(225) + .profile-name 的 padding-top(4) + 行高 26/2 = 242
+       头像 top = 242 - 76/2 = 204 → 相对 .profile-id 顶(225) 上移 21
+     所以 -21 是「对齐量」算出来的、不是「压线一半」；改头像边长必须重算，否则又会偏。 */
   .profile-id {
     display: flex; align-items: flex-start;
-    gap: 26px;                 /* 26 = 68 头像的框外扩 18.7 + 7 余量，框不压字 */
+    gap: 30px;                 /* 30 = 76 头像的框外扩 20.9 + 9 余量，框不压字 */
     margin-top: 0;
     padding-left: 0;
   }
-  .profile-id .avatar { width: 68px; height: 68px; margin: -34px 0 0; flex: none; }
+  .profile-id .avatar { width: 76px; height: 76px; margin: -21px 0 0; flex: none; }
   .profile-id .avatar[class*="pf-"] { --fsmax: 1.55; }
   .profile-name { flex: 1 1 auto; min-width: 0; padding: 4px 0 6px; }
   .profile-name h2 { font-size: 20px; line-height: 1.3; }
   .profile-name p { margin-top: 3px; font-size: 13px; }
 
-  /* 按钮：占满一行、等宽排开。上间距 22 是为了避开框的下沿（框底 ≈ 昵称底 +19）。 */
+  /* 按钮：占满一行、等宽排开。上间距 30 → 框下沿(≈301) 到按钮顶留 13，别让流苏贴住按钮。 */
   .profile-info .profile-act {
-    width: 100%; margin: 22px 0 0; padding: 0;
+    width: 100%; margin: 30px 0 0; padding: 0;
     display: flex; gap: 8px; align-self: stretch;
   }
   .profile-act .btn-sm, .profile-act .btn-follow {
