@@ -977,7 +977,9 @@ function serializeActivity(a, me) {
     joined: !!me && signups.includes(me.id),
     status: st,
     statusText: ACT_STATUS_TEXT[st] || "",
-    canJoin: st === "open",
+    // 报名中(open) 和 进行中(started，还没结束) 都允许报名：活动没办完前都能来，
+    // 只有截止/满员/已结束(含管理员手动结束报名)才关通道
+    canJoin: st === "open" || st === "started",
     mine: !!me && a.createdBy === me.id,
     createdBy: briefUser(db.users.find((u) => u.id === a.createdBy)),
     createdAt: a.createdAt
@@ -3222,6 +3224,8 @@ async function handleApi(req, res, pathname, query) {
     const b = await readBody(req);
     const v = parseActivityBody(b);
     if (v.error) return json(res, 400, { error: v.error });
+    // 拦住「开始时间在过去」的活动：一发布就变成「已结束」，谁都报不了名，纯纯的坑
+    if (v.data.startAt <= nowMs()) return json(res, 400, { error: '活动开始时间要选一个还没到的时间，不然一发布就过期了，别人报不了名' });
     db.activities = db.activities || [];
     const a = Object.assign({
       id: db.seq++, createdBy: me.id, createdAt: nowMs(), signups: [], closed: false
@@ -3289,12 +3293,11 @@ async function handleApi(req, res, pathname, query) {
     const st = activityState(a);
     if (method === "POST") {
       if (has) return json(res, 200, { joined: true, signupCount: a.signups.length });
-      if (st !== "open") {
+      if (st !== "open" && st !== "started") {
         // 每种情况都说清楚为什么，别让人对着「报不了名」猜
         const why = {
           full: "名额已经满了，下次早点来",
           closed: "报名已经截止了",
-          started: "活动已经开始了，报名通道关了",
           ended: "这个活动已经结束了"
         }[st] || "这个活动现在报不了名";
         return json(res, 400, { error: why });

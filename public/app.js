@@ -1984,6 +1984,8 @@ async function saveActivity() {
   const title = String(d.title || '').trim();
   if (title.length < 2) { toast('活动标题至少写 2 个字', 'err'); return; }
   if (!d.start) { toast('请先选活动开始时间', 'err'); return; }
+  // 只在「新建」时拦过去时间（编辑老活动不拦，免得改个标题都被卡）；后端 POST 也拦，双保险
+  if (!d.id && new Date(d.start).getTime() <= Date.now()) { toast('活动开始时间要选一个还没到的时间，不然一发布别人就报不了名', 'err'); return; }
   const payload = {
     title,
     startAt: new Date(d.start).getTime(),
