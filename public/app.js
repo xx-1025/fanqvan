@@ -40,6 +40,9 @@ const state = {
   homeTab: 'feed',
   reviewTab: 'pending',
   creatorRange: 7,       // 监控中心趋势图的天数（7 / 30）
+  actTab: 'all',         // 活动中心筛选：all / open（只看得上能报名的）
+  actDraft: null,        // 发布/编辑活动的表单草稿；换页关弹窗时一起清掉
+  actBusy: false,        // 报名 / 保存进行中，挡连点
   creatorMetric: 'v',    // 趋势图看哪个指标：浏览 / 点赞 / 评论 / 收藏
   reviewMode: 'posts',
   authTab: 'login',
@@ -639,6 +642,15 @@ async function router() {
       countView(d.post);
     } else if (r.name === 'history') {
       await loadHistory(false);
+    } else if (r.name === 'activity') {
+      // #/activity 是列表，#/activity/12 是详情；id 不是数字就当列表，别去请求一个奇怪的地址
+      if (r.id && /^\d+$/.test(r.id)) {
+        const d = await api('/api/activities/' + r.id);
+        state.data.activity = d.activity;
+        state.data.actSignups = d.signups || [];
+      } else {
+        await loadActivities();
+      }
     } else if (r.name === 'creator') {
       await loadCreator();
       startCreatorPoll();
@@ -693,14 +705,18 @@ function noteItemHtml(n) {
     reject: '你的内容未通过审核', report: '你的举报已被处理',
     apply: '提交了审核员申请', applyResult: '你的审核员申请有结果了',
     moderation: '有需要你处理的内容',
-    feature: '把你的作品选进了「优秀饭帖」'
+    feature: '把你的作品选进了「优秀饭帖」',
+    activity: '发布了新活动', activity_join: '报名了你的活动'
   }[n.type] || '有新消息';
   const ico = icon({
     like: 'heart-fill', comment: 'chat', follow: 'users', mention: 'at',
     approve: 'check', reject: 'ban', report: 'inbox', apply: 'clipboard',
-    applyResult: 'medal', moderation: 'shield', feature: 'medal-fill'
+    applyResult: 'medal', moderation: 'shield', feature: 'medal-fill',
+    activity: 'calendar', activity_join: 'calendar'
   }[n.type] || 'bell');
-  const href = n.postId ? '#/post/' + n.postId : (n.actor ? '#/user/' + n.actor.id : '#/');
+  // 活动类通知优先跳活动：点「报名了你的活动」却落在个人主页，等于没跳
+  const href = n.activityId ? '#/activity/' + n.activityId
+    : (n.postId ? '#/post/' + n.postId : (n.actor ? '#/user/' + n.actor.id : '#/'));
   return '<a class="note-item' + (n.read ? '' : ' unread') + '" href="' + href + '" data-action="note-open" data-id="' + n.id + '">' +
     '<span class="note-ico">' + ico + '</span>' +
     '<div class="note-body"><div class="note-txt"><b>' + actor + '</b> ' + label +
@@ -796,6 +812,7 @@ function sidebar() {
   return '<aside class="col-left">' +
     '<nav class="side-nav">' +
       item('feed', '#/', icon('home'), '首页', '', cur === 'feed' && !onFollowing) +
+      item('activity', '#/activity', icon('calendar'), '活动中心') +
       item('hot', '#/hot', icon('fire'), '热门') +
       (me ? item('following', '#/?tab=following', icon('users'), '关注', '', onFollowing) : '') +
       item('mine', '#/mine', icon('user'), '我的主页') +
@@ -1431,9 +1448,11 @@ function viewMine() {
       postCount: posts.length, photoCount: photos.length,
       showFavs: true, favCount: state.data.favTotal || 0,
       // 数据类入口单独一排：塞进按钮区会把「编辑资料 / 审核中心 / 退出」挤成一团
+      // 三个入口在手机上一行三等分，文案必须短：写「恰饭监控中心」会挤成省略号
       tools: '<div class="profile-tools">' +
-        '<a class="ptool" href="#/creator">' + icon('chart') + '恰饭监控中心</a>' +
+        '<a class="ptool" href="#/creator">' + icon('chart') + '监控中心</a>' +
         '<a class="ptool" href="#/history">' + icon('clock') + '观帖记录</a>' +
+        '<a class="ptool" href="#/activity">' + icon('calendar') + '活动中心</a>' +
       '</div>'
     }) +
     '<div id="profile-list">' +
@@ -1759,6 +1778,272 @@ async function pollCreator() {
 function startCreatorPoll() {
   stopCreatorPoll();
   creatorTimer = setInterval(pollCreator, 20000);
+}
+
+/* -------- 活动中心 --------
+   管理员发布活动，登录用户浏览、报名。状态由后端按时间现算（报名中 / 名额已满 /
+   报名已截止 / 进行中 / 已结束），前端只负责画，不在本地猜状态。
+   时间戳一律毫秒：datetime-local 是「本地时间」，浏览器解析成绝对时刻再传，
+   服务端不猜时区。） */
+
+const ACT_TABS = [['all', '全部活动'], ['open', '报名中']];
+
+function toLocalInput(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const p2 = (n) => (n < 10 ? '0' + n : '' + n);
+  return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) +
+    'T' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+}
+
+function actTimeText(ts) {
+  if (!ts) return "待定";
+  const d = new Date(ts);
+  const p2 = (n) => (n < 10 ? '0' + n : '' + n);
+  const w = '日一二三四五六'[d.getDay()];
+  // 跨年的活动必须带年份，不然「1月3日」分不清是今年还是明年
+  const y = d.getFullYear() === new Date().getFullYear() ? "" : d.getFullYear() + "年";
+  return y + (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + w + ' ' +
+    p2(d.getHours()) + ':' + p2(d.getMinutes());
+}
+
+/* 起止同一天就只写一次日期：「11月14日 周六 02:03 至 06:03」。
+   原来两段都带日期，390 宽下必然折行，第二行还会顶到图标下面。 */
+function actRangeText(a) {
+  if (!a.endAt) return actTimeText(a.startAt);
+  const s1 = new Date(a.startAt), e1 = new Date(a.endAt);
+  const sameDay = s1.getFullYear() === e1.getFullYear() &&
+    s1.getMonth() === e1.getMonth() && s1.getDate() === e1.getDate();
+  if (!sameDay) return actTimeText(a.startAt) + " 至 " + actTimeText(a.endAt);
+  const p2 = (n) => (n < 10 ? '0' + n : '' + n);
+  return actTimeText(a.startAt) + ' 至 ' + p2(e1.getHours()) + ':' + p2(e1.getMinutes());
+}
+
+function actJoinBtn(a) {
+  if (a.joined) {
+    return '<button class="act-btn on" data-action="act-quit" data-id="' + a.id + '">' +
+      icon('check') + ' 已报名</button>';
+  }
+  if (!a.canJoin) {
+    return '<button class="act-btn off" disabled>' + esc(a.statusText || '已结束') + '</button>';
+  }
+  return '<button class="act-btn" data-action="act-join" data-id="' + a.id + '">我要参加</button>';
+}
+
+function actCardHtml(a) {
+  const cover = a.cover
+    ? '<img src="' + esc(a.cover) + '" alt="" loading="lazy">'
+    : '<span class="act-ph">' + icon('calendar') + '</span>';
+  return '<div class="act-card" data-action="act-open" data-id="' + a.id + '">' +
+      '<div class="act-cover">' + cover +
+        '<span class="act-badge s-' + a.status + '">' + esc(a.statusText) + '</span></div>' +
+      '<div class="act-main">' +
+        '<h3>' + esc(a.title) + '</h3>' +
+        '<div class="act-meta">' + icon('calendar') + actTimeText(a.startAt) + '</div>' +
+        (a.place ? '<div class="act-meta">' + icon('pan') + esc(a.place) + '</div>' : '') +
+        '<div class="act-foot">' +
+          '<span class="act-num">' + fmtCnt(a.signupCount) + ' 人想参加' +
+            (a.capacity ? ' · 限 ' + a.capacity + ' 人' : '') + '</span>' +
+          actJoinBtn(a) +
+        '</div>' +
+      '</div></div>';
+}
+
+function viewActivity() {
+  const list = state.data.activities || [];
+  const head = '<div class="card page-head ph-act">' +
+      '<a class="btn-ghost" href="#/">' + icon('back') + '返回</a>' +
+      '<div class="sub">活动中心</div>' +
+      (isAdmin()
+        ? '<button class="btn-primary btn-sm page-head-act" data-action="act-new">' +
+          icon('pen') + '发布活动</button>'
+        : '') +
+    '</div>';
+
+  const tabs = '<div class="act-tabs">' +
+    ACT_TABS.map(([k, label]) =>
+      '<button class="act-tab' + (state.actTab === k ? ' on' : '') + '" data-action="act-tab" data-id="' + k + '">' +
+        label + (k === 'open' && state.data.activitiesOpen
+          ? '<i>' + state.data.activitiesOpen + '</i>' : '') +
+      '</button>').join('') +
+    '</div>';
+
+  if (!list.length) {
+    return head + tabs +
+      '<div class="card empty">' +
+        '<img src="/assets/empty.webp" alt="">' +
+        (isAdmin()
+          ? '<div>还没有活动。<br>点右上角「发布活动」写一场试试。</div>'
+          : '<div>现在还没有活动。<br>管理员发布后，这里就能报名。</div>') +
+      '</div>';
+  }
+
+  return head + tabs + '<div class="act-list">' + list.map(actCardHtml).join('') + '</div>';
+}
+
+function viewActivityDetail() {
+  const a = state.data.activity;
+  if (!a) {
+    return '<div class="card page-head ph-act">' +
+        '<a class="btn-ghost" href="#/activity">' + icon('back') + '活动中心</a>' +
+        '<div class="sub">活动详情</div></div>' +
+      '<div class="card empty">这个活动不存在，或者已经被删除了。</div>';
+  }
+  const canEdit = a.mine || isAdmin();
+  const head = '<div class="card page-head ph-act">' +
+      '<a class="btn-ghost" href="#/activity">' + icon('back') + '活动中心</a>' +
+      '<div class="sub">活动详情</div>' +
+      (canEdit
+        ? '<button class="btn-ghost btn-sm page-head-act" data-action="act-edit" data-id="' + a.id + '">' +
+          icon('pencil') + '编辑</button>'
+        : '') +
+    '</div>';
+
+  const cover = a.cover
+    ? '<div class="ad-cover"><img src="' + esc(a.cover) + '" alt=""></div>'
+    : '<div class="ad-cover ph">' + icon('calendar') + '</div>';
+
+  const rows = [
+    '<div class="ad-row"><span class="ad-k">' + icon('calendar') + '时间</span><span class="ad-v">' +
+      actRangeText(a) + '</span></div>',
+    a.place ? '<div class="ad-row"><span class="ad-k">' + icon('pan') + '地点</span>' +
+      '<span class="ad-v">' + esc(a.place) + '</span></div>' : '',
+    a.signupEnd ? '<div class="ad-row"><span class="ad-k">' + icon('clock') + '报名截止</span>' +
+      '<span class="ad-v">' + actTimeText(a.signupEnd) + '</span></div>' : '',
+    '<div class="ad-row"><span class="ad-k">' + icon('users') + '名额</span><span class="ad-v">' +
+      (a.capacity ? a.capacity + ' 人' : '不限人数') +
+      '（已报 ' + a.signupCount + '）</span></div>'
+  ].join('');
+
+  const signups = state.data.actSignups || [];
+  const people = signups.length
+    ? '<div class="ad-people">' + signups.map((u) =>
+        '<a class="ad-person" href="#/user/' + u.id + '">' + avatarHtml(u, 36) +
+        '<span>' + esc(u.nickname) + '</span></a>').join('') + '</div>'
+    : '<div class="ad-nobody">还没有人报名，你可以是第一个。</div>';
+
+  const adminRow = !canEdit ? "" :
+    '<div class="ad-admin">' +
+      (a.status !== 'ended'
+        ? '<button class="btn-ghost btn-sm" data-action="act-stop" data-id="' + a.id + '">' +
+          icon('lock') + '结束报名</button>'
+        : '') +
+      '<button class="btn-ghost btn-sm" data-action="act-del" data-id="' + a.id + '">' +
+        icon('trash') + '删除活动</button>' +
+    '</div>';
+
+  return head +
+    '<div class="card ad-card">' + cover +
+      '<div class="ad-head"><h2>' + esc(a.title) + '</h2>' +
+        '<span class="act-badge s-' + a.status + '">' + esc(a.statusText) + '</span></div>' +
+      '<div class="ad-meta">' + rows + '</div>' +
+      (a.body ? '<div class="ad-body">' + esc(a.body) + '</div>' : '') +
+      adminRow +
+    '</div>' +
+    '<div class="card ad-sign">' +
+      '<div class="ad-sign-head">已报名 <b>' + fmtCnt(a.signupCount) + '</b> 人</div>' +
+      people +
+    '</div>' +
+    '<div class="ad-foot">' + actJoinBtn(a) + '</div>';
+}
+
+async function loadActivities() {
+  const d = await api('/api/activities?filter=' + (state.actTab === 'open' ? 'open' : 'all'));
+  state.data.activities = d.activities || [];
+  state.data.activitiesTotal = d.total || 0;
+  state.data.activitiesOpen = d.openCount || 0;
+}
+
+/* 报名、编辑、结束报名之后统一走这里：在详情页就重拉详情，在列表页就重拉列表。
+   直接改本地对象容易漏字段（比如名额满了状态该跟着变），重拉最稳。 */
+async function refreshActivityView() {
+  if (state.route.name !== 'activity') return;
+  if (state.route.id && /^\d+$/.test(state.route.id)) {
+    const d = await api('/api/activities/' + state.route.id);
+    state.data.activity = d.activity;
+    state.data.actSignups = d.signups || [];
+  } else {
+    await loadActivities();
+  }
+  render();
+}
+
+function openActForm(a) {
+  state.actDraft = a ? {
+    id: a.id, title: a.title, start: a.startAt, end: a.endAt,
+    signup: a.signupEnd, place: a.place, capacity: a.capacity,
+    body: a.body, cover: a.cover
+  } : { id: 0, title: '', start: 0, end: 0, signup: 0, place: '', capacity: 0, body: '', cover: '' };
+  state.modal = { type: 'activity' };
+  render();
+}
+
+async function saveActivity() {
+  const d = state.actDraft || {};
+  if (state.actBusy) return;
+  const title = String(d.title || '').trim();
+  if (title.length < 2) { toast('活动标题至少写 2 个字', 'err'); return; }
+  if (!d.start) { toast('请先选活动开始时间', 'err'); return; }
+  const payload = {
+    title,
+    startAt: new Date(d.start).getTime(),
+    endAt: d.end ? new Date(d.end).getTime() : 0,
+    signupEnd: d.signup ? new Date(d.signup).getTime() : 0,
+    capacity: Number(d.capacity) || 0,
+    place: d.place || '',
+    body: d.body || '',
+    cover: d.cover || ''
+  };
+  state.actBusy = true;
+  try {
+    if (d.id) await api("/api/activities/" + d.id, { method: "PATCH", body: payload });
+    else await api("/api/activities", { method: "POST", body: payload });
+    state.modal = null;
+    state.actDraft = null;
+    toast(d.id ? '活动已更新' : '活动已发布', 'ok', 'check');
+    await refreshActivityView();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    state.actBusy = false;
+  }
+}
+
+async function setActJoin(id, join) {
+  if (state.actBusy) return;
+  state.actBusy = true;
+  try {
+    await api("/api/activities/" + id + "/join", { method: join ? "POST" : "DELETE" });
+    toast(join ? '报名成功，记得来' : '已取消报名', 'ok', join ? 'check' : 'cross');
+    await refreshActivityView();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    state.actBusy = false;
+  }
+}
+
+async function stopActivity(id) {
+  if (!confirm('结束报名？活动会保留在列表里，但不再接受新的报名。')) return;
+  try {
+    await api("/api/activities/" + id, { method: "PATCH", body: { action: "close" } });
+    await refreshActivityView();
+    toast('已结束报名', 'ok', 'lock');
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function delActivity(id) {
+  if (!confirm('删除这个活动？报名记录会一起消失，删了就找不回来。')) return;
+  try {
+    await api("/api/activities/" + id, { method: "DELETE" });
+    toast('活动已删除', 'ok', 'trash');
+    if (state.route.id) go('#/activity');
+    else { await loadActivities(); render(); }
+  } catch (e) {
+    toast(e.message, 'err');
+  }
 }
 
 function viewCreator() {
@@ -3188,6 +3473,7 @@ function viewMain() {
     case 'review': return viewReview();
     case 'post': return viewPost();
     case 'history': return viewHistory();
+    case 'activity': return state.route.id && /^\d+$/.test(state.route.id) ? viewActivityDetail() : viewActivity();
     case 'creator': return viewCreator();
     case 'messages': return viewMessages();
     case 'edit': return viewEdit();
@@ -3225,6 +3511,55 @@ function modalHtml() {
         '<div id="ai-panel">' + aiPanelHtml() + '</div>' +
       '</div></div>';
   }
+  if (m.type === 'activity') {
+    const d = state.actDraft || {};
+    const preview = d.cover
+      ? '<img src="' + esc(d.cover) + '" alt="">'
+      : '<span class="af-ph">' + icon('image') + '不选就用默认图案</span>';
+    return '<div class="modal-mask">' +
+      '<div class="modal modal-actform">' +
+        '<h3>' + icon('calendar') + (d.id ? '编辑活动' : '发布活动') + '</h3>' +
+        '<p class="modal-sub">发布后会通知所有厨友；想参加的人在活动页点「我要参加」。</p>' +
+        '<div class="af-form">' +
+          '<label class="af-field"><span>活动标题</span>' +
+            '<input id="af-title" maxlength="40" value="' + esc(d.title || '') + '" placeholder="比如：周六下午一起做提拉米苏">' +
+          '</label>' +
+          '<div class="af-2">' +
+            '<label class="af-field"><span>开始时间</span>' +
+              '<input id="af-start" type="datetime-local" value="' + esc(toLocalInput(d.start)) + '">' +
+            '</label>' +
+            '<label class="af-field"><span>结束时间（可选）</span>' +
+              '<input id="af-end" type="datetime-local" value="' + esc(toLocalInput(d.end)) + '">' +
+            '</label>' +
+          '</div>' +
+          '<div class="af-2">' +
+            '<label class="af-field"><span>报名截止（可选）</span>' +
+              '<input id="af-signup" type="datetime-local" value="' + esc(toLocalInput(d.signup)) + '">' +
+            '</label>' +
+            '<label class="af-field"><span>名额（0 = 不限）</span>' +
+              '<input id="af-cap" type="number" min="0" max="9999" value="' + Number(d.capacity || 0) + '">' +
+            '</label>' +
+          '</div>' +
+          '<label class="af-field"><span>地点</span>' +
+            '<input id="af-place" maxlength="60" value="' + esc(d.place || '') + '" placeholder="线上 / 城市 + 具体地址">' +
+          '</label>' +
+          '<label class="af-field"><span>活动说明</span>' +
+            '<textarea id="af-body" maxlength="2000" placeholder="做什么、要带什么、怎么找到大家…">' + esc(d.body || '') + '</textarea>' +
+          '</label>' +
+          '<div class="af-cover" id="af-cover">' + preview +
+            '<label class="af-cover-btn">' + icon('image') + (d.cover ? '换一张' : '选封面') +
+              '<input type="file" id="af-cover-input" accept="image/*" hidden></label>' +
+            (d.cover ? '<button class="link-btn" data-action="act-cover-clear">去掉封面</button>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-act">' +
+          '<button class="btn-ghost" data-action="modal-close">取消</button>' +
+          '<button class="btn-primary" data-action="act-save"' + (state.actBusy ? ' disabled' : '') + '>' +
+            (d.id ? '保存' : '发布') + '</button>' +
+        '</div>' +
+      '</div></div>';
+  }
+
   if (m.type === 'share') {
     return '<div class="modal-mask">' +
       '<div class="modal modal-share">' +
@@ -4529,6 +4864,26 @@ document.addEventListener('click', (e) => {
         .catch((err) => toast(err.message, 'err'));
       break;
     }
+    case 'act-tab': {
+      const t = id === 'open' ? 'open' : 'all';
+      if (state.actTab === t) break;
+      state.actTab = t;
+      loadActivities().then(() => render()).catch((err) => toast(err.message, 'err'));
+      break;
+    }
+    case 'act-open': go('#/activity/' + Number(id)); break;
+    case 'act-new': openActForm(null); break;
+    case 'act-edit': openActForm(state.data.activity || null); break;
+    case 'act-save': saveActivity(); break;
+    case 'act-join': setActJoin(Number(id), true); break;
+    case 'act-quit': setActJoin(Number(id), false); break;
+    case 'act-stop': stopActivity(Number(id)); break;
+    case 'act-del': delActivity(Number(id)); break;
+    case 'act-cover-clear': {
+      if (state.actDraft) { state.actDraft.cover = ''; render(); }
+      break;
+    }
+
     case 'creator-sort': {
       if (state.creatorSort === id) return;
       state.creatorSort = id;
@@ -4607,6 +4962,19 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  // 活动封面上传：传完重绘整个面板（缩略图 / 按钮文案 / 草稿都从 state 回来）
+  if (e.target.id === 'af-cover-input') {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const box = $('#af-cover');
+    if (box) box.classList.add('busy');
+    uploadImage(f).then((url) => {
+      if (state.actDraft) state.actDraft.cover = url;
+      render();
+    }).catch((err) => { toast(err.message, 'err'); });
+    return;
+  }
   if (e.target.id === 'file-input') { onFiles(e.target.files); e.target.value = ''; }
   if (e.target.id === 'avatar-input') {
     const f = e.target.files && e.target.files[0];
@@ -4684,6 +5052,18 @@ document.addEventListener('input', (e) => {
     }
     return;
   }
+  // 活动表单：只记草稿、不整页重绘 —— 日期框一边调一边重绘会丢焦点，
+  // 而且用户填了一半的说明会被清掉
+  if (state.actDraft && e.target.id && e.target.id.indexOf('af-') === 0) {
+    const map = {
+      'af-title': 'title', 'af-start': 'start', 'af-end': 'end',
+      'af-signup': 'signup', 'af-place': 'place', 'af-cap': 'capacity', 'af-body': 'body'
+    };
+    const k = map[e.target.id];
+    if (k) state.actDraft[k] = e.target.value;
+    return;
+  }
+
   // 登录/注册表单：实时比对「密码 / 确认密码」
   if (e.target.closest('#auth-form')) checkPwMatch(e.target.form);
 });

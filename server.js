@@ -306,7 +306,7 @@ const SEED_CREDS = [];
 
 function seed() {
   const d = {
-    users: [], posts: [], notifications: [], reports: [], applications: [],
+    users: [], posts: [], notifications: [], reports: [], applications: [], activities: [],
     messages: [], groups: [], sessions: {}, viewLog: [], seq: 1, createdAt: nowMs()
   };
   const nid = () => d.seq++;
@@ -939,6 +939,79 @@ function bumpView(p, me) {
   return { views: p.views, counted: true };
 }
 
+/* ============ 活动中心 ============
+   管理员发布活动（线下聚餐、直播、联名…），登录用户浏览并报名。
+   状态不落库、每次按时间现算：过了点就自动变「已结束」，不用谁记得回来点开关，
+   服务器重启也不会因为「内存里的状态」丢东西。
+   ======================================================== */
+const ACT_STATUS_TEXT = {
+  open: '报名中', full: '名额已满', closed: '报名已截止',
+  started: '进行中', ended: '已结束'
+};
+
+function activityState(a) {
+  const now = nowMs();
+  const end = a.endAt || a.startAt;
+  if (a.closed) return "ended";
+  if (now > end) return "ended";
+  if (a.signupEnd && now > a.signupEnd) return "closed";
+  if (a.capacity > 0 && (a.signups || []).length >= a.capacity) return "full";
+  if (now >= a.startAt) return "started";
+  return "open";
+}
+
+function serializeActivity(a, me) {
+  const st = activityState(a);
+  const signups = a.signups || [];
+  return {
+    id: a.id,
+    title: a.title,
+    cover: a.cover || "",
+    place: a.place || "",
+    body: a.body || "",
+    startAt: a.startAt,
+    endAt: a.endAt || 0,
+    signupEnd: a.signupEnd || 0,
+    capacity: a.capacity || 0,
+    signupCount: signups.length,
+    joined: !!me && signups.includes(me.id),
+    status: st,
+    statusText: ACT_STATUS_TEXT[st] || "",
+    canJoin: st === "open",
+    mine: !!me && a.createdBy === me.id,
+    createdBy: briefUser(db.users.find((u) => u.id === a.createdBy)),
+    createdAt: a.createdAt
+  };
+}
+
+const ACT_MAX_TITLE = 40;
+const ACT_MAX_BODY = 2000;
+
+function actText(v, max) {
+  return String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+/* 活动字段的唯一入口：发布和编辑都走这里，免得两处校验各写一套、迟早不一致。
+   时间全部用毫秒时间戳传：浏览器按用户本地时区把「2026-11-20 18:30」变成绝对时刻，
+   服务端只管存数字，不用猜它说的是哪个时区。 */
+function parseActivityBody(b) {
+  const title = actText(b.title, ACT_MAX_TITLE);
+  if (title.length < 2) return { error: "活动标题至少写 2 个字" };
+  const startAt = Number(b.startAt) || 0;
+  if (!startAt || startAt < Date.UTC(2020, 0, 1)) return { error: "请选一个开始时间" };
+  const endAt = Number(b.endAt) || 0;
+  if (endAt && endAt < startAt) return { error: "结束时间不能早于开始时间" };
+  const signupEnd = Number(b.signupEnd) || 0;
+  if (signupEnd && signupEnd > startAt) return { error: "报名截止不能晚于活动开始" };
+  // 0 = 不限人数，这是默认；上限 9999 只是为了挡住乱填的极端数字
+  const capacity = Math.min(9999, Math.max(0, Math.round(Number(b.capacity) || 0)));
+  const place = actText(b.place, 60);
+  const body = String(b.body == null ? "" : b.body).replace(/\r\n/g, "\n").trim().slice(0, ACT_MAX_BODY);
+  // 封面只收本站上传的图：外链能拿来追踪「谁看过这个活动」，也可能哪天就挂了
+  let cover = String(b.cover || "").trim();
+  if (cover && !/^\/uploads\/[\w./-]+$/.test(cover)) cover = "";
+  return { data: { title, startAt, endAt, signupEnd, capacity, place, body, cover } };
+}
 /** 这条内容对「我」可见吗：观帖记录、浏览计数共用同一判断 */
 function postVisibleTo(p, me) {
   if (!p) return false;
@@ -1073,6 +1146,7 @@ function pushNote(userId, type, actorId, extra) {
     type: type,
     actorId: actorId || 0,
     postId: extra.postId || 0,
+    activityId: extra.activityId || 0,
     text: extra.text || '',
     read: false,
     createdAt: nowMs()
@@ -3123,6 +3197,120 @@ async function handleApi(req, res, pathname, query) {
     return json(res, 200, { summary, posts: list, total: list.length, trend });
   }
 
+  /* ============ 活动中心 ============ */
+
+  if (pathname === '/api/activities' && method === 'GET') {
+    const onlyOpen = query.searchParams.get('filter') === 'open';
+    const all = (db.activities || []).map((a) => serializeActivity(a, me));
+    // 三档：还能报名的 → 报满 / 截止但还办得成的 → 已结束。
+    // 同档里，未结束的按「最近要办」升序，已结束的按时间倒序（最近办完的先看到）
+    const actRank = (a) => (a.status === "open" ? 0 : a.status === "ended" ? 2 : 1);
+    const list = (onlyOpen ? all.filter((a) => a.status === "open") : all).sort((x, y) => {
+      const xr = actRank(x), yr = actRank(y);
+      if (xr !== yr) return xr - yr;
+      return xr === 2 ? y.startAt - x.startAt : x.startAt - y.startAt;
+    });
+    return json(res, 200, {
+      activities: list,
+      total: list.length,
+      openCount: all.filter((a) => a.status === "open").length
+    });
+  }
+
+  if (pathname === '/api/activities' && method === 'POST') {
+    if (me.role !== 'admin') return json(res, 403, { error: '只有管理员可以发布活动' });
+    const b = await readBody(req);
+    const v = parseActivityBody(b);
+    if (v.error) return json(res, 400, { error: v.error });
+    db.activities = db.activities || [];
+    const a = Object.assign({
+      id: db.seq++, createdBy: me.id, createdAt: nowMs(), signups: [], closed: false
+    }, v.data);
+    db.activities.push(a);
+    saveDB();
+    // 活动面向全站，不发一条通知没人会知道；发布者本人跳过（pushNote 也会挡自己）
+    for (const u of db.users) {
+      if (u.banned || u.id === me.id) continue;
+      pushNote(u.id, 'activity', me.id, { activityId: a.id, text: a.title });
+    }
+    return json(res, 200, { activity: serializeActivity(a, me) });
+  }
+
+  const actMatch = /^\/api\/activities\/(\d+)$/.exec(pathname);
+  if (actMatch && method === 'GET') {
+    const a = (db.activities || []).find((x) => x.id === Number(actMatch[1]));
+    if (!a) return json(res, 404, { error: '活动不存在或已被删除' });
+    const signups = (a.signups || [])
+      .map((uid) => db.users.find((u) => u.id === uid))
+      .filter(Boolean)
+      .map((u) => briefUser(u));
+    return json(res, 200, { activity: serializeActivity(a, me), signups });
+  }
+
+  if (actMatch && method === 'PATCH') {
+    const a = (db.activities || []).find((x) => x.id === Number(actMatch[1]));
+    if (!a) return json(res, 404, { error: '活动不存在或已被删除' });
+    if (a.createdBy !== me.id && me.role !== 'admin') {
+      return json(res, 403, { error: '只有发布者或管理员可以修改活动' });
+    }
+    const b = await readBody(req);
+    // 单独一个动作：只结束报名，不动别的字段（比「改完整个表单」轻）
+    if (b.action === 'close') {
+      a.closed = true;
+      saveDB();
+      return json(res, 200, { activity: serializeActivity(a, me) });
+    }
+    const v = parseActivityBody(b);
+    if (v.error) return json(res, 400, { error: v.error });
+    Object.assign(a, v.data);
+    saveDB();
+    return json(res, 200, { activity: serializeActivity(a, me) });
+  }
+
+  if (actMatch && method === 'DELETE') {
+    const idx = (db.activities || []).findIndex((x) => x.id === Number(actMatch[1]));
+    if (idx < 0) return json(res, 404, { error: '活动不存在或已被删除' });
+    const a = db.activities[idx];
+    if (a.createdBy !== me.id && me.role !== 'admin') {
+      return json(res, 403, { error: '只有发布者或管理员可以删除活动' });
+    }
+    db.activities.splice(idx, 1);
+    saveDB();
+    return json(res, 200, { ok: true });
+  }
+
+  // 报名 / 取消报名：一个人对一条活动只占一个名额，重复点不会重复计数
+  const joinMatch = /^\/api\/activities\/(\d+)\/join$/.exec(pathname);
+  if (joinMatch && (method === "POST" || method === "DELETE")) {
+    const a = (db.activities || []).find((x) => x.id === Number(joinMatch[1]));
+    if (!a) return json(res, 404, { error: '活动不存在或已被删除' });
+    a.signups = a.signups || [];
+    const has = a.signups.includes(me.id);
+    const st = activityState(a);
+    if (method === "POST") {
+      if (has) return json(res, 200, { joined: true, signupCount: a.signups.length });
+      if (st !== "open") {
+        // 每种情况都说清楚为什么，别让人对着「报不了名」猜
+        const why = {
+          full: "名额已经满了，下次早点来",
+          closed: "报名已经截止了",
+          started: "活动已经开始了，报名通道关了",
+          ended: "这个活动已经结束了"
+        }[st] || "这个活动现在报不了名";
+        return json(res, 400, { error: why });
+      }
+      a.signups.push(me.id);
+      saveDB();
+      pushNote(a.createdBy, 'activity_join', me.id, { activityId: a.id, text: a.title });
+      return json(res, 200, { joined: true, signupCount: a.signups.length });
+    }
+    if (!has) return json(res, 200, { joined: false, signupCount: a.signups.length });
+    if (st === 'ended') return json(res, 400, { error: '活动已经结束了，不用再取消报名' });
+    a.signups = a.signups.filter((x) => x !== me.id);
+    saveDB();
+    return json(res, 200, { joined: false, signupCount: a.signups.length });
+  }
+
   if (pathname === '/api/stats' && method === 'GET') {
     const approved = db.posts.filter((p) => p.status === 'approved').length;
     await Promise.resolve();
@@ -3895,6 +4083,7 @@ async function handleApi(req, res, pathname, query) {
         type: n.type,
         text: n.text,
         postId: n.postId,
+        activityId: n.activityId || 0,
         read: n.read,
         createdAt: n.createdAt,
         actor: n.actorId ? briefUser(db.users.find((u) => u.id === n.actorId)) : null
