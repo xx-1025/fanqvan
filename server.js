@@ -888,6 +888,31 @@ const VIEW_DEDUPE_MS = 30 * 60 * 1000;
 const viewSeen = new Map();
 const VIEW_LOG_MAX = 300;      // 每人观帖记录只留最近 300 条
 
+/* ============ 按天统计（监控中心的趋势线） ============
+   抖音创作者中心那条「实时趋势」是日粒度的播放曲线，总量 views 一个数字画不出线，
+   所以每个帖子额外挂一份 days = { '2026-11-13': { v,l,c,f,r } }。
+   - 只在**发生变化**的时候 +1 / -1（取消点赞要减回去，否则反复点能把赞刷上天）
+   - 自然日按东八区切：容器多半跑在 UTC，用本地时间会跟用户看到的日期差 8 小时
+   - 只留最近 90 天，老键直接删，库不会无限涨
+   ======================================================== */
+const DAY_KEEP = 90;
+function dayKey(ts) {
+  const d = new Date(ts + 8 * 3600 * 1000);
+  const p2 = (n) => (n < 10 ? '0' + n : '' + n);
+  return d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate());
+}
+function bumpDay(p, k, n) {
+  p.days = p.days || {};
+  const key = dayKey(nowMs());
+  const b = p.days[key] || (p.days[key] = { v: 0, l: 0, c: 0, f: 0, r: 0 });
+  b[k] = Math.max(0, (b[k] || 0) + n);
+  const keys = Object.keys(p.days);
+  if (keys.length > DAY_KEEP) {
+    keys.sort();
+    for (const old of keys.slice(0, keys.length - DAY_KEEP)) delete p.days[old];
+  }
+}
+
 function bumpView(p, me) {
   const key = me.id + ':' + p.id;
   const now = nowMs();
@@ -899,6 +924,7 @@ function bumpView(p, me) {
     [...viewSeen.keys()].slice(0, 2600).forEach((k) => viewSeen.delete(k));
   }
   p.views = (p.views || 0) + 1;
+  bumpDay(p, 'v', 1);
 
   // 观帖记录：同一条只留最近一次，按人裁剪到 300 条
   db.viewLog = db.viewLog || [];
@@ -3062,12 +3088,39 @@ async function handleApi(req, res, pathname, query) {
       featured: approved.filter((p) => p.featured).length
     };
     summary.avgViews = approved.length ? Math.round(summary.views / approved.length) : 0;
+
+    /* 趋势线：把本人所有作品的 days 按天汇总成 30 个点。
+       没有 days 的老帖子只有总量、没有日期，所以线是「从这次更新起」的，
+       前端会注明一句，别让人以为数据丢了。 */
+    const TREND_DAYS = 30;
+    const days = [];
+    for (let i = TREND_DAYS - 1; i >= 0; i--) {
+      const k = dayKey(nowMs() - i * 86400000);
+      days.push({ d: k, m: k.slice(5), v: 0, l: 0, c: 0, f: 0, r: 0 });
+    }
+    const byKey = new Map(days.map((x) => [x.d, x]));
+    for (const p of all) {
+      const ds = p.days || {};
+      for (const k of Object.keys(ds)) {
+        const t = byKey.get(k);
+        if (!t) continue;
+        const b = ds[k] || {};
+        t.v += b.v || 0; t.l += b.l || 0; t.c += b.c || 0; t.f += b.f || 0; t.r += b.r || 0;
+      }
+    }
+    const today = days[days.length - 1];
+    const yday = days[days.length - 2] || { v: 0, l: 0, c: 0, f: 0, r: 0 };
+    const last7 = days.slice(-7).reduce((s2, x) => s2 + x.v, 0);
+    const prev7 = days.slice(-14, -7).reduce((s2, x) => s2 + x.v, 0);
     const sort = query.searchParams.get('sort') || 'views';
     const list = all.map((p) => serializePost(p, me)).sort((a, b) =>
       sort === 'new' ? b.createdAt - a.createdAt
         : sort === 'likes' ? (b.likeCount - a.likeCount) || (b.createdAt - a.createdAt)
           : (b.views - a.views) || (b.createdAt - a.createdAt));
-    return json(res, 200, { summary, posts: list, total: list.length });
+    const trend = { days, today, yesterday: yday, last7, prev7, since: days[0].d };
+    // lite：20 秒一轮的实时刷新只要这两个，别每次都把整张作品列表重新传一遍
+    if (query.searchParams.get('lite') === '1') return json(res, 200, { summary, trend });
+    return json(res, 200, { summary, posts: list, total: list.length, trend });
   }
 
   if (pathname === '/api/stats' && method === 'GET') {
@@ -3486,9 +3539,10 @@ async function handleApi(req, res, pathname, query) {
     if (action === 'like' && method === 'POST') {
       post.likes = post.likes || [];
       const i = post.likes.indexOf(me.id);
-      if (i >= 0) post.likes.splice(i, 1);
+      if (i >= 0) { post.likes.splice(i, 1); bumpDay(post, 'l', -1); }
       else {
         post.likes.push(me.id);
+        bumpDay(post, 'l', 1);
         pushNote(post.authorId, 'like', me.id, { postId: post.id });
       }
       saveDB();
@@ -3501,8 +3555,8 @@ async function handleApi(req, res, pathname, query) {
     if (action === 'fav' && method === 'POST') {
       post.favs = post.favs || [];
       const i = post.favs.indexOf(me.id);
-      if (i >= 0) post.favs.splice(i, 1);
-      else post.favs.push(me.id);
+      if (i >= 0) { post.favs.splice(i, 1); bumpDay(post, 'f', -1); }
+      else { post.favs.push(me.id); bumpDay(post, 'f', 1); }
       saveDB();
       return json(res, 200, { post: serializePost(post, me) });
     }
@@ -3510,8 +3564,8 @@ async function handleApi(req, res, pathname, query) {
     if (action === 'repost' && method === 'POST') {
       post.reposts = post.reposts || [];
       const i = post.reposts.indexOf(me.id);
-      if (i >= 0) post.reposts.splice(i, 1);
-      else post.reposts.push(me.id);
+      if (i >= 0) { post.reposts.splice(i, 1); bumpDay(post, 'r', -1); }
+      else { post.reposts.push(me.id); bumpDay(post, 'r', 1); }
       saveDB();
       return json(res, 200, { post: serializePost(post, me) });
     }
@@ -3536,6 +3590,7 @@ async function handleApi(req, res, pathname, query) {
       const c = { id: db.seq++, userId: me.id, content, createdAt: nowMs() };
       post.comments = post.comments || [];
       post.comments.push(c);
+      bumpDay(post, 'c', 1);
       pushNote(post.authorId, 'comment', me.id, { postId: post.id, text: content.slice(0, 40) });
       notifyMentions(content, me, post.id, '在一条评论里');
       saveDB();

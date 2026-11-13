@@ -39,6 +39,8 @@ const state = {
   searchBox: '',          // 顶栏搜索框里正在输入的文字；和 keyword 分开，免得别处重绘时把打了一半的字清掉
   homeTab: 'feed',
   reviewTab: 'pending',
+  creatorRange: 7,       // 监控中心趋势图的天数（7 / 30）
+  creatorMetric: 'v',    // 趋势图看哪个指标：浏览 / 点赞 / 评论 / 收藏
   reviewMode: 'posts',
   authTab: 'login',
   captcha: { id: '', img: '' },   // 登录验证码：{ id 给后端对账, img 是 data-URI 的 PNG 图 }
@@ -575,6 +577,7 @@ async function router() {
   state.ai.open = false;
   hideSuggest();
   stopMsgPoll();
+  stopCreatorPoll();   // 离开监控中心就停掉 20 秒一轮的实时刷新，别在后台白请求
   // #/notifications 不是独立页面（通知是浮层），统一回到首页
   if (r.name === 'notifications') { state.loading = false; go('#/'); return; }
   // 收藏已经是主页的第三个页签，旧链接 #/favs 一律转到那儿，别留两套入口
@@ -638,6 +641,7 @@ async function router() {
       await loadHistory(false);
     } else if (r.name === 'creator') {
       await loadCreator();
+      startCreatorPoll();
     } else if (r.name === 'edit') {
       if (!state.me) { state.loading = false; go('#/login'); return; }
       state.editAvatar = state.me.avatar || '';
@@ -1547,6 +1551,216 @@ function creatorStatCard(label, val, ico) {
     '<b>' + fmtCnt(val || 0) + '</b><span class="cv-lb">' + label + '</span></div>';
 }
 
+/* -------- 趋势线（抖音创作者中心那种折线 + 实时数字） --------
+   为什么要按天记：总量只有一个数字，画不出线。后端每个帖子挂一份 days，
+   接口汇总成 30 个点，这里按 7 / 30 天取尾部来画。
+   SVG 用 viewBox 铺满容器（preserveAspectRatio="none"），线宽靠 vector-effect
+   顶住不被拉伸；数据点用 HTML 叠在上面 —— 放 SVG 里的圆会被横向压成椭圆。 */
+
+const CV_METRICS = [
+  { k: 'v', label: '浏览', unit: '次浏览' },
+  { k: 'l', label: '点赞', unit: '个赞' },
+  { k: 'c', label: '评论', unit: '条评论' },
+  { k: 'f', label: '收藏', unit: '次收藏' }
+];
+
+// 顶边留余量：37 画成 40 的顶，线不贴着上边框
+function niceMax(v) {
+  if (v <= 4) return 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / mag;
+  const step = n <= 1 ? 1 : n <= 1.5 ? 1.5 : n <= 2 ? 2 : n <= 3 ? 3 : n <= 5 ? 5 : n <= 7 ? 7 : 10;
+  return Math.round(step * mag);
+}
+
+// Catmull-Rom 转三次贝塞尔：折线拐角太硬，曲线更像「趋势」
+function smoothPath(pts) {
+  if (!pts.length) return '';
+  if (pts.length === 1) return 'M' + pts[0][0].toFixed(1) + ',' + pts[0][1].toFixed(1);
+  let d = 'M' + pts[0][0].toFixed(1) + ',' + pts[0][1].toFixed(1);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const k = 0.18;
+    const c1x = p1[0] + (p2[0] - p0[0]) * k;
+    const c1y = p1[1] + (p2[1] - p0[1]) * k;
+    const c2x = p2[0] - (p3[0] - p1[0]) * k;
+    const c2y = p2[1] - (p3[1] - p1[1]) * k;
+    d += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' +
+      c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
+  }
+  return d;
+}
+
+function creatorCardsHtml(s) {
+  s = s || {};
+  return '<div class="cv-cards" id="cv-cards">' +
+      creatorStatCard('总浏览', s.views, 'eye') +
+      creatorStatCard('平均每条', s.avgViews, 'chart') +
+      creatorStatCard('总获赞', s.likes, 'heart') +
+      creatorStatCard('总收藏', s.favs, 'star') +
+      creatorStatCard('总评论', s.comments, 'comment') +
+      creatorStatCard('总转发', s.reposts, 'repost') +
+    '</div>';
+}
+
+// 「今天到现在」这一行：抖音的实时数据就是这个口径 —— 当天 0 点起算
+function creatorLiveHtml(t, meta) {
+  const today = (t && t.today) || {};
+  const yday = (t && t.yesterday) || {};
+  const k = meta.k;
+  const v = today[k] || 0;
+  const y = yday[k] || 0;
+  /* 跟昨天比不按百分比：今天才过了一半，分子分母天然不等，傍晚看永远是 -60%，
+     容易让人以为掉得厉害。直接给昨天的整天数，自己心里有数。 */
+  let cmp = '';
+  if (y > 0) {
+    cmp = '<span class="cv-live-cmp down">昨日全天 ' + fmtCnt(y) + '</span>';
+  } else if (v > 0) {
+    cmp = '<span class="cv-live-cmp up">昨天还没有</span>';
+  }
+  return '<span class="cv-live-dot"></span>' +
+    '今日 <b>' + fmtCnt(v) + '</b> ' + meta.unit + cmp;
+}
+
+function creatorTrendHtml(d) {
+  const t = d.trend || { days: [] };
+  const all = t.days || [];
+  const range = state.creatorRange === 30 ? 30 : 7;
+  const metric = state.creatorMetric || 'v';
+  const meta = CV_METRICS.filter((m) => m.k === metric)[0] || CV_METRICS[0];
+  const days = all.slice(-range);
+  const vals = days.map((x) => x[meta.k] || 0);
+  const n = vals.length;
+  const maxVal = n ? Math.max.apply(null, vals) : 0;
+  const yMax = niceMax(Math.max(1, maxVal));
+
+  // 画布与留白（TOP 给曲线过冲留空间，BOT 留一格给面积收口）
+  const W = 1000, H = 260, TOP = 22, BOT = 236;
+  const pts = vals.map((v, i) => [
+    n <= 1 ? W / 2 : 8 + (i * (W - 16)) / (n - 1),
+    BOT - (v / yMax) * (BOT - TOP)
+  ]);
+  // 全是 0（新号 / 今天才开始记）就别画线了：贴着底边的一条橙线看着像「有数据」
+  const line = maxVal > 0 ? smoothPath(pts) : '';
+  const area = line
+    ? line + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + BOT +
+      ' L' + pts[0][0].toFixed(1) + ',' + BOT + ' Z'
+    : '';
+  const grid = [0, 1, 2].map((i) => {
+    const y = TOP + ((BOT - TOP) * i) / 2;
+    return '<line class="cv-gl" x1="0" y1="' + y.toFixed(1) + '" x2="' + W + '" y2="' + y.toFixed(1) + '" />';
+  }).join('');
+
+  // 今日那个点 + 峰值那个点：用 HTML 定位，SVG 里的圆会被拉成椭圆
+  let dots = '';
+  if (n > 1 && maxVal > 0) {
+    const pk = vals.indexOf(maxVal);
+    if (pk < n - 1) {
+      dots += '<i class="cv-pt peak" style="left:' + (pts[pk][0] / W * 100).toFixed(2) +
+        '%;top:' + (pts[pk][1] / H * 100).toFixed(2) + '%"></i>';
+    }
+  }
+  if (n && maxVal > 0) {
+    dots += '<i class="cv-pt now" style="left:' + (pts[n - 1][0] / W * 100).toFixed(2) +
+      '%;top:' + (pts[n - 1][1] / H * 100).toFixed(2) + '%"></i>';
+  }
+
+  const peakTip = maxVal > 0
+    ? '<span class="cv-peak">峰值 <b>' + fmtCnt(maxVal) + '</b></span>'
+    : '';
+  const emptyTip = maxVal > 0 ? '' :
+    '<div class="cv-chart-empty">今天开始记，明天这里就有线了</div>';
+
+  const xLabels = n
+    ? '<div class="cv-chart-x">' +
+        '<span>' + days[0].m + '</span>' +
+        '<span>' + days[Math.floor((n - 1) / 2)].m + '</span>' +
+        '<span>今天</span>' +
+      '</div>'
+    : '';
+
+  // 老数据只有总数、没有日期：曲线是空的但总量不为 0，必须说明白，不然像数据丢了
+  const trendSum = all.reduce((s2, x) => s2 + (x.v || 0), 0);
+  const note = (trendSum === 0 && ((d.summary || {}).views || 0) > 0)
+    ? '以前的浏览只记了总数，按天的曲线从今天开始记'
+    : '按天统计（自然日），只保留最近 30 天';
+
+  // 最近 7 天合计 + 环比前 7 天：抖音那张卡也是这么给结论的
+  let weekRow = '';
+  if (meta.k === 'v') {
+    const l7 = t.last7 || 0, p7 = t.prev7 || 0;
+    let pct = '';
+    if (p7 > 0) {
+      const g = Math.round(((l7 - p7) / p7) * 100);
+      pct = '<span class="cv-live-cmp ' + (g >= 0 ? 'up' : 'down') + '">' +
+        (g > 0 ? '+' : '') + g + '% 较前 7 天</span>';
+    }
+    weekRow = '<div class="cv-t-sum">最近 7 天合计 <b>' + fmtCnt(l7) + '</b> 次浏览' + pct + '</div>';
+  }
+
+  const rangeBtn = (v, label) => '<button class="cv-rbtn' + (range === v ? ' on' : '') +
+    '" data-action="creator-range" data-id="' + v + '">' + label + '</button>';
+  const metricChip = (m) => '<button class="cv-mchip' + (metric === m.k ? ' on' : '') +
+    '" data-action="creator-metric" data-id="' + m.k + '">' + m.label + '</button>';
+
+  return '<div id="cv-trend-wrap">' +
+    '<div class="card cv-trend">' +
+      '<div class="cv-t-head">' +
+        '<div class="cv-t-title"><b>实时趋势</b>' +
+          '<span>' + (range === 30 ? '近 30 天' : '近 7 天') + ' · ' + meta.label + '</span></div>' +
+        '<div class="cv-range">' + rangeBtn(7, '7天') + rangeBtn(30, '30天') + '</div>' +
+      '</div>' +
+      '<div class="cv-live" id="cv-live">' + creatorLiveHtml(t, meta) + '</div>' +
+      '<div class="cv-chart">' +
+        '<svg class="cv-chart-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' +
+          '<defs><linearGradient id="cvGrad" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%" stop-color="var(--brand)" stop-opacity="0.30" />' +
+            '<stop offset="100%" stop-color="var(--brand)" stop-opacity="0" />' +
+          '</linearGradient></defs>' +
+          grid +
+          '<path class="cv-area" d="' + area + '" fill="url(#cvGrad)" />' +
+          '<path class="cv-line" d="' + line + '" fill="none" vector-effect="non-scaling-stroke" />' +
+        '</svg>' +
+        peakTip + dots + emptyTip +
+      '</div>' +
+      xLabels +
+      '<div class="cv-metrics">' + CV_METRICS.map(metricChip).join('') + '</div>' +
+      weekRow +
+      '<div class="cv-t-note">' + note + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// 只重画趋势卡：切天数 / 换指标 / 轮询都不整页重绘，滚动位置不会跳
+function paintCreatorTrend() {
+  const box = document.getElementById('cv-trend-wrap');
+  if (!box || !state.data.creator) return;
+  box.outerHTML = creatorTrendHtml(state.data.creator);
+}
+
+/* 实时刷新：20 秒一轮，只换趋势卡和总览卡的数字。
+   页签在后台（document.hidden）时跳过，手机端不会白耗电。 */
+let creatorTimer = null;
+function stopCreatorPoll() { if (creatorTimer) { clearInterval(creatorTimer); creatorTimer = null; } }
+async function pollCreator() {
+  if (document.hidden || state.route.name !== 'creator') return;
+  try {
+    // lite=1：只要总览和趋势，作品列表不用每 20 秒重传一遍
+    const d = await api('/api/me/creator?lite=1&sort=' + encodeURIComponent(state.creatorSort || 'views'));
+    state.data.creator = Object.assign({}, state.data.creator, { summary: d.summary, trend: d.trend });
+    paintCreatorTrend();
+    const cards = document.getElementById('cv-cards');
+    if (cards) cards.outerHTML = creatorCardsHtml(d.summary);
+  } catch (e) { /* 这一轮没刷上就算了，下一轮再来 */ }
+}
+function startCreatorPoll() {
+  stopCreatorPoll();
+  creatorTimer = setInterval(pollCreator, 20000);
+}
+
 function viewCreator() {
   const d = state.data.creator;
   if (!d) return '<div class="card empty">加载中…</div>';
@@ -1561,21 +1775,15 @@ function viewCreator() {
       '<div class="sub">恰饭监控中心</div>' +
     '</div>';
 
-  const cards = '<div class="cv-cards">' +
-      creatorStatCard('总浏览', s.views, 'eye') +
-      creatorStatCard('平均每条', s.avgViews, 'chart') +
-      creatorStatCard('总获赞', s.likes, 'heart') +
-      creatorStatCard('总收藏', s.favs, 'star') +
-      creatorStatCard('总评论', s.comments, 'comment') +
-      creatorStatCard('总转发', s.reposts, 'repost') +
-    '</div>';
+  const cards = creatorCardsHtml(s);
+  const trend = creatorTrendHtml(d);
 
   const sub = '<div class="cv-sum">共 ' + (s.posts || 0) + ' 条作品 · 已通过 ' + (s.approved || 0) +
     (s.pending ? ' · 待审核 ' + s.pending : '') +
     (s.featured ? ' · 优秀 ' + s.featured : '') + '</div>';
 
   if (!posts.length) {
-    return head + cards + sub +
+    return head + cards + trend + sub +
       '<div class="card empty"><img src="/assets/empty.webp" alt="">' +
       '<div>还没有作品。<br>发第一条饭帖，这里就会开始记数据。</div></div>';
   }
@@ -1599,11 +1807,10 @@ function viewCreator() {
         '</span></a>';
   }).join('');
 
-  return head + cards + sub +
+  return head + cards + trend + sub +
     '<div class="cv-tools">' + chip('views', '按浏览') + chip('likes', '按点赞') + chip('new', '按最新') + '</div>' +
     '<div class="card cv-list">' + rows + '</div>';
 }
-
 /* -------- 做饭模式 / 厨房急诊 -------- */
 
 /* 详情页底部的入口：正文太短（只有一句话）就不出现，免得拆出来全是空话 */
@@ -4326,6 +4533,20 @@ document.addEventListener('click', (e) => {
       if (state.creatorSort === id) return;
       state.creatorSort = id;
       loadCreator().then(() => render()).catch((err) => toast(err.message, 'err'));
+      break;
+    }
+    // 趋势图换天数 / 换指标：纯本地切换，不重新请求（30 天数据接口已经一次性给全）
+    case 'creator-range': {
+      const r = Number(id) === 30 ? 30 : 7;
+      if (state.creatorRange === r) return;
+      state.creatorRange = r;
+      paintCreatorTrend();
+      break;
+    }
+    case 'creator-metric': {
+      if (state.creatorMetric === id) return;
+      state.creatorMetric = id;
+      paintCreatorTrend();
       break;
     }
     case 'load-more': {
