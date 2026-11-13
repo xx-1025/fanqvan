@@ -4203,3 +4203,163 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
 }
 
 
+/* =========================================================================
+   观帖记录 / 恰饭监控中心（2.29）
+   —— 两个页面的尺寸口径：
+      · 列表行统一「缩略图 56 + 中间自适应 + 右侧数字」，行高靠 padding 撑，
+        不写死高度（长文本换两行也不会破版）；
+      · 所有颜色走语义变量，深色模式不用另写一套；
+      · 数字统一 fmtCnt()（1.2万），卡片上不再出现 12345 这种长串。
+   ========================================================================= */
+
+/* 操作栏里的浏览量：是数据不是按钮，别给 hover 反馈，也别让它看起来能点 */
+.post-bar .act-num { cursor: default; color: var(--ink-3); }
+.post-bar .act-num:hover { background: none; color: var(--ink-3); }
+.post-bar .act-num b { font-weight: 600; }
+
+/* 主页的数据入口：单独一排，不跟「编辑资料 / 审核中心」抢位置 */
+.profile-tools { display: flex; gap: 10px; padding: 0 20px 14px; }
+.ptool {
+  /* 桌面按内容宽度靠左排（撑满会像两个巨型按钮）；手机端才等分，见 760 断点 */
+  flex: 0 0 auto; min-width: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 40px; padding: 0 10px;
+  border-radius: var(--pill);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13.5px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: .12s;
+}
+.ptool:hover { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-2); }
+.ptool .ic { font-size: 16px; flex: none; color: var(--brand); }
+
+/* 页面头多一个右侧按钮时（观帖记录的「清空」）：标题贴住返回键，按钮靠右 */
+.page-head.ph-act .sub { margin-right: auto; }
+.page-head-act { flex: none; }
+
+/* ---------- 观帖记录 ---------- */
+.hist-list { padding: 0; overflow: hidden; }
+.hist-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+}
+.hist-item:last-child { border-bottom: 0; }
+.hist-item:hover { background: var(--fill-1); }
+.hist-thumb {
+  width: 56px; height: 56px; flex: none;
+  border-radius: 10px; object-fit: cover;
+  background: var(--fill-3);
+}
+.hist-thumb.txt {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: var(--ink-4);
+}
+.hist-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.hist-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.hist-top b {
+  font-size: 14px; font-weight: 800; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hist-t { font-size: 12px; color: var(--ink-4); flex: none; }
+.hist-text {
+  font-size: 13.5px; color: var(--ink-2); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-word;
+}
+.hist-meta { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-4); }
+.hist-meta .ic { font-size: 13px; }
+.hist-meta i { font-style: normal; opacity: .45; margin: 0 3px; }
+.list-end { text-align: center; font-size: 12.5px; color: var(--ink-4); padding: 12px 0 2px; }
+
+/* ---------- 恰饭监控中心 ---------- */
+.cv-cards {
+  /* 桌面 6 个一排（640 宽下每个 ~95px，4 位数放得下）；手机 3 个一排，见 760 断点 */
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+.cv-card {
+  background: var(--paper); border-radius: var(--r);
+  padding: 12px 12px 10px;
+  display: flex; flex-direction: column; gap: 2px;
+  box-shadow: var(--sh);
+  min-width: 0;
+}
+.cv-ico { font-size: 15px; color: var(--brand); line-height: 1; }
+.cv-card b {
+  font-size: 20px; font-weight: 900; color: var(--ink); line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cv-lb { font-size: 12px; color: var(--ink-3); font-weight: 700; }
+.cv-sum { font-size: 12.5px; color: var(--ink-3); font-weight: 600; padding: 0 2px; }
+.cv-tools { display: flex; gap: 8px; }
+.cv-chip {
+  height: 30px; padding: 0 14px;
+  border-radius: var(--pill);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-3);
+  cursor: pointer; transition: .12s;
+}
+.cv-chip:hover { color: var(--brand-2); border-color: var(--brand); }
+.cv-chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-2); }
+
+.cv-list { padding: 0; overflow: hidden; }
+.cv-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+}
+.cv-item:last-child { border-bottom: 0; }
+.cv-item:hover { background: var(--fill-1); }
+.cv-thumb {
+  width: 52px; height: 52px; flex: none;
+  border-radius: 10px; object-fit: cover;
+  background: var(--fill-3);
+}
+.cv-thumb.txt {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: var(--ink-4);
+}
+.cv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cv-text {
+  font-size: 13.5px; color: var(--ink); line-height: 1.4;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cv-time { font-size: 12px; color: var(--ink-4); display: flex; align-items: center; gap: 6px; }
+.cv-nums { display: flex; gap: 14px; flex: none; }
+.cv-nums span {
+  display: flex; flex-direction: column; align-items: center;
+  font-size: 11px; color: var(--ink-4); line-height: 1.3;
+}
+.cv-nums b { font-size: 15px; font-weight: 800; color: var(--ink); }
+
+@media (max-width: 760px) {
+  /* 手机端跟主页其它内容同一条左边线（28） */
+  .profile-tools { padding: 0 28px 12px; }
+  .ptool { flex: 1 1 0; height: 38px; font-size: 13px; gap: 6px; }
+  /* 手机端卡片是通栏、无圆角的一整条，网格卡片留 10 的呼吸 + 小圆角 */
+  .cv-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 12px; }
+  .cv-card { border-radius: 12px; padding: 10px; box-shadow: none; }
+  .cv-card b { font-size: 18px; }
+  .cv-lb { font-size: 11.5px; }
+  .cv-sum { padding: 0 14px; }
+  .cv-tools { padding: 0 14px; }
+  .hist-item { padding: 12px 16px; }
+  .cv-item { padding: 12px 14px; gap: 10px; }
+  .cv-nums { gap: 10px; }
+  .cv-nums b { font-size: 14px; }
+  .cv-thumb { width: 46px; height: 46px; }
+
+  /* 手机软键盘弹起时 100vh 不变（布局视口没动），弹窗按「全屏居中」算就会被键盘
+     盖住下半截 —— 转发名单只能看见一两个人，看着就像「选人不准」。
+     遮罩高度改用 visualViewport 的 --fq-vh（app.js 的 syncViewportVar 一直维护），
+     面板整体落到键盘上方，剩下的高度全给名单自己滚。 */
+  .modal-mask { height: var(--fq-vh, 100vh); }
+  .modal-share { max-height: calc(var(--fq-vh, 100vh) - 24px); }
+  .modal-share .share-body { max-height: none; }
+}

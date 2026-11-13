@@ -307,7 +307,7 @@ const SEED_CREDS = [];
 function seed() {
   const d = {
     users: [], posts: [], notifications: [], reports: [], applications: [],
-    messages: [], groups: [], sessions: {}, seq: 1, createdAt: nowMs()
+    messages: [], groups: [], sessions: {}, viewLog: [], seq: 1, createdAt: nowMs()
   };
   const nid = () => d.seq++;
   const t = nowMs();
@@ -877,6 +877,49 @@ function relationTag(me, peer) {
   return '';
 }
 
+/* ============ 浏览量 / 观帖记录 ============
+   「跟抖音一样」落到我们的场景就是：内容被**真正打开**才算一次播放 ——
+   在信息流里划过去不算，进详情页才算；再配一条抖音式的去重：
+   同一个人对同一条 30 分钟内重复打开只算 1 次（防手抖、防刷新刷量）。
+   作者看自己的作品也计（抖音也计）。
+   去重表放内存，不落库 —— 重启清零，但库不会因为这个动作膨胀。
+   ========================================================================= */
+const VIEW_DEDUPE_MS = 30 * 60 * 1000;
+const viewSeen = new Map();
+const VIEW_LOG_MAX = 300;      // 每人观帖记录只留最近 300 条
+
+function bumpView(p, me) {
+  const key = me.id + ':' + p.id;
+  const now = nowMs();
+  const last = viewSeen.get(key) || 0;
+  if (now - last < VIEW_DEDUPE_MS) return { views: p.views || 0, counted: false };
+  viewSeen.set(key, now);
+  // 去重表别无限长：超过 8000 条就丢掉最旧的三分之一
+  if (viewSeen.size > 8000) {
+    [...viewSeen.keys()].slice(0, 2600).forEach((k) => viewSeen.delete(k));
+  }
+  p.views = (p.views || 0) + 1;
+
+  // 观帖记录：同一条只留最近一次，按人裁剪到 300 条
+  db.viewLog = db.viewLog || [];
+  db.viewLog = db.viewLog.filter((v) => !(v.userId === me.id && v.postId === p.id));
+  db.viewLog.push({ userId: me.id, postId: p.id, at: now });
+  const mine = db.viewLog.filter((v) => v.userId === me.id);
+  if (mine.length > VIEW_LOG_MAX) {
+    const drop = new Set(mine.slice(0, mine.length - VIEW_LOG_MAX));
+    db.viewLog = db.viewLog.filter((v) => !drop.has(v));
+  }
+  saveDB();
+  return { views: p.views, counted: true };
+}
+
+/** 这条内容对「我」可见吗：观帖记录、浏览计数共用同一判断 */
+function postVisibleTo(p, me) {
+  if (!p) return false;
+  if (p.status === 'approved') return true;
+  return !!me && (p.authorId === me.id || rankOf(me) >= 1);
+}
+
 function serializePost(p, me, opts) {
   opts = opts || {};
   const author = db.users.find((u) => u.id === p.authorId);
@@ -889,6 +932,8 @@ function serializePost(p, me, opts) {
     rejectReason: p.rejectReason || '',
     createdAt: p.createdAt,
     author: briefUser(author),
+    // 浏览量：进详情页才算一次（抖音口径），见 bumpView 的说明
+    views: p.views || 0,
     likeCount: (p.likes || []).length,
     liked: me ? (p.likes || []).includes(me.id) : false,
     commentCount: (p.comments || []).length,
@@ -2963,6 +3008,68 @@ async function handleApi(req, res, pathname, query) {
 
   /* ============ 统计 ============ */
 
+  /* ============ 观帖记录 ============
+   只给自己看：我打开过的饭帖，按最近一次浏览时间倒序，同一条只出现一次。
+   作者删了、或还没过审又不是我的，列表里自动消失（不报错、不留空壳）。
+   ========================================================================= */
+  if (pathname === '/api/me/history' && method === 'GET') {
+    const offset = Math.max(0, Number(query.searchParams.get('offset') || 0));
+    const limit = Math.min(Math.max(1, Number(query.searchParams.get('limit') || 20)), 50);
+    const byPost = new Map();
+    for (const v of (db.viewLog || [])) {
+      if (v.userId !== me.id) continue;
+      const prev = byPost.get(v.postId);
+      if (!prev || v.at > prev.at) byPost.set(v.postId, v);
+    }
+    const rows = [...byPost.values()]
+      .sort((a, b) => b.at - a.at)
+      .map((v) => ({ at: v.at, post: db.posts.find((x) => x.id === v.postId) }))
+      .filter((x) => postVisibleTo(x.post, me));
+    const page = rows.slice(offset, offset + limit);
+    return json(res, 200, {
+      items: page.map((x) => ({ viewedAt: x.at, post: serializePost(x.post, me) })),
+      total: rows.length,
+      offset,
+      hasMore: offset + page.length < rows.length
+    });
+  }
+
+  /* 清空观帖记录：只删自己的，别人的记录一个不动 */
+  if (pathname === '/api/me/history' && method === 'DELETE') {
+    db.viewLog = (db.viewLog || []).filter((v) => v.userId !== me.id);
+    saveDB();
+    return json(res, 200, { ok: true });
+  }
+
+  /* ============ 恰饭监控中心（创作者视角） ============
+   总览 + 每条作品的数据。口径跟卡片上一致：浏览 / 赞 / 评论 / 收藏 / 转发。
+   「平均每条浏览」按已过审的作品算 —— 待审的还没进入推荐，算进去只会把均值拉低。
+   ========================================================================= */
+  if (pathname === '/api/me/creator' && method === 'GET') {
+    const all = db.posts.filter((p) => p.authorId === me.id);
+    const sum = (f) => all.reduce((s2, p) => s2 + f(p), 0);
+    const approved = all.filter((p) => p.status === 'approved');
+    const summary = {
+      posts: all.length,
+      approved: approved.length,
+      pending: all.filter((p) => p.status === 'pending').length,
+      rejected: all.filter((p) => p.status === 'rejected').length,
+      views: sum((p) => p.views || 0),
+      likes: sum((p) => (p.likes || []).length),
+      comments: sum((p) => (p.comments || []).length),
+      favs: sum((p) => (p.favs || []).length),
+      reposts: sum((p) => (p.reposts || []).length),
+      featured: approved.filter((p) => p.featured).length
+    };
+    summary.avgViews = approved.length ? Math.round(summary.views / approved.length) : 0;
+    const sort = query.searchParams.get('sort') || 'views';
+    const list = all.map((p) => serializePost(p, me)).sort((a, b) =>
+      sort === 'new' ? b.createdAt - a.createdAt
+        : sort === 'likes' ? (b.likeCount - a.likeCount) || (b.createdAt - a.createdAt)
+          : (b.views - a.views) || (b.createdAt - a.createdAt));
+    return json(res, 200, { summary, posts: list, total: list.length });
+  }
+
   if (pathname === '/api/stats' && method === 'GET') {
     const approved = db.posts.filter((p) => p.status === 'approved').length;
     await Promise.resolve();
@@ -3116,8 +3223,22 @@ async function handleApi(req, res, pathname, query) {
     db.posts.splice(idx, 1);
     db.notifications = db.notifications.filter((n) => n.postId !== p.id);
     db.reports = db.reports.filter((r) => !(r.targetType === 'post' && r.targetId === p.id));
+    db.viewLog = (db.viewLog || []).filter((v) => v.postId !== p.id);
     saveDB();
     return json(res, 200, { ok: true });
+  }
+
+  /* 记录一次浏览：前端进详情页时调用。重复打开不报错，返回当前数字就行。
+     限流单独给（每人每分钟 120 次）—— 挡脚本，不挡人翻着看。 */
+  const viewMatch = /^\/api\/posts\/(\d+)\/view$/.exec(pathname);
+  if (viewMatch && method === 'POST') {
+    const p = db.posts.find((x) => x.id === Number(viewMatch[1]));
+    if (!p) return json(res, 404, { error: '帖子不存在' });
+    if (!postVisibleTo(p, me)) return json(res, 403, { error: '这条内容还没有通过审核' });
+    if (!rateLimit('view:' + me.id, 120, 60 * 1000)) {
+      return json(res, 429, { error: '看得太快了，歇一下再来' });
+    }
+    return json(res, 200, bumpView(p, me));
   }
 
   /* ============ 发布 ============ */

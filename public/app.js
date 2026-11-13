@@ -142,6 +142,18 @@ function timeAgo(ts) {
   return (dt.getMonth() + 1) + '月' + dt.getDate() + '日';
 }
 
+/* 浏览量这类数字：一万以下照实给，一万以上「1.2万」，一亿「1.0亿」。
+   抖音那种口播式的「播放量 12.3w」就是这个意思 —— 位数太多反而看不清量级。 */
+function fmtCnt(n) {
+  n = Math.max(0, Math.round(Number(n) || 0));
+  if (n < 10000) return String(n);
+  if (n < 100000000) {
+    const v = n / 10000;
+    return (v >= 100 ? String(Math.round(v)) : v.toFixed(1).replace(/\.0$/, '')) + '万';
+  }
+  return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
+}
+
 function richText(s) {
   let out = esc(s);
   out = out.replace(/#([^#\s]{1,20})#/g, '<span class="tag">#$1#</span>');
@@ -248,6 +260,7 @@ const ICON_PATHS = {
 
   /* 状态 */
   clock: '<circle cx="12" cy="12" r="8.3"/><path d="M12 7.4V12l3.2 2"/>',
+  eye: '<path d="M2.4 12S5.9 5.6 12 5.6 21.6 12 21.6 12 18.1 18.4 12 18.4 2.4 12 2.4 12Z"/><circle cx="12" cy="12" r="2.9"/>',
   check: '<path d="M5 12.6 9.6 17.2 19 7.6"/>',
   cross: '<path d="M6.4 6.4 17.6 17.6M17.6 6.4 6.4 17.6"/>',
   ban: '<circle cx="12" cy="12" r="8.2"/><path d="M6.3 6.3 17.7 17.7"/>',
@@ -410,6 +423,37 @@ async function loadList(append) {
   state.list.offset = offset + d.posts.length;
   state.list.hasMore = d.hasMore;
   state.list.total = d.total;
+}
+
+/* 进详情页就算一次浏览。抖音的口径是「进入播放」而不是「在信息流里露过脸」，
+   所以这里只挂在 #/post 上；后端对「同一个人 + 同一条」做 30 分钟去重，
+   刷新页面、点返回再进来都不会重复涨。
+   故意不 await：数字晚半秒到不影响阅读，别为了它卡住首屏。 */
+function countView(p) {
+  if (!p || !p.id) return;
+  api('/api/posts/' + p.id + '/view', { method: 'POST' })
+    .then((d) => {
+      if (!d || typeof d.views !== 'number') return;
+      p.views = d.views;
+      // 列表里同一条也跟着改，返回时不用重新拉一次
+      (state.data.posts || []).forEach((x) => { if (x.id === p.id) x.views = d.views; });
+      // 只改数字节点，不整页重绘 —— 重绘会把正在打的评论和滚动位置一起弄丢
+      $('[data-views="' + p.id + '"]').forEach((el) => { el.textContent = fmtCnt(d.views); });
+    })
+    .catch(() => { /* 计数失败不该影响看帖 */ });
+}
+
+async function loadHistory(append) {
+  const offset = append ? (state.data.history || []).length : 0;
+  const d = await api('/api/me/history?offset=' + offset + '&limit=20');
+  state.data.history = append ? (state.data.history || []).concat(d.items || []) : (d.items || []);
+  state.data.historyTotal = d.total || 0;
+  state.data.historyMore = !!d.hasMore;
+}
+
+async function loadCreator() {
+  const sort = state.creatorSort || 'views';
+  state.data.creator = await api('/api/me/creator?sort=' + encodeURIComponent(sort));
 }
 
 async function loadNotes() {
@@ -589,6 +633,11 @@ async function router() {
       state.data.post = d.post;
       state.openComments[d.post.id] = true;
       prefetchCook(d.post);
+      countView(d.post);
+    } else if (r.name === 'history') {
+      await loadHistory(false);
+    } else if (r.name === 'creator') {
+      await loadCreator();
     } else if (r.name === 'edit') {
       if (!state.me) { state.loading = false; go('#/login'); return; }
       state.editAvatar = state.me.avatar || '';
@@ -1033,6 +1082,11 @@ function postCard(p, opts) {
       (p.status === 'rejected' && p.rejectReason
         ? '<div class="reject-note">未通过原因：' + esc(p.rejectReason) + '</div>' : '') +
       '<div class="post-bar">' +
+        // 浏览量放最前面且不可点：它是数据，不是操作，别让用户以为点一下能看到详情
+        '<span class="act act-num" title="浏览量：打开这条内容才算一次">' +
+          '<span class="ico">' + icon('eye') + '</span>' +
+          '<b data-views="' + p.id + '">' + fmtCnt(p.views || 0) + '</b>' +
+        '</span>' +
         '<button class="act" data-action="share" data-id="' + p.id + '" title="转发给厨友">' +
           '<span class="ico">' + icon('repost') + '</span>转发</button>' +
         '<button class="act" data-action="comment-toggle" data-id="' + p.id + '">' +
@@ -1332,6 +1386,9 @@ function profileHeadHtml(u, opts) {
       (u.bio ? '<div class="profile-bio">' + esc(u.bio) + '</div>' : '') +
       '<div class="profile-stats">' + (opts.stats || '') + '</div>' +
       (opts.joined ? '<div class="profile-joined">' + icon('calendar') + ' 加入于 ' + timeAgo(u.createdAt) + '</div>' : '') +
+      // 数据类入口（监控中心 / 观帖记录）挂在页签上面：放在页签下面会被 sticky 的页签压住，
+      // 也会把页签和列表之间的间距撑开
+      (opts.tools || '') +
       '<div class="profile-tabs">' +
         profileTabBtn('posts', '饭帖', opts.postCount || 0, tab) +
         profileTabBtn('photos', '相册', opts.photoCount || 0, tab) +
@@ -1368,7 +1425,12 @@ function viewMine() {
   return profileHeadHtml(me, {
       act: act, stats: stats, joined: true,
       postCount: posts.length, photoCount: photos.length,
-      showFavs: true, favCount: state.data.favTotal || 0
+      showFavs: true, favCount: state.data.favTotal || 0,
+      // 数据类入口单独一排：塞进按钮区会把「编辑资料 / 审核中心 / 退出」挤成一团
+      tools: '<div class="profile-tools">' +
+        '<a class="ptool" href="#/creator">' + icon('chart') + '恰饭监控中心</a>' +
+        '<a class="ptool" href="#/history">' + icon('clock') + '观帖记录</a>' +
+      '</div>'
     }) +
     '<div id="profile-list">' +
       (tab === 'photos'
@@ -1431,6 +1493,115 @@ function viewPost() {
     '</div>' +
     // 入口放在帖子前面：详情页默认展开评论，放下面会被一长串评论推到看不见的地方
     cookCtaHtml(p) + postCard(p, { showStatus: true, inDetail: true });
+}
+
+/* -------- 观帖记录 -------- */
+
+function viewHistory() {
+  const items = state.data.history || [];
+  const head = '<div class="card page-head ph-act">' +
+      '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a>' +
+      '<div class="sub">观帖记录</div>' +
+      (items.length
+        ? '<button class="btn-ghost btn-sm page-head-act" data-action="history-clear">' +
+          icon('trash') + '清空</button>'
+        : '') +
+    '</div>';
+
+  if (!items.length) {
+    return head + '<div class="card empty">' +
+      '<img src="/assets/empty.webp" alt="">' +
+      '<div>还没有看过饭帖。<br>点开任意一条内容，这里就会留下记录。</div></div>';
+  }
+
+  const rows = items.map((it) => {
+    const p = it.post;
+    const thumb = (p.images && p.images[0])
+      ? '<img class="hist-thumb" src="' + esc(p.images[0]) + '" loading="lazy" alt="">'
+      : '<span class="hist-thumb txt">' + icon('chef') + '</span>';
+    const txt = (p.content || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return '<a class="hist-item" href="#/post/' + p.id + '">' + thumb +
+        '<span class="hist-main">' +
+          '<span class="hist-top"><b>' + esc(p.author.nickname) + '</b>' +
+            '<span class="hist-t">' + timeAgo(it.viewedAt) + '看过</span></span>' +
+          '<span class="hist-text">' + (txt ? esc(txt) : '（只有图片）') + '</span>' +
+          '<span class="hist-meta">' +
+            icon('eye') + fmtCnt(p.views || 0) +
+            '<i>·</i>' + icon('heart') + fmtCnt(p.likeCount || 0) +
+            '<i>·</i>' + icon('comment') + fmtCnt(p.commentCount || 0) +
+          '</span>' +
+        '</span></a>';
+  }).join('');
+
+  const more = state.data.historyMore
+    ? '<button class="btn-ghost load-more" data-action="history-more">加载更多</button>'
+    : '<div class="list-end">就这些了，一共看过 ' + fmtCnt(state.data.historyTotal || items.length) + ' 条</div>';
+
+  return head + '<div class="card hist-list">' + rows + '</div>' + more;
+}
+
+/* -------- 恰饭监控中心 -------- */
+
+function creatorStatCard(label, val, ico) {
+  return '<div class="cv-card"><span class="cv-ico">' + icon(ico) + '</span>' +
+    '<b>' + fmtCnt(val || 0) + '</b><span class="cv-lb">' + label + '</span></div>';
+}
+
+function viewCreator() {
+  const d = state.data.creator;
+  if (!d) return '<div class="card empty">加载中…</div>';
+  const s = d.summary || {};
+  const posts = d.posts || [];
+  const sort = state.creatorSort || 'views';
+  const chip = (k, label) => '<button class="cv-chip' + (sort === k ? ' on' : '') +
+    '" data-action="creator-sort" data-id="' + k + '">' + label + '</button>';
+
+  const head = '<div class="card page-head">' +
+      '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a>' +
+      '<div class="sub">恰饭监控中心</div>' +
+    '</div>';
+
+  const cards = '<div class="cv-cards">' +
+      creatorStatCard('总浏览', s.views, 'eye') +
+      creatorStatCard('平均每条', s.avgViews, 'chart') +
+      creatorStatCard('总获赞', s.likes, 'heart') +
+      creatorStatCard('总收藏', s.favs, 'star') +
+      creatorStatCard('总评论', s.comments, 'comment') +
+      creatorStatCard('总转发', s.reposts, 'repost') +
+    '</div>';
+
+  const sub = '<div class="cv-sum">共 ' + (s.posts || 0) + ' 条作品 · 已通过 ' + (s.approved || 0) +
+    (s.pending ? ' · 待审核 ' + s.pending : '') +
+    (s.featured ? ' · 优秀 ' + s.featured : '') + '</div>';
+
+  if (!posts.length) {
+    return head + cards + sub +
+      '<div class="card empty"><img src="/assets/empty.webp" alt="">' +
+      '<div>还没有作品。<br>发第一条饭帖，这里就会开始记数据。</div></div>';
+  }
+
+  const rows = posts.map((p) => {
+    const thumb = (p.images && p.images[0])
+      ? '<img class="cv-thumb" src="' + esc(p.images[0]) + '" loading="lazy" alt="">'
+      : '<span class="cv-thumb txt">' + icon('chef') + '</span>';
+    const txt = (p.content || '').replace(/\s+/g, ' ').trim().slice(0, 46);
+    const st = p.status === 'approved' ? '' : statusBadge(p.status);
+    return '<a class="cv-item" href="#/post/' + p.id + '">' + thumb +
+        '<span class="cv-main">' +
+          '<span class="cv-text">' + (txt ? esc(txt) : '（只有图片）') + '</span>' +
+          '<span class="cv-time">' + timeAgo(p.createdAt) + st + '</span>' +
+        '</span>' +
+        '<span class="cv-nums">' +
+          '<span><b>' + fmtCnt(p.views || 0) + '</b>浏览</span>' +
+          '<span><b>' + fmtCnt(p.likeCount || 0) + '</b>赞</span>' +
+          '<span><b>' + fmtCnt(p.commentCount || 0) + '</b>评</span>' +
+          '<span><b>' + fmtCnt(p.favCount || 0) + '</b>藏</span>' +
+        '</span></a>';
+  }).join('');
+
+  return head + cards + sub +
+    '<div class="cv-tools">' + chip('views', '按浏览') + chip('likes', '按点赞') + chip('new', '按最新') + '</div>' +
+    '<div class="card cv-list">' + rows + '</div>';
 }
 
 /* -------- 做饭模式 / 厨房急诊 -------- */
@@ -2809,6 +2980,8 @@ function viewMain() {
     case 'user': return viewUser();
     case 'review': return viewReview();
     case 'post': return viewPost();
+    case 'history': return viewHistory();
+    case 'creator': return viewCreator();
     case 'messages': return viewMessages();
     case 'edit': return viewEdit();
     case 'search': return viewSearch();
@@ -3327,7 +3500,9 @@ function sharePanelBodyHtml() {
   const m = state.modal || {};
   const q = (m.q || '').trim();
   if (q && !m.users) return '<div class="rel-empty">搜索中…</div>';
-  const list = q ? (m.users || []) : (state.data.conversations || []).map((c) => c.peer);
+  // 去掉自己：搜索会把自己也搜出来，点「发送」只会收到「不能给自己发私信」
+  const list = (q ? (m.users || []) : (state.data.conversations || []).map((c) => c.peer))
+    .filter((u) => u && (!state.me || u.id !== state.me.id));
   if (!list.length) {
     return '<div class="rel-empty">' + (q
       ? icon('search') + ' 没找到这位厨友，换个昵称或 @用户名试试'
@@ -3346,20 +3521,24 @@ async function openShare(postId) {
   if (!state.me) { go('#/login'); return; }
   state.modal = { type: 'share', postId: Number(postId), q: '', users: null };
   render();
-  // 「最近聊过」要靠会话列表：没加载过就拉一次，回来只重画面板主体（不动输入框焦点）
-  if (!state.data.conversations) {
-    try { await loadConversations(); } catch (e) { /* ignore */ }
-    if (state.modal && state.modal.type === 'share') paintShareBody();
-  }
+  /* 「最近聊过」每次打开都重拉一次。
+     以前只在「一次都没加载过」时才拉 —— 于是刚和新人聊完再点转发，列表里
+     还是上一次的旧名单，看着就像「选人不准」。回来只重画面板主体，
+     不整页重绘，输入框里的字和焦点都不受影响。 */
+  try { await loadConversations(); } catch (e) { /* 拉不到就用空列表，搜索照样能用 */ }
+  if (state.modal && state.modal.type === 'share') paintShareBody();
 }
 
 // 把帖子转发给某个厨友（本质是发一条带 postId 的私信）
+let shareBusy = false;   // 连点两下不能发两条（按钮没有 disabled 态，只能自己挡）
 async function shareTo(postId, peerId) {
   if (!state.me) { go('#/login'); return; }
+  if (shareBusy) return;
   const m = state.modal || {};
   const pool = (m.users && m.users.length ? m.users : (state.data.conversations || []).map((c) => c.peer));
   const u = pool.find((x) => x.id === Number(peerId));
   const name = u ? u.nickname : '对方';
+  shareBusy = true;
   try {
     const d = await api('/api/messages/' + peerId, { method: 'POST', body: { postId: Number(postId) } });
     state.modal = null;
@@ -3372,6 +3551,7 @@ async function shareTo(postId, peerId) {
     render();
     toast('已转发给 ' + name, 'ok', 'check');
   } catch (e) { toast(e.message, 'err'); }
+  finally { shareBusy = false; }
 }
 
 async function submitComment(id) {
@@ -4120,6 +4300,32 @@ document.addEventListener('click', (e) => {
       } else {
         go('#/search?q=' + encodeURIComponent(val));
       }
+      break;
+    }
+    case 'history-more': {
+      if (state.data.historyLoading) return;
+      state.data.historyLoading = true;
+      loadHistory(true).then(() => { state.data.historyLoading = false; render(); })
+        .catch((err) => { state.data.historyLoading = false; toast(err.message, 'err'); });
+      break;
+    }
+    case 'history-clear': {
+      if (!confirm('清空观帖记录？只影响你自己的这份列表，作品本身不受影响。')) return;
+      api('/api/me/history', { method: 'DELETE' })
+        .then(() => {
+          state.data.history = [];
+          state.data.historyTotal = 0;
+          state.data.historyMore = false;
+          render();
+          toast('观帖记录已清空', 'ok', 'trash');
+        })
+        .catch((err) => toast(err.message, 'err'));
+      break;
+    }
+    case 'creator-sort': {
+      if (state.creatorSort === id) return;
+      state.creatorSort = id;
+      loadCreator().then(() => render()).catch((err) => toast(err.message, 'err'));
       break;
     }
     case 'load-more': {
