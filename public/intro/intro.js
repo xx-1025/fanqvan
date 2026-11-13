@@ -235,159 +235,8 @@
     if(h === '#' || h === '' || /进入饭圈|进站|逛逛/.test(a.textContent)) a.href = SITE;
   });
 
-  /* ============ 用户版 / 开发版 切换（开发版需激活码） ============ */
-  var root = document.documentElement;
-  // ⚠️ 前端激活码只是"别让普通访客误进开发版"的软门槛，不是安全边界：
-  //    开发版内容本来就打包在这个 HTML 里，想要的人看源码一样能拿到。
-  //    真正的保密要靠"别把敏感内容放进前端"或服务端鉴权（静态页做不到）。
-  var DEV_CODE = 'admin';
-  var LS_MODE = 'fq_intro_mode';
-  var LS_UNLOCK = 'fq_dev_unlocked';
-  var modeSwitch = $('#mode-switch');
-  var unlockBtn  = $('#mode-lock');
-
-  function isUnlocked(){
-    return root.hasAttribute('data-dev-unlocked');
-  }
-  function setUnlocked(on){
-    if(on){ root.setAttribute('data-dev-unlocked','1'); }
-    else  { root.removeAttribute('data-dev-unlocked'); }
-    if(modeSwitch){
-      modeSwitch.classList.toggle('is-unlocked', on);
-      modeSwitch.classList.toggle('is-locked', !on);
-    }
-    if(unlockBtn) unlockBtn.setAttribute('aria-hidden', on ? 'true' : 'false');
-    try{ on ? localStorage.setItem(LS_UNLOCK,'1') : localStorage.removeItem(LS_UNLOCK); }catch(e){}
-  }
-
-  function setMode(m){
-    // 没解锁时，任何方式都不允许进入开发版（含 URL 里的 #dev）
-    if(m === 'dev' && !isUnlocked()) m = 'user';
-    root.setAttribute('data-mode', m);
-    $$('[data-mode-btn]').forEach(function(b){
-      var on = b.dataset.modeBtn === m;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    try{ localStorage.setItem(LS_MODE, m); }catch(e){}
-    // 切完把滚动拉回顶部，避免停在对方版本的半截位置。
-    // 必须先临时关掉 html 的 scroll-behavior:smooth —— 否则 scrollTo 是"平滑动画"、
-    // 异步进行，用户会看到一段明显的回滚动画（而且断言会读到中途的值）。
-    var html = document.documentElement;
-    var prev = html.style.scrollBehavior;
-    html.style.scrollBehavior = 'auto';
-    // 同时清掉 hash：否则浏览器会按锚点又跳回原处（比如从 #play 切过去）
-    if(location.hash){ history.replaceState(null, '', location.pathname + location.search); }
-    window.scrollTo({ top: 0, behavior: 'auto' });
-    html.style.scrollBehavior = prev;
-    // 新显示出来的区块里，reveal 可能还没触发 —— 补一次
-    requestAnimationFrame(function(){
-      $$('.reveal').forEach(function(el){
-        if(el.getBoundingClientRect().top < window.innerHeight * 0.95) el.classList.add('in');
-      });
-      $$('[data-count]').forEach(function(el){
-        if(!el.dataset.done && el.getBoundingClientRect().top < window.innerHeight) { el.dataset.done = '1'; countUp(el); }
-      });
-    });
-  }
-
-  /* ---- 激活码弹窗 ---- */
-  var lockMask = null, lockInput = null, lockErr = null;
-  function openLock(){
-    if(lockMask) return;
-    lockMask = document.createElement('div');
-    lockMask.className = 'lock-mask';
-    lockMask.innerHTML =
-      '<div class="lock-box" role="dialog" aria-modal="true" aria-labelledby="lock-title">' +
-        '<div class="lock-ic">' +
-          '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>' +
-        '</div>' +
-        '<h3 id="lock-title">开发版需要激活码</h3>' +
-        '<p>这里给开发和运营的人看，讲的是实现、安全与审核流水线。输入激活码后即可进入。</p>' +
-        '<div class="lock-field">' +
-          '<input class="lock-input" id="lock-input" type="password" autocomplete="off" ' +
-            'placeholder="请输入激活码" aria-label="激活码">' +
-          '<button class="btn btn-primary" id="lock-go" type="button">进入</button>' +
-        '</div>' +
-        '<div class="lock-err" id="lock-err">' +
-          '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg>' +
-          '<span>激活码不对，再试一次</span>' +
-        '</div>' +
-        '<div class="lock-foot">' +
-          '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg>' +
-          '<span>只会记住这次浏览器的选择，换设备要重新输入。</span>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(lockMask);
-    lockInput = $('#lock-input', lockMask);
-    lockErr   = $('#lock-err', lockMask);
-    document.body.style.overflow = 'hidden';
-
-    requestAnimationFrame(function(){ lockMask.classList.add('show'); });
-    setTimeout(function(){ lockInput && lockInput.focus(); }, 120);
-
-    function close(){
-      if(!lockMask) return;
-      var m = lockMask;
-      m.classList.remove('show');
-      document.body.style.overflow = '';
-      setTimeout(function(){ m.remove(); }, 200);
-      lockMask = null; lockInput = null; lockErr = null;
-    }
-    window.__closeLock = close;
-
-    function submit(){
-      var v = (lockInput.value || '').trim();
-      if(v === DEV_CODE){
-        setUnlocked(true);
-        close();
-        setMode('dev');
-        unlockToast();
-      } else {
-        lockErr.classList.add('show');
-        var box = lockMask.querySelector('.lock-box');
-        box.classList.remove('shake');
-        void box.offsetWidth;          // 强制重排，让动画能重复触发
-        box.classList.add('shake');
-        lockInput.select();
-      }
-    }
-    $('#lock-go', lockMask).addEventListener('click', submit);
-    lockInput.addEventListener('keydown', function(e){
-      if(e.key === 'Enter'){ e.preventDefault(); submit(); }
-      if(e.key !== 'Escape') lockErr.classList.remove('show');
-    });
-    // 点遮罩关闭（点面板内部不关）
-    lockMask.addEventListener('click', function(e){ if(e.target === lockMask) close(); });
-  }
-  /* ---- 解锁成功的小提示（浮在页面底部，开发版里没有 demo 的 toast 槽位） ---- */
-  function unlockToast(){
-    var el = document.createElement('div');
-    el.className = 'float-toast';
-    el.innerHTML =
-      '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>' +
-      '开发版已解锁';
-    document.body.appendChild(el);
-    requestAnimationFrame(function(){ el.classList.add('show'); });
-    setTimeout(function(){
-      el.classList.remove('show');
-      setTimeout(function(){ el.remove(); }, 260);
-    }, 2000);
-  }
-
-  if(unlockBtn) unlockBtn.addEventListener('click', openLock);
-
-  $$('[data-mode-btn]').forEach(function(b){
-    b.addEventListener('click', function(){
-      var m = b.dataset.modeBtn;
-      if(m === 'dev' && !isUnlocked()){ openLock(); return; }   // 兜底：没解锁不给切
-      setMode(m);
-    });
-  });
-
-  /* ---------- AI 演示区 ----------
-     纯前端：文本全部写死在这里，点按钮只是逐字打出来。
-     不发请求、不读 localStorage、不碰 /api/ai，页面上也标了「不联网」。 */
+  /* ---------- AI 区（官网展示） ----------
+     文本写死在这里，点按钮只是逐字打出来，不发请求、不碰 /api/ai。 */
   var AI_EX = {
     polish: [
       { q: '今天炒了个蛋炒饭 挺好吃的 就是有点咸 下次少放点盐',
@@ -415,7 +264,7 @@
     aiIn.value = it.q;
     aiOut.innerHTML = '<span class="ph">点「让 AI 改一遍」试试。</span>';
     if(aiLabel) aiLabel.textContent = aiMode === 'cook' ? '手里有什么食材' : '你写的原话';
-    if(aiNote) aiNote.textContent = '示例 ' + ((aiIdx % set.length) + 1) + ' / ' + set.length + ' · 预置文本，不联网、不调用模型';
+    if(aiNote) aiNote.textContent = '示例 ' + ((aiIdx % set.length) + 1) + ' / ' + set.length;
   }
   function aiType(text){
     if(aiTimer) clearInterval(aiTimer);
@@ -453,14 +302,4 @@
     if(rs) rs.addEventListener('click', function(){ aiIdx++; aiPaint(); });
   }
 
-  // 恢复上次状态：解锁标记 + 版本选择；也支持 #dev / #user 直达
-  try{ if(localStorage.getItem(LS_UNLOCK) === '1') setUnlocked(true); }catch(e){}
-  var init = 'user';
-  try{ init = localStorage.getItem(LS_MODE) || 'user'; }catch(e){}
-  if(/dev/.test(location.hash)){
-    if(isUnlocked()) init = 'dev';
-    else { init = 'user'; setTimeout(openLock, 300); }   // 没解锁就想进开发版 → 弹激活码
-  }
-  if(/user/.test(location.hash)) init = 'user';
-  setMode(init);
 })();
