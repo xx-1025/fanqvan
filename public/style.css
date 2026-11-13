@@ -4126,9 +4126,9 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
 .profile-name h2 .pn { min-width: 0; padding-right: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-name h2 .badge { flex: none; }
 
-/* 封面自己不再描圆角：桌面交给 .profile-head 的 overflow:hidden 按卡片半径裁（12），
-   原来图片自带 7px 圆角叠在 12 的卡片里，四角会各露一个白色小三角 ——
-   就是「照片压在白纸上」的来源。手机端在下面的 760 段里改成白边相框。 */
+/* 封面自己不再描圆角：圆角归卡片 .profile-head（overflow:hidden 按卡片半径裁）。
+   原来图片自带 7px 圆角叠在卡片上，四角会各露一个白色小三角 ——
+   就是「照片压在白纸上」的来源。手机端同理（见文件末尾 760 段）。 */
 .profile-cover { border-radius: 0; }
 
 @media (max-width: 760px) {
@@ -4172,17 +4172,24 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
   .profile-joined { padding: 0 28px 12px; }
   .profile-tabs { padding: 0 28px; }
 
-  /* 封面做成「白边相框」：图片四边离卡片留 10px 白，圆角开在图片自己身上，
-     不再让图片的圆角直接贴卡片边 —— 那样看着像照片压在白纸上（2.23）。 */
-  .profile-head { padding-top: 10px; }
-  .profile-cover {
-    margin: 0 10px;
-    height: 158px;
-    border-radius: 14px;
-    border-bottom: 0;
+  /* 封面（2.24）：图片是**直角**、铺满卡片宽度、四边不留白；
+     圆角开在卡片 .profile-head 自己身上（12），由 overflow:hidden 把图四角裁掉。
+     所以看到的是「白色圆角压在照片角上」，而不是「照片被白框包起来」——
+     2.23 那版把 margin 10 + 圆角画在图片上，图和卡片之间多了一圈白，正是用户否掉的效果。
+     3489 那段把 .profile-head 的 radius/margin 清零了，这里在文件末尾覆盖回来。 */
+  .profile-head {
+    padding-top: 0;
+    margin: 0;
+    border-radius: 12px;
+    overflow: hidden;
   }
-  /* 吉祥物要缩进圆角以内，否则头顶会顶出图片 */
-  .profile-cover::after { width: 148px; height: 148px; right: 6px; }
+  .profile-head .profile-cover {
+    margin: 0;
+    height: 168px;
+    border-radius: 0;
+  }
+  /* 吉祥物站位与 3508 那版一致，收进卡片圆角以内 */
+  .profile-head .profile-cover::after { width: 146px; height: 146px; right: 10px; }
 }
 
 
