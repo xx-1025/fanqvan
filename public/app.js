@@ -23,6 +23,7 @@ const state = {
   token: '',
   route: { name: 'feed', id: '' },
   postFrom: '',          // 进详情页之前在哪，用来让「返回」回到原页面
+  userFrom: '',          // 进别人主页之前在哪（信息流 / 热门 / 搜索），返回时回原页
   data: {},
   // 主页的页签：饭帖 / 相册 / 收藏（收藏只有自己主页有；切换只重画列表，不重新拉数据）
   profileTab: 'posts',
@@ -595,6 +596,8 @@ async function router() {
   }
   // 记住从哪进详情页，返回时回原页面（首页 / 热门 / 搜索 / 私信都各回各的）
   if (r.name === 'post' && prevHash && !/^#\/post\//.test(prevHash)) state.postFrom = prevHash;
+  // 别人主页同理：点作者头像进来的，返回要回原来那条信息流，而不是回首页
+  if (r.name === 'user' && prevHash && !/^#\/user\//.test(prevHash)) state.userFrom = prevHash;
   // 换页时收掉所有浮层（弹窗 / 通知面板 / @补全），避免盖在新页面上
   state.modal = null;
   state.noteOpen = false;
@@ -1474,6 +1477,12 @@ function profileHeadHtml(u, opts) {
   return '<div class="card profile-head">' +
       '<div class="profile-cover' + (cv ? ' has-img' : '') + '"' +
         (cv ? " style=\"background-image:url('" + cv + "')\"" : '') + '>' +
+        /* 别人主页原来没有任何返回键，进了就只能靠浏览器后退 —— App 里更没处点。
+           浮在封面左上角，压在图上的白胶囊，不跟主题走（封面图本身不随主题变）。 */
+        (opts.back
+          ? '<a class="cover-back" href="' + esc(state.userFrom || '#/') + '" title="返回" aria-label="返回">' +
+            icon('back') + '</a>'
+          : '') +
         (opts.coverAct || '') +
       '</div>' +
       '<div class="profile-info">' +
@@ -1587,7 +1596,8 @@ function viewUser() {
 
   return profileHeadHtml(u, {
       act: act, stats: statsHtml, joined: true,
-      postCount: stats.posts || posts.length, photoCount: photos.length
+      postCount: stats.posts || posts.length, photoCount: photos.length,
+      back: true
     }) +
     '<div id="profile-list">' +
       (d.privateLocked
@@ -3439,6 +3449,19 @@ function reviewUsers() {
 
 /* -------- 资料编辑 -------- */
 
+/* 头像框清单：key 与 server.js 的 AVATAR_FRAMES、style.css 的 .avatar.pf-* 三处必须一致。
+   放模块级 —— 编辑页要拿它铺选项，paintFrameUi 还要按 key 反查中文名（收起时显示「当前：xx」）。 */
+const FRAMES = [
+  ['', '不戴'],
+  ['halloween', '万圣南瓜车'], ['phoenix', '凤舞祥云'], ['koi', '锦鲤龙门'],
+  ['magpie', '喜鹊登梅'], ['lion', '醒狮纳福'], ['lantern', '花灯初上'],
+  ['eaves', '屋檐灯火'], ['wreath', '圣诞松环'], ['mooncake', '中秋月团'],
+  ['jade', '青玉祥云'], ['gate', '朱漆牌坊'], ['osmanthus', '桂月流光'],
+  ['lanterns', '红笼高挂'], ['clouds', '祥云灯笼'], ['feast', '元宵灯坊'],
+  ['xmas', '圣诞星愿'], ['crown', '金冠明珠']
+];
+const frameLabel = (k) => (FRAMES.find(([x]) => x === (k || '')) || ['', '不戴'])[1];
+
 /* 私密账号那块卡片：单独一个函数，切换开关时只重画这一块，
    免得整页 render() 把用户刚填的昵称、简介冲掉 */
 function privacyCardHtml() {
@@ -3473,7 +3496,7 @@ function viewEdit() {
       appBlock = '<div class="card edit-card"><h3>' + icon('medal') + '成为审核员</h3>' +
         '<p class="edit-hint">审核员负责把关社区内容。提交后由管理员审批，审批结果会通过消息通知你。</p>' +
         '<textarea id="apply-reason" placeholder="简单说说你为什么想当审核员（可选）" maxlength="200"></textarea>' +
-        '<button class="btn-primary" data-action="apply-reviewer" style="height:38px;margin-top:12px">提交申请</button></div>';
+        '<button class="btn-primary" data-action="apply-reviewer">提交申请</button></div>';
     } else if (app.status === 'pending') {
       appBlock = '<div class="card edit-card"><h3>' + icon('medal') + '成为审核员</h3>' +
         '<p class="edit-hint">你的申请正在等待管理员审批。</p>' +
@@ -3483,7 +3506,7 @@ function viewEdit() {
       appBlock = '<div class="card edit-card"><h3>' + icon('medal') + '成为审核员</h3>' +
         '<p class="edit-hint">上次申请未通过，可以再次提交。</p>' +
         '<textarea id="apply-reason" placeholder="简单说说你为什么想当审核员（可选）" maxlength="200"></textarea>' +
-        '<button class="btn-primary" data-action="apply-reviewer" style="height:38px;margin-top:12px">重新提交申请</button></div>';
+        '<button class="btn-primary" data-action="apply-reviewer">重新提交申请</button></div>';
     }
   }
 
@@ -3496,18 +3519,8 @@ function viewEdit() {
   // 免得压在自己那张图或默认插画上。这里给一块预览，改完立即看到效果。
   const cover = /^\/uploads\/[A-Za-z0-9._-]+$/.test(String(me.cover || '')) ? me.cover : '';
 
-  // 头像框：预览直接套在「当前头像」上，选之前就能看到效果。点一下立即存，和换头像一个节奏。
-  // key 与 server.js 的 AVATAR_FRAMES、style.css 的 .avatar.frame-* 三处必须一致。
-  const FRAMES = [
-    ['', '不戴'],
-    ['halloween', '万圣南瓜车'], ['phoenix', '凤舞祥云'], ['koi', '锦鲤龙门'],
-    ['magpie', '喜鹊登梅'], ['lion', '醒狮纳福'], ['lantern', '花灯初上'],
-    ['eaves', '屋檐灯火'], ['wreath', '圣诞松环'], ['mooncake', '中秋月团'],
-    ['jade', '青玉祥云'], ['gate', '朱漆牌坊'], ['osmanthus', '桂月流光'],
-    ['lanterns', '红笼高挂'], ['clouds', '祥云灯笼'], ['feast', '元宵灯坊'],
-    ['xmas', '圣诞星愿'], ['crown', '金冠明珠']
-  ];
-  const frameRow = '<div class="frame-row"><b>头像框<em>选一个，立即生效</em></b><div class="frame-opts">' +
+  // 头像框清单在文件上方的 FRAMES（paintFrameUi 也要用它的中文名，不能是局部变量）
+  const frameRow = '<div class="frame-opts">' +
     FRAMES.map(([k, label]) => k === ''
       ? '<button class="frame-opt none' + (state.editFrame === '' ? ' on' : '') +
         '" data-action="pick-frame" data-frame="" title="' + label + '"><span class="frame-none">无</span></button>'
@@ -3515,24 +3528,39 @@ function viewEdit() {
         '" data-action="pick-frame" data-frame="' + k + '" title="' + label + '">' +
         avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: k }, 40) +
         '</button>').join('') +
-    '</div></div>';
+    '</div>';
 
+  /* 一张卡只干一件事。
+     以前头像、4 个预设、18 个头像框、昵称、简介、保存按钮全挤在「基本信息」一张卡里，
+     100px 的头像框铺在昵称上面，整页看不出层次 —— 那才叫「乱七八糟」。
+     现在拆成「头像」「头像框」「资料」三张卡，头像框默认收起，只留一行「当前：xx」。 */
   return '<div class="card page-head" style="padding:14px 20px">' +
       '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a><div class="sub">编辑资料</div></div>' +
     '<div class="card edit-card">' +
-      '<h3>' + icon('user') + '基本信息</h3>' +
+      '<h3>' + icon('user') + '头像</h3>' +
       '<div class="edit-avatar-row">' +
         '<div class="edit-avatar">' + avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: state.editFrame }, 72) + '</div>' +
         '<div class="av-picks">' + avRow +
           '<label class="av-opt upload"><input type="file" id="avatar-input" accept="image/*" hidden>＋<span>上传</span></label>' +
         '</div>' +
       '</div>' +
-      '<p class="av-tip">' + icon('check') + ' 点头像或「上传」选一张，选完立即保存，不用再点下面的按钮</p>' +
-      frameRow +
-      '<p class="av-tip frame-tip">' + icon('check') + ' 头像框点一下立即生效，帖子和私信里都会显示</p>' +
+      '<p class="av-tip">' + icon('check') + ' 点一下立即保存，不用再点保存按钮</p>' +
+    '</div>' +
+    '<div class="card edit-card">' +
+      '<h3>' + icon('star') + '头像框</h3>' +
+      '<button class="fr-bar" data-action="frame-toggle" aria-expanded="false" aria-controls="frame-wrap">' +
+        '<span class="fr-now">当前：<b id="fr-name">' + esc(frameLabel(state.editFrame)) + '</b></span>' +
+        '<span class="fr-act"><i class="fr-act-t">更换</i>' + icon('chev') + '</span>' +
+      '</button>' +
+      '<div class="frame-wrap" id="frame-wrap" hidden>' + frameRow +
+        '<p class="edit-hint fr-hint">' + icon('check') + ' 点一下立即生效，帖子和私信里都会显示</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card edit-card">' +
+      '<h3>' + icon('pencil') + '资料</h3>' +
       '<div class="field"><label>昵称</label><input id="edit-nickname" value="' + esc(me.nickname) + '" maxlength="24"></div>' +
       '<div class="field"><label>简介</label><textarea id="edit-bio" maxlength="160" placeholder="介绍一下你的拿手菜…">' + esc(me.bio || '') + '</textarea></div>' +
-      '<button class="btn-primary" data-action="save-profile" style="height:40px;margin-top:6px">保存资料</button>' +
+      '<button class="btn-primary" data-action="save-profile">保存资料</button>' +
     '</div>' +
     '<div class="card edit-card">' +
       '<h3>' + icon('image') + '主页封面</h3>' +
@@ -3548,17 +3576,17 @@ function viewEdit() {
     '</div>' +
     privacyCardHtml() +
     '<div class="card edit-card">' +
-      '<h3>' + icon('lock') + '修改密码</h3>' +      '<div class="field"><label>原密码</label><input id="pw-old" type="password" autocomplete="current-password" placeholder="当前密码"></div>' +
+      '<h3>' + icon('lock') + '修改密码</h3>' +
+      '<div class="field"><label>原密码</label><input id="pw-old" type="password" autocomplete="current-password" placeholder="当前密码"></div>' +
       '<div class="field"><label>新密码</label><input id="pw-new" type="password" autocomplete="new-password" placeholder="自己想一个，长度不限"></div>' +
       '<div class="field"><label>再输一遍新密码</label><input id="pw-new2" type="password" autocomplete="new-password" placeholder="确认新密码，两次要一样"></div>' +
-      '<button class="btn-primary" data-action="change-password" style="height:40px;margin-top:6px">更新密码</button>' +
+      '<button class="btn-primary" data-action="change-password">更新密码</button>' +
     '</div>' +
     (isAdmin()
       ? '<div class="card edit-card"><h3>' + icon('shield') + '安全控制台</h3>' +
         '<p style="margin:0 0 12px;font-size:12.5px;line-height:1.8;color:var(--ink-2)">' +
           '看谁在爬这个站、谁在扫路径，发现异常可以一键封禁。只有管理员能打开。</p>' +
-        '<a class="btn-primary" href="/ops" target="_blank" rel="noopener" ' +
-          'style="height:40px;display:flex;align-items:center;justify-content:center;gap:6px">' +
+        '<a class="btn-primary" href="/ops" target="_blank" rel="noopener">' +
           icon('shield') + '打开安全控制台</a></div>'
       : '') +
     appBlock;
@@ -4511,7 +4539,43 @@ async function saveAvatar(url) {
     state.editAvatar = url;
     toast('头像已保存', 'ok', 'check');
   } catch (e) { toast(e.message, 'err'); }
-  render();
+  /* 只重画头像相关的两块：整页 render 会把用户填了一半的昵称、简介冲掉 */
+  paintAvatarUi();
+}
+
+/* 换头像后：大头像、4 个预设的选中态、头像框选项里的小预览，三处都要跟着变 */
+function paintAvatarUi() {
+  if (!state.me) return;
+  state.editAvatar = state.me.avatar || state.editAvatar;
+  document.querySelectorAll('.av-opt[data-av]').forEach((b) => {
+    b.classList.toggle('on', (b.getAttribute('data-av') || '') === state.editAvatar);
+  });
+  const box = document.querySelector('.edit-avatar');
+  if (box) {
+    box.innerHTML = avatarHtml(
+      { id: state.me.id, nickname: state.me.nickname, avatar: state.editAvatar, frame: state.editFrame }, 72);
+  }
+  document.querySelectorAll('.frame-opt[data-frame]').forEach((b) => {
+    b.innerHTML = avatarHtml(
+      { id: state.me.id, nickname: state.me.nickname, avatar: state.editAvatar, frame: b.getAttribute('data-frame') }, 40);
+  });
+}
+
+/* 头像框展开/收起：只切 hidden 和一行文字，不整页 render。
+   18 个框默认铺在页面上太吵，收起时只留「当前：xx」。 */
+function setFrameOpen(open) {
+  const wrap = document.querySelector('#frame-wrap');
+  const bar = document.querySelector('.fr-bar');
+  if (!wrap || !bar) return;
+  wrap.hidden = !open;
+  bar.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const t = bar.querySelector('.fr-act-t');
+  if (t) t.textContent = open ? '收起' : '更换';
+  if (open) {
+    /* 展开时把当前选中的框滚进视野（18 个框，第 17 个常在折叠线以下） */
+    const on = wrap.querySelector('.frame-opt.on');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 /* 头像框也是选完即存：框只是装饰，不值得再让用户去找「保存资料」 */
@@ -4525,6 +4589,8 @@ function paintFrameUi() {
     box.innerHTML = avatarHtml(
       { id: state.me.id, nickname: state.me.nickname, avatar: state.editAvatar, frame: f }, 72);
   }
+  const nm = document.querySelector('#fr-name');
+  if (nm) nm.textContent = frameLabel(f);
 }
 
 async function saveFrame(frame) {
@@ -5039,16 +5105,23 @@ document.addEventListener('click', (e) => {
     case 'apply-reviewer': applyReviewer(); break;
     case 'pick-avatar': {
       state.editAvatar = el.getAttribute('data-av');
-      render();
+      paintAvatarUi();     // 局部刷新：整页 render 会把用户填了一半的昵称/简介清掉
       saveAvatar(state.editAvatar);
+      break;
+    }
+    case 'frame-toggle': {
+      const wrap = document.querySelector('#frame-wrap');
+      if (wrap) setFrameOpen(wrap.hidden);
       break;
     }
     case 'pick-frame': {
       const f = el.getAttribute('data-frame') || '';
-      if (f === (state.me.frame || '')) break;
+      /* 点已经选中的那个也收起 —— 用户想再换会自己点开 */
+      if (f === (state.editFrame || '')) { setFrameOpen(false); break; }
       state.editFrame = f;
       paintFrameUi();      // 只重画选择态和预览：整页 render 会把用户填了一半的昵称/简介清掉
       saveFrame(f);
+      setFrameOpen(false); // 选完就收起，页面回到一行「当前：xx」
       break;
     }
     case 'review-mode': {

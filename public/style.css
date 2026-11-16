@@ -1483,6 +1483,26 @@ img { display: block; }
   background-size: cover;
   border-radius: 7px;
 }
+/* 别人主页的返回键：浮在封面左上角。
+   压在图上，所以底色写死白、文字写死深灰 —— 不跟主题走：
+   深色模式下封面仍是那张橙图/用户自己的图，白胶囊照样看得清；
+   换成 var(--paper) 深色会变黑底压在橙图上，糊成一团。 */
+.cover-back {
+  position: absolute; left: 12px; top: 12px; z-index: 2;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, .9);
+  color: #2b2b31;
+  border: 1px solid rgba(0, 0, 0, .07);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .14);
+  -webkit-tap-highlight-color: transparent;
+}
+.cover-back:hover { background: #fff; }
+.cover-back svg { width: 18px; height: 18px; }
+@media (max-width: 760px) {
+  .cover-back { left: 10px; top: 10px; width: 34px; height: 34px; }
+}
+
 /* 吉祥物站在封面右下角，脚踩封面下沿。
    用透明抠图 mascot-cut.webp（原图是白底，直接用会压出一个白方块）。 */
 .profile-cover::after {
@@ -2331,7 +2351,10 @@ html.modal-open, body.modal-open { overflow: hidden; }
   letter-spacing: .3px;
 }
 .edit-hint { margin: 0 0 14px; font-size: 12.5px; color: var(--ink-3); font-weight: 600; line-height: 1.75; }
-.edit-card .field textarea {
+/* 编辑页里的多行输入（简介、申请理由）统一成整块，别让 textarea 缩成一行小框、
+   按钮还挤在它右边 ——「成为审核员」以前就是这样 */
+.edit-card textarea {
+  display: block;
   width: 100%;
   min-height: 78px;
   padding: 12px 16px;
@@ -2342,13 +2365,16 @@ html.modal-open, body.modal-open { overflow: hidden; }
   resize: vertical;
   font-weight: 600;
 }
-.edit-card .field textarea:focus { background: var(--paper); box-shadow: var(--sh-sm); }
+.edit-card textarea:focus { background: var(--paper); box-shadow: var(--sh-sm); }
+/* 卡里的主按钮一律整宽：以前一个「保存资料」是小药丸、下面「更新密码」更窄，
+   宽度跟着文字走，看着就没对齐 */
+.edit-card > .btn-primary { display: flex; width: 100%; height: 40px; margin-top: 12px; }
 
 .edit-avatar-row { display: flex; gap: 18px; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; }
 /* 头像选完即保存，别再让人找「保存资料」 */
 .av-tip {
   display: flex; align-items: center; gap: 5px;
-  margin: 0 0 18px; font-size: 12.5px; font-weight: 400; color: var(--ink-3);
+  margin: 0; font-size: 12.5px; font-weight: 400; color: var(--ink-3);
 }
 .av-tip svg { width: 13px; height: 13px; color: var(--ink-4); flex: none; }
 .edit-avatar .avatar { border-width: 3px; box-shadow: var(--sh); }
@@ -4095,13 +4121,33 @@ a:hover { color: var(--brand-2); }
   .edit-cover .cover-act { left: 10px; right: auto; }
 }
 
-/* ---------- 编辑资料里的头像框选择行 ---------- */
-.frame-row { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 0 4px; }
-.frame-row > b { font-size: 13px; color: var(--ink-2); font-weight: 400; flex: none; }
-.frame-row > b em { font-style: normal; color: var(--ink-4); font-size: 12px; margin-left: 6px; }
-/* 18 个选项（17 款 + 不戴）排 5 列 4 行。6 列每列只有 86px，而最大的框（灯笼 2.44×40=98）
-   会比列宽还宽，两个框直接叠在一起 —— 所以给 5 列 103px/列。 */
-.frame-opts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px 0; width: 100%; }
+/* ---------- 编辑资料里的头像框 ----------
+   18 个框默认收起，只留一行「当前：xx · 更换」。以前它们和头像、昵称、保存按钮
+   一起挤在「基本信息」里，4 行 100px 的图铺在表单上方，整页看着没有层次。
+   展开后桌面 6 列 3 行，手机 4 列 5 行。
+   格子尺寸是被框撑出来的：最大的框 2.48 倍，头像 40 → 99px，所以桌面给 100。
+   手机不压格子（压了框就被裁），改成把格内头像降到 30（框 74），76 的格子正好放下。 */
+.fr-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; height: 44px; padding: 0 14px;
+  border: var(--bw) solid var(--line); border-radius: var(--r-sm);
+  background: var(--cream); color: var(--ink-2);
+  font: inherit; font-size: 13.5px; font-weight: 800;
+  cursor: pointer; text-align: left;
+}
+.fr-bar:hover { background: var(--yellow); }
+.fr-bar .fr-now { font-weight: 600; color: var(--ink-3); }
+.fr-bar .fr-now b { color: var(--ink); font-weight: 800; margin-left: 2px; }
+.fr-act { display: flex; align-items: center; gap: 3px; flex: none; color: var(--brand-2); font-weight: 800; font-size: 12.5px; }
+.fr-act i { font-style: normal; }
+.fr-act svg { width: 14px; height: 14px; transition: transform .16s; }
+.fr-bar[aria-expanded="true"] .fr-act svg { transform: rotate(90deg); }
+.frame-wrap { padding-top: 14px; }
+.frame-wrap[hidden] { display: none; }
+.fr-hint { display: flex; align-items: center; gap: 5px; margin: 10px 0 0; }
+.fr-hint svg { width: 13px; height: 13px; color: var(--ink-4); flex: none; }
+
+.frame-opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px 0; width: 100%; }
 .frame-opt {
   width: 100px; height: 100px; padding: 0; margin: 0 auto;
   border: 0; background: none; cursor: pointer;
@@ -4109,12 +4155,12 @@ a:hover { color: var(--brand-2); }
   display: grid; place-items: center;
   transition: transform .16s ease, box-shadow .16s ease;
 }
-/* 头像 40px + 框层最大 1.70 倍（68px），按钮给 68 才能让最大的那几款（金冠/花环）
-   完整放下。avatarHtml 给 40px 头像写的内联上限是 1.45，这里要放开。 */
-/* 头像 40px + 框层最大 2.5 倍（100px），按钮给 104 才不贴边。
-   avatarHtml 给 40px 头像写的内联上限是 2.0，这里要放开到 2.5 ——
-   选项区本来就是给人「挑框」的，框必须完整。 */
-.frame-opt .avatar { width: 40px; height: 40px; }
+/* 头像 40px + 框层最大 2.48 倍（99px），选项区本来就是给人「挑框」的，框必须完整，
+   所以这里把 avatarHtml 给 40px 头像写的内联上限（2.0）放开到 2.5。 */
+/* 头像尺寸写死在 avatarHtml 的内联 style 里，这里不加 !important 盖不住 —— 
+   之前手机断点写 30px 一直是 40，框按 2.2 倍长到 88px、格子只有 76，
+   于是相邻两格直接叠在一起。 */
+.frame-opt .avatar { width: 40px !important; height: 40px !important; }
 .frame-opt .avatar[class*="pf-"] { --fsmax: 2.5 !important; }
 .frame-opt:hover { transform: translateY(-1px); }
 .frame-opt.on { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--brand); }
@@ -4124,12 +4170,15 @@ a:hover { color: var(--brand-2); }
   font-size: 12.5px; display: grid; place-items: center;
 }
 .frame-opt.on .frame-none { border-style: solid; border-color: var(--brand); color: var(--brand); }
-.frame-tip { margin-top: 8px; }
 
-/* 手机改 3 列 6 行：选项要 104px 才装得下完整框，4 列 × 104 = 416 会挤出屏幕 */
 @media (max-width: 760px) {
-  .frame-opts { grid-template-columns: repeat(3, 1fr); gap: 8px 0; }
-  .frame-opt { width: 100px; height: 100px; }
+  .frame-opts { grid-template-columns: repeat(4, 1fr); gap: 8px 0; }
+  .frame-opt { width: 76px; height: 76px; }
+  .frame-opt .avatar { width: 30px !important; height: 30px !important; }
+  /* 4 列时横向只有 82px 一列，框按 2.48 倍会长到 74，跟隔壁那格贴成一片。
+     手机上收到 2.2（30×2.2 = 66），每格左右各留 5px 呼吸。 */
+  .frame-opt .avatar[class*="pf-"] { --fsmax: 2.2 !important; }
+  .frame-none { width: 30px; height: 30px; }
 }
 
 /* =========================================================================
