@@ -425,10 +425,28 @@ function parseHash() {
   return { name: parts[0] || 'feed', id: parts[1] || '', q };
 }
 
+/* 后退标记：backPage() 主动回退时置位，router 看到它就不更新 postFrom / userFrom。
+   否则「帖子 → 作者主页 → 返回」这一趟会把 postFrom 改写成主页，
+   两页互相指向，返回键变成弹球（2.39 的 bug）。
+   声明放在 go 之前：go 里要清它，避免某个 back 没触发 hashchange 时标志残留。 */
+let popping = false;
+
 function go(hash) {
+  popping = false;
   if (location.hash === hash) router();
   else location.hash = hash;
 }
+
+/* 返回 = 真的走浏览器历史，不是再跳一个 hash。
+   用 href 跳转会把「来源」变量一路改写：A→B 之后 B 的返回指向 A、A 的返回又指向 B，
+   来回弹而且历史栈越来越长（实测 history.length 2→3→4→5→6→7）。
+   history.back() 只退不写，天然不会成环。
+   直接打开链接 / 刷新进来时栈里没有上一页，退到调用方给的兜底页。 */
+function backPage(fallback) {
+  if (history.length > 1) { popping = true; history.back(); return; }
+  go(fallback || '#/');
+}
+
 
 function listRequest() {
   const r = state.route;
@@ -573,10 +591,13 @@ function paintSidebar() {
 }
 
 let lastHash = '';
+
 async function router() {
   const prevHash = lastHash;
   const hashNow = location.hash || '#/';
   lastHash = hashNow;
+  const wasPop = popping;
+  popping = false;
   state.route = parseHash();
   const r = state.route;
   /* 站内内容只对登录用户开放：没登录就先去登录页，并记住原来想去哪，
@@ -594,10 +615,13 @@ async function router() {
     go('#/');
     return;
   }
-  // 记住从哪进详情页，返回时回原页面（首页 / 热门 / 搜索 / 私信都各回各的）
-  if (r.name === 'post' && prevHash && !/^#\/post\//.test(prevHash)) state.postFrom = prevHash;
-  // 别人主页同理：点作者头像进来的，返回要回原来那条信息流，而不是回首页
-  if (r.name === 'user' && prevHash && !/^#\/user\//.test(prevHash)) state.userFrom = prevHash;
+  // 记住从哪进详情页，返回时回原页面（首页 / 热门 / 搜索 / 私信都各回各的）。
+  // 后退（wasPop）时不要记 —— 退回来的那一页不是「来源」，记了会让两页互相指向。
+  if (!wasPop) {
+    if (r.name === 'post' && prevHash && !/^#\/post\//.test(prevHash)) state.postFrom = prevHash;
+    // 别人主页同理：点作者头像进来的，返回要回原来那条信息流，而不是回首页
+    if (r.name === 'user' && prevHash && !/^#\/user\//.test(prevHash)) state.userFrom = prevHash;
+  }
   // 换页时收掉所有浮层（弹窗 / 通知面板 / @补全），避免盖在新页面上
   state.modal = null;
   state.noteOpen = false;
@@ -1480,8 +1504,9 @@ function profileHeadHtml(u, opts) {
         /* 别人主页原来没有任何返回键，进了就只能靠浏览器后退 —— App 里更没处点。
            浮在封面左上角，压在图上的白胶囊，不跟主题走（封面图本身不随主题变）。 */
         (opts.back
-          ? '<a class="cover-back" href="' + esc(state.userFrom || '#/') + '" title="返回" aria-label="返回">' +
-            icon('back') + '</a>'
+          ? '<button type="button" class="cover-back" data-action="back-page" data-fallback="' +
+            esc(state.userFrom || '#/') + '" title="返回" aria-label="返回">' +
+            icon('back') + '</button>'
           : '') +
         (opts.coverAct || '') +
       '</div>' +
@@ -1613,7 +1638,8 @@ function viewPost() {
   const p = state.data.post;
   if (!p) return '<div class="card empty">加载中…</div>';
   return '<div class="card page-head" style="padding:14px 20px">' +
-      '<a class="btn-ghost" href="' + esc(state.postFrom || '#/') + '">' + icon('back') + '返回</a>' +
+      '<button type="button" class="btn-ghost" data-action="back-page" data-fallback="' +
+        esc(state.postFrom || '#/') + '">' + icon('back') + '返回</button>' +
       '<div class="sub">帖子详情</div>' +
     '</div>' +
     // 入口放在帖子前面：详情页默认展开评论，放下面会被一长串评论推到看不见的地方
@@ -3468,7 +3494,6 @@ function privacyCardHtml() {
   const me = state.me || {};
   const n = state.data.followReqCount || 0;
   return '<div class="card edit-card" id="pv-card">' +
-    '<h3>' + icon('lock') + '隐私</h3>' +
     '<div class="sw-row">' +
       '<div class="sw-txt">' +
         '<b>私密账号</b>' +
@@ -3486,110 +3511,179 @@ function privacyCardHtml() {
   '</div>';
 }
 
+/* ---------------- 编辑资料 ----------------
+   2.40：从「七张卡片直接铺在页面上」改成「一屏功能列表 + 点进去改一项」。
+   用户原话：「应该改成像显示一整个功能列表，然后用户再根据选择打开对应的功能」。
+   列表右侧直接给当前值（头像缩略图 / 框名 / 昵称 / 已设置…），
+   不用点进去才知道现在是什么。子页只有一个主题，也没有理由再折叠。 */
+
+const EDIT_ITEMS = {
+  avatar:   ['头像', 'user', '换一张'],
+  frame:    ['头像框', 'star', '给头像加个框'],
+  profile:  ['昵称和简介', 'pencil', '别人看到的样子'],
+  cover:    ['主页封面', 'image', '主页最上面那张图'],
+  privacy:  ['隐私', 'users', '私密账号与关注申请'],
+  password: ['修改密码', 'lock', '换一个登录口令'],
+  reviewer: ['成为审核员', 'medal', '帮忙把关社区内容']
+};
+
+/* 只认站内上传的封面地址，别的一律当没设置（和主页那边同一套判断） */
+function coverSrc() {
+  const c = String((state.me && state.me.cover) || '');
+  return /^\/uploads\/[A-Za-z0-9._-]+$/.test(c) ? c : '';
+}
+
+function editMenuRow(key, value, thumb) {
+  const it = EDIT_ITEMS[key];
+  return '<a class="em-row" href="#/edit/' + key + '">' +
+    '<span class="em-ico">' + icon(it[1]) + '</span>' +
+    '<span class="em-txt"><b>' + it[0] + '</b><span>' + it[2] + '</span></span>' +
+    (thumb ? '<span class="em-thumb">' + thumb + '</span>' : '') +
+    (value ? '<span class="em-val">' + value + '</span>' : '') +
+    icon('chev') +
+  '</a>';
+}
+
+function viewEditMenu() {
+  const me = state.me;
+  const app = state.data.myApp;
+  const rev = me.role !== 'user' ? ''
+    : (app ? (app.status === 'pending' ? '审核中' : '未通过') : '未申请');
+  return '<div class="card page-head" style="padding:14px 20px">' +
+      '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a><div class="sub">编辑资料</div></div>' +
+    '<div class="card edit-card edit-menu">' +
+      '<h3>' + icon('user') + '资料</h3>' +
+      editMenuRow('avatar', '', avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar }, 38)) +
+      editMenuRow('frame', esc(frameLabel(state.editFrame))) +
+      editMenuRow('profile', esc(me.nickname)) +
+      editMenuRow('cover', coverSrc() ? '已设置' : '默认插画') +
+    '</div>' +
+    '<div class="card edit-card edit-menu">' +
+      '<h3>' + icon('lock') + '账号</h3>' +
+      editMenuRow('privacy', me.private ? '私密' : '公开') +
+      editMenuRow('password', '') +
+      (rev ? editMenuRow('reviewer', rev) : '') +
+    '</div>' +
+    (isAdmin()
+      ? '<div class="card edit-card edit-menu">' +
+        '<h3>' + icon('shield') + '管理</h3>' +
+        '<a class="em-row" href="/ops" target="_blank" rel="noopener">' +
+          '<span class="em-ico">' + icon('shield') + '</span>' +
+          '<span class="em-txt"><b>安全控制台</b><span>看谁在爬站、一键封 IP</span></span>' +
+          icon('chev') + '</a>' +
+        '</div>'
+      : '');
+}
+
+function editSubHead(title) {
+  return '<div class="card page-head" style="padding:14px 20px">' +
+    '<a class="btn-ghost" href="#/edit">' + icon('back') + '返回</a>' +
+    '<div class="sub">' + title + '</div></div>';
+}
+
+function avatarCardHtml() {
+  const me = state.me;
+  const avChoices = ['/assets/av-onigiri.webp', '/assets/av-tomato.webp', '/assets/av-egg.webp', '/assets/av-ramen.webp'];
+  const avRow = avChoices.map((x) =>
+    '<button class="av-opt' + (state.editAvatar === x ? ' on' : '') + '" data-action="pick-avatar" data-av="' + x + '">' +
+    '<img src="' + x + '" alt=""></button>').join('');
+  return '<div class="card edit-card">' +
+    '<div class="edit-avatar-row">' +
+      '<div class="edit-avatar">' + avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: state.editFrame }, 72) + '</div>' +
+      '<div class="av-picks">' + avRow +
+        '<label class="av-opt upload"><input type="file" id="avatar-input" accept="image/*" hidden>＋<span>上传</span></label>' +
+      '</div>' +
+    '</div>' +
+    '<p class="av-tip">' + icon('check') + ' 点一下立即保存，不用再点保存按钮</p>' +
+  '</div>';
+}
+
+/* 子页只有「挑框」一件事，不再折叠：进来就是网格 */
+function frameCardHtml() {
+  const me = state.me;
+  return '<div class="card edit-card">' +
+    '<p class="edit-hint">当前：<b id="fr-name">' + esc(frameLabel(state.editFrame)) + '</b>。' +
+      '点一款立即换上，帖子和私信里都会显示。</p>' +
+    '<div class="frame-opts">' +
+      FRAMES.map(([k, label]) => k === ''
+        ? '<button class="frame-opt none' + (state.editFrame === '' ? ' on' : '') +
+          '" data-action="pick-frame" data-frame="" title="' + label + '"><span class="frame-none">无</span></button>'
+        : '<button class="frame-opt' + (state.editFrame === k ? ' on' : '') +
+          '" data-action="pick-frame" data-frame="' + k + '" title="' + label + '">' +
+          avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: k }, 40) +
+          '</button>').join('') +
+    '</div>' +
+  '</div>';
+}
+
+function profileCardHtml() {
+  const me = state.me;
+  return '<div class="card edit-card">' +
+    '<div class="field"><label>昵称</label><input id="edit-nickname" value="' + esc(me.nickname) + '" maxlength="24"></div>' +
+    '<div class="field"><label>简介</label><textarea id="edit-bio" maxlength="160" placeholder="介绍一下你的拿手菜…">' + esc(me.bio || '') + '</textarea></div>' +
+    '<button class="btn-primary" data-action="save-profile">保存</button>' +
+  '</div>';
+}
+
+function coverCardHtml() {
+  const cover = coverSrc();
+  return '<div class="card edit-card">' +
+    '<p class="edit-hint">选一张图铺在主页最上面。不设就用默认的那幅插画。</p>' +
+    '<div class="profile-cover edit-cover' + (cover ? ' has-img' : '') + '"' +
+      (cover ? " style=\"background-image:url('" + cover + "')\"" : '') + '>' +
+      '<div class="cover-act">' +
+        '<button class="cover-btn" data-action="cover-pick">' + icon('image') + (cover ? '换封面' : '设置封面') + '</button>' +
+        '<button class="cover-btn plain" data-action="cover-reset">恢复默认</button>' +
+      '</div>' +
+    '</div>' +
+    '<input type="file" id="cover-input" accept="image/*" hidden>' +
+  '</div>';
+}
+
+function passwordCardHtml() {
+  return '<div class="card edit-card">' +
+    '<div class="field"><label>原密码</label><input id="pw-old" type="password" autocomplete="current-password" placeholder="当前密码"></div>' +
+    '<div class="field"><label>新密码</label><input id="pw-new" type="password" autocomplete="new-password" placeholder="自己想一个，长度不限"></div>' +
+    '<div class="field"><label>再输一遍新密码</label><input id="pw-new2" type="password" autocomplete="new-password" placeholder="确认新密码，两次要一样"></div>' +
+    '<button class="btn-primary" data-action="change-password">更新密码</button>' +
+  '</div>';
+}
+
+function reviewerCardHtml() {
+  const me = state.me;
+  const app = state.data.myApp;
+  if (me.role !== 'user') {
+    return '<div class="card edit-card"><p class="edit-hint">你已经是' +
+      (me.role === 'admin' ? '管理员' : '审核员') + '，不需要再申请。</p></div>';
+  }
+  const form = '<textarea id="apply-reason" placeholder="简单说说你为什么想当审核员（可选）" maxlength="200"></textarea>' +
+    '<button class="btn-primary" data-action="apply-reviewer">' + (app ? '重新提交申请' : '提交申请') + '</button>';
+  if (app && app.status === 'pending') {
+    return '<div class="card edit-card">' +
+      '<p class="edit-hint">你的申请正在等待管理员审批，结果会通过消息通知你。</p>' +
+      (app.reason ? '<div class="app-reason">申请理由：' + esc(app.reason) + '</div>' : '') +
+      '<div style="margin-top:10px">' + statusBadge('pending') + '</div></div>';
+  }
+  return '<div class="card edit-card">' +
+    '<p class="edit-hint">审核员负责把关社区内容。' +
+      (app ? '上次申请未通过，可以再提交一次。' : '提交后由管理员审批，结果会通过消息通知你。') + '</p>' +
+    form + '</div>';
+}
+
 function viewEdit() {
   const me = state.me;
   if (!me) return '';
-  const app = state.data.myApp;
-  let appBlock = '';
-  if (me.role === 'user') {
-    if (!app) {
-      appBlock = '<div class="card edit-card"><h3>' + icon('medal') + '成为审核员</h3>' +
-        '<p class="edit-hint">审核员负责把关社区内容。提交后由管理员审批，审批结果会通过消息通知你。</p>' +
-        '<textarea id="apply-reason" placeholder="简单说说你为什么想当审核员（可选）" maxlength="200"></textarea>' +
-        '<button class="btn-primary" data-action="apply-reviewer">提交申请</button></div>';
-    } else if (app.status === 'pending') {
-      appBlock = '<div class="card edit-card"><h3>' + icon('medal') + '成为审核员</h3>' +
-        '<p class="edit-hint">你的申请正在等待管理员审批。</p>' +
-        (app.reason ? '<div class="app-reason">申请理由：' + esc(app.reason) + '</div>' : '') +
-        '<div style="margin-top:10px">' + statusBadge('pending') + '</div></div>';
-    } else {
-      appBlock = '<div class="card edit-card"><h3>' + icon('medal') + '成为审核员</h3>' +
-        '<p class="edit-hint">上次申请未通过，可以再次提交。</p>' +
-        '<textarea id="apply-reason" placeholder="简单说说你为什么想当审核员（可选）" maxlength="200"></textarea>' +
-        '<button class="btn-primary" data-action="apply-reviewer">重新提交申请</button></div>';
-    }
-  }
-
-  const avChoices = ['/assets/av-onigiri.webp', '/assets/av-tomato.webp', '/assets/av-egg.webp', '/assets/av-ramen.webp'];
-  const avRow = avChoices.map((a) =>
-    '<button class="av-opt' + (state.editAvatar === a ? ' on' : '') + '" data-action="pick-avatar" data-av="' + a + '">' +
-    '<img src="' + a + '" alt=""></button>').join('');
-
-  // 封面设置搬到编辑资料里了：主页上不再挂「换封面 / 恢复默认」两个按钮，
-  // 免得压在自己那张图或默认插画上。这里给一块预览，改完立即看到效果。
-  const cover = /^\/uploads\/[A-Za-z0-9._-]+$/.test(String(me.cover || '')) ? me.cover : '';
-
-  // 头像框清单在文件上方的 FRAMES（paintFrameUi 也要用它的中文名，不能是局部变量）
-  const frameRow = '<div class="frame-opts">' +
-    FRAMES.map(([k, label]) => k === ''
-      ? '<button class="frame-opt none' + (state.editFrame === '' ? ' on' : '') +
-        '" data-action="pick-frame" data-frame="" title="' + label + '"><span class="frame-none">无</span></button>'
-      : '<button class="frame-opt' + (state.editFrame === k ? ' on' : '') +
-        '" data-action="pick-frame" data-frame="' + k + '" title="' + label + '">' +
-        avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: k }, 40) +
-        '</button>').join('') +
-    '</div>';
-
-  /* 一张卡只干一件事。
-     以前头像、4 个预设、18 个头像框、昵称、简介、保存按钮全挤在「基本信息」一张卡里，
-     100px 的头像框铺在昵称上面，整页看不出层次 —— 那才叫「乱七八糟」。
-     现在拆成「头像」「头像框」「资料」三张卡，头像框默认收起，只留一行「当前：xx」。 */
-  return '<div class="card page-head" style="padding:14px 20px">' +
-      '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a><div class="sub">编辑资料</div></div>' +
-    '<div class="card edit-card">' +
-      '<h3>' + icon('user') + '头像</h3>' +
-      '<div class="edit-avatar-row">' +
-        '<div class="edit-avatar">' + avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: state.editFrame }, 72) + '</div>' +
-        '<div class="av-picks">' + avRow +
-          '<label class="av-opt upload"><input type="file" id="avatar-input" accept="image/*" hidden>＋<span>上传</span></label>' +
-        '</div>' +
-      '</div>' +
-      '<p class="av-tip">' + icon('check') + ' 点一下立即保存，不用再点保存按钮</p>' +
-    '</div>' +
-    '<div class="card edit-card">' +
-      '<h3>' + icon('star') + '头像框</h3>' +
-      '<button class="fr-bar" data-action="frame-toggle" aria-expanded="false" aria-controls="frame-wrap">' +
-        '<span class="fr-now">当前：<b id="fr-name">' + esc(frameLabel(state.editFrame)) + '</b></span>' +
-        '<span class="fr-act"><i class="fr-act-t">更换</i>' + icon('chev') + '</span>' +
-      '</button>' +
-      '<div class="frame-wrap" id="frame-wrap" hidden>' + frameRow +
-        '<p class="edit-hint fr-hint">' + icon('check') + ' 点一下立即生效，帖子和私信里都会显示</p>' +
-      '</div>' +
-    '</div>' +
-    '<div class="card edit-card">' +
-      '<h3>' + icon('pencil') + '资料</h3>' +
-      '<div class="field"><label>昵称</label><input id="edit-nickname" value="' + esc(me.nickname) + '" maxlength="24"></div>' +
-      '<div class="field"><label>简介</label><textarea id="edit-bio" maxlength="160" placeholder="介绍一下你的拿手菜…">' + esc(me.bio || '') + '</textarea></div>' +
-      '<button class="btn-primary" data-action="save-profile">保存资料</button>' +
-    '</div>' +
-    '<div class="card edit-card">' +
-      '<h3>' + icon('image') + '主页封面</h3>' +
-      '<p class="edit-hint">选一张图铺在你主页的最上面。不设就用默认的那幅插画。</p>' +
-      '<div class="profile-cover edit-cover' + (cover ? ' has-img' : '') + '"' +
-        (cover ? " style=\"background-image:url('" + cover + "')\"" : '') + '>' +
-        '<div class="cover-act">' +
-          '<button class="cover-btn" data-action="cover-pick">' + icon('image') + (cover ? '换封面' : '设置封面') + '</button>' +
-          '<button class="cover-btn plain" data-action="cover-reset">恢复默认</button>' +
-        '</div>' +
-      '</div>' +
-      '<input type="file" id="cover-input" accept="image/*" hidden>' +
-    '</div>' +
-    privacyCardHtml() +
-    '<div class="card edit-card">' +
-      '<h3>' + icon('lock') + '修改密码</h3>' +
-      '<div class="field"><label>原密码</label><input id="pw-old" type="password" autocomplete="current-password" placeholder="当前密码"></div>' +
-      '<div class="field"><label>新密码</label><input id="pw-new" type="password" autocomplete="new-password" placeholder="自己想一个，长度不限"></div>' +
-      '<div class="field"><label>再输一遍新密码</label><input id="pw-new2" type="password" autocomplete="new-password" placeholder="确认新密码，两次要一样"></div>' +
-      '<button class="btn-primary" data-action="change-password">更新密码</button>' +
-    '</div>' +
-    (isAdmin()
-      ? '<div class="card edit-card"><h3>' + icon('shield') + '安全控制台</h3>' +
-        '<p style="margin:0 0 12px;font-size:12.5px;line-height:1.8;color:var(--ink-2)">' +
-          '看谁在爬这个站、谁在扫路径，发现异常可以一键封禁。只有管理员能打开。</p>' +
-        '<a class="btn-primary" href="/ops" target="_blank" rel="noopener">' +
-          icon('shield') + '打开安全控制台</a></div>'
-      : '') +
-    appBlock;
+  const sub = String(state.route.id || '');
+  if (!sub || !EDIT_ITEMS[sub]) return viewEditMenu();
+  let body = '';
+  if (sub === 'avatar') body = avatarCardHtml();
+  else if (sub === 'frame') body = frameCardHtml();
+  else if (sub === 'profile') body = profileCardHtml();
+  else if (sub === 'cover') body = coverCardHtml();
+  else if (sub === 'privacy') body = privacyCardHtml();
+  else if (sub === 'password') body = passwordCardHtml();
+  else body = reviewerCardHtml();
+  return editSubHead(EDIT_ITEMS[sub][0]) + body;
 }
 
 /* -------- 登录注册 -------- */
@@ -4524,7 +4618,7 @@ async function saveProfile() {
     const d = await api('/api/me', { method: 'PATCH', body: { nickname: nickname.trim(), bio: bio.trim(), avatar: state.editAvatar } });
     state.me = d.user;
     toast('资料已保存', 'ok', 'check');
-    go('#/mine');
+    go('#/edit');   // 回列表：一眼看到昵称已经更新
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -4561,22 +4655,6 @@ function paintAvatarUi() {
   });
 }
 
-/* 头像框展开/收起：只切 hidden 和一行文字，不整页 render。
-   18 个框默认铺在页面上太吵，收起时只留「当前：xx」。 */
-function setFrameOpen(open) {
-  const wrap = document.querySelector('#frame-wrap');
-  const bar = document.querySelector('.fr-bar');
-  if (!wrap || !bar) return;
-  wrap.hidden = !open;
-  bar.setAttribute('aria-expanded', open ? 'true' : 'false');
-  const t = bar.querySelector('.fr-act-t');
-  if (t) t.textContent = open ? '收起' : '更换';
-  if (open) {
-    /* 展开时把当前选中的框滚进视野（18 个框，第 17 个常在折叠线以下） */
-    const on = wrap.querySelector('.frame-opt.on');
-    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
-  }
-}
 
 /* 头像框也是选完即存：框只是装饰，不值得再让用户去找「保存资料」 */
 function paintFrameUi() {
@@ -4637,7 +4715,7 @@ async function applyReviewer() {
   try {
     await api('/api/me/apply-reviewer', { method: 'POST', body: { reason } });
     toast('申请已提交，等待管理员审批', 'ok', 'medal');
-    await router();
+    go('#/edit');   // 回列表，状态变成「审核中」
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -5109,19 +5187,16 @@ document.addEventListener('click', (e) => {
       saveAvatar(state.editAvatar);
       break;
     }
-    case 'frame-toggle': {
-      const wrap = document.querySelector('#frame-wrap');
-      if (wrap) setFrameOpen(wrap.hidden);
-      break;
-    }
     case 'pick-frame': {
       const f = el.getAttribute('data-frame') || '';
-      /* 点已经选中的那个也收起 —— 用户想再换会自己点开 */
-      if (f === (state.editFrame || '')) { setFrameOpen(false); break; }
+      if (f === (state.editFrame || '')) break;
       state.editFrame = f;
-      paintFrameUi();      // 只重画选择态和预览：整页 render 会把用户填了一半的昵称/简介清掉
+      paintFrameUi();      // 只重画选择态和「当前：xx」：整页 render 会多闪一次
       saveFrame(f);
-      setFrameOpen(false); // 选完就收起，页面回到一行「当前：xx」
+      break;
+    }
+    case 'back-page': {
+      backPage(el.getAttribute('data-fallback') || '#/');
       break;
     }
     case 'review-mode': {

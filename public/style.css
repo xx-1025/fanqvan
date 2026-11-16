@@ -1498,6 +1498,11 @@ img { display: block; }
   -webkit-tap-highlight-color: transparent;
 }
 .cover-back:hover { background: #fff; }
+/* 返回键是 <button>：字体和手型光标不会自动继承，补上；
+   圆按钮还要清掉 button 默认的内边距，否则 36px 会被撑大。 */
+button.cover-back, button.btn-ghost { font-family: inherit; cursor: pointer; }
+button.cover-back { padding: 0; }
+
 .cover-back svg { width: 18px; height: 18px; }
 @media (max-width: 760px) {
   .cover-back { left: 10px; top: 10px; width: 34px; height: 34px; }
@@ -2343,6 +2348,34 @@ html.modal-open, body.modal-open { overflow: hidden; }
 
 .edit-card { padding: 20px 22px 22px; }
 .edit-card + .edit-card { margin-top: 16px; }
+/* 编辑资料的入口列表（2.40）：一行一个功能，右边直接显示当前值，
+   点进去才是那个功能的单独子页。取代之前七张卡片一路铺到底的排版。 */
+.edit-menu { padding: 14px 0 6px; }
+.edit-menu h3 { padding: 0 22px; margin-bottom: 4px; }
+.em-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 22px;
+  border-top: 1px solid var(--line);
+  color: inherit; text-decoration: none;
+  transition: background .12s;
+}
+.em-row:hover { background: var(--cream); }
+.em-ico {
+  width: 32px; height: 32px; border-radius: 9px; flex: none;
+  display: grid; place-items: center;
+  background: var(--cream); color: var(--ink-2);
+}
+.em-ico svg { width: 17px; height: 17px; }
+.em-txt { flex: 1; min-width: 0; }
+.em-txt b { display: block; font-size: 13.5px; font-weight: 800; color: var(--ink); }
+.em-txt span { display: block; margin-top: 1px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.em-val {
+  flex: none; max-width: 40%; font-size: 12.5px; font-weight: 600; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.em-thumb { flex: none; width: 38px; height: 38px; display: grid; place-items: center; }
+.em-row > svg { width: 14px; height: 14px; color: var(--ink-4); flex: none; }
+
 
 .edit-card h3 {
   margin: 0 0 16px;
@@ -4121,32 +4154,12 @@ a:hover { color: var(--brand-2); }
   .edit-cover .cover-act { left: 10px; right: auto; }
 }
 
-/* ---------- 编辑资料里的头像框 ----------
-   18 个框默认收起，只留一行「当前：xx · 更换」。以前它们和头像、昵称、保存按钮
-   一起挤在「基本信息」里，4 行 100px 的图铺在表单上方，整页看着没有层次。
-   展开后桌面 6 列 3 行，手机 4 列 5 行。
-   格子尺寸是被框撑出来的：最大的框 2.48 倍，头像 40 → 99px，所以桌面给 100。
-   手机不压格子（压了框就被裁），改成把格内头像降到 30（框 74），76 的格子正好放下。 */
-.fr-bar {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  width: 100%; height: 44px; padding: 0 14px;
-  border: var(--bw) solid var(--line); border-radius: var(--r-sm);
-  background: var(--cream); color: var(--ink-2);
-  font: inherit; font-size: 13.5px; font-weight: 800;
-  cursor: pointer; text-align: left;
-}
-.fr-bar:hover { background: var(--yellow); }
-.fr-bar .fr-now { font-weight: 600; color: var(--ink-3); }
-.fr-bar .fr-now b { color: var(--ink); font-weight: 800; margin-left: 2px; }
-.fr-act { display: flex; align-items: center; gap: 3px; flex: none; color: var(--brand-2); font-weight: 800; font-size: 12.5px; }
-.fr-act i { font-style: normal; }
-.fr-act svg { width: 14px; height: 14px; transition: transform .16s; }
-.fr-bar[aria-expanded="true"] .fr-act svg { transform: rotate(90deg); }
-.frame-wrap { padding-top: 14px; }
-.frame-wrap[hidden] { display: none; }
-.fr-hint { display: flex; align-items: center; gap: 5px; margin: 10px 0 0; }
-.fr-hint svg { width: 13px; height: 13px; color: var(--ink-4); flex: none; }
-
+/* ---------- 编辑资料「头像框」子页 ----------
+   18 个框排成网格。格子尺寸是被框撑出来的：最大的框 2.48 倍，
+   头像 40 → 99px，所以桌面给 100。手机不压格子（压了框就被裁），
+   改成把格内头像降到 30（框 74），76 的格子正好放下。
+   （2.39 曾经把这堆折叠成一行摘要，2.40 改成一屏列表 + 子页，
+   进来就是「挑框」这一件事，没必要再折一层。） */
 .frame-opts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px 0; width: 100%; }
 .frame-opt {
   width: 100px; height: 100px; padding: 0; margin: 0 auto;
@@ -4169,7 +4182,13 @@ a:hover { color: var(--brand-2); }
   border: 1px dashed var(--ink-4); color: var(--ink-3);
   font-size: 12.5px; display: grid; place-items: center;
 }
-.frame-opt.on .frame-none { border-style: solid; border-color: var(--brand); color: var(--brand); }
+/* 「不戴」那格只有 30px 的小圈，选中环不能画在 76px 的格子上（会变成一个巨大的橘圈）：
+   环画到圈自己身上 */
+.frame-opt.none.on { box-shadow: none; }
+.frame-opt.on .frame-none {
+  border: 2px solid var(--brand); color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
 
 @media (max-width: 760px) {
   .frame-opts { grid-template-columns: repeat(4, 1fr); gap: 8px 0; }
