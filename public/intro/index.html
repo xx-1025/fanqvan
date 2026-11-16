@@ -654,7 +654,7 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
 }
 
 /* ---------- 怎么活下去 ---------- */
-.biz{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch;}
+.biz{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;align-items:stretch;}
 .biz-card{
   display:flex;flex-direction:column;
   padding:20px 18px;background:var(--paper);
@@ -1147,12 +1147,12 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
   <div class="sec-head reveal">
     <span class="kicker">📌 什么会被驳回</span>
     <h2>规矩写在明面上</h2>
-    <p>审核不靠某个人的口味。下面四类直接驳回，理由会回给你；不在这四类里的，都放行。</p>
+    <p>审核不靠某个人的口味。下面四类会被驳回，理由会回给你；不在这四类里的，都放行。</p>
   </div>
   <div class="rules">
     <div class="rule reveal">
       <div class="rule-no">1</div>
-      <div><b>广告和引流</b><span>微信号、二维码、店铺链接、私信拉人、评论区留联系方式。想推广就直说，别夹在菜谱里。</span></div>
+      <div><b>广告和引流</b><span>微信号、二维码、店铺链接、私信拉人、评论区留联系方式。想推广就直说，别夹在菜谱里——我们自己打广告也一样，会挂「官方」标签，一眼能认出来。</span></div>
     </div>
     <div class="rule reveal">
       <div class="rule-no">2</div>
@@ -1164,7 +1164,7 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
     </div>
     <div class="rule reveal">
       <div class="rule-no">4</div>
-      <div><b>危险做法</b><span>生食、生鸡蛋、半熟禽肉、野外采食野生菌这类可能吃出事的，不通过。这条没有商量余地。</span></div>
+      <div><b>把危险菜写成家常菜</b><span>生腌、生鸡蛋、半熟禽肉、野外采菌，一句风险提醒都不写、按日常菜谱教人做，不通过。写清楚了可以过审，但会挂提示、不参与评优（见下）。</span></div>
     </div>
   </div>
   <div class="rule-soft reveal">
@@ -1228,7 +1228,7 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       </dl>
     </div>
   </div>
-  <p class="cmp-slogan reveal">0 个广告位 · <i>100% 先审后发</i> · 0 条 AI 自创配方</p>
+  <p class="cmp-slogan reveal">0 个第三方广告位 · <i>100% 先审后发</i> · 0 条 AI 自创配方</p>
   <p class="cmp-note reveal">另外一句：站内内容不会被拿去训练模型，也不会卖给第三方。这条没有例外。</p>
 </section>
 
@@ -1237,7 +1237,7 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
   <div class="sec-head reveal">
     <span class="kicker">🪙 怎么活下去</span>
     <h2>不收钱，但也不能白烧</h2>
-    <p>现在零广告、零带货、没有付费墙。往后只走这三条，账摆在明面上。</p>
+    <p>现在站内没有第三方广告位、没有带货链接、没有付费墙。往后只走这四条，账摆在明面上。</p>
   </div>
   <div class="biz">
     <div class="biz-card reveal">
@@ -1246,9 +1246,14 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       <em>不锁功能</em>
     </div>
     <div class="biz-card reveal">
-      <b>和厨具、食材品牌做内容合作</b>
-      <span>联名专题、线下做饭局：品牌出场地和锅，我们出人和内容。不加广告位、不插信息流、不放带货链接。</span>
-      <em>不做硬广、不带货</em>
+      <b>只推自己的东西</b>
+      <span>要推广就推自营的：饭圈自己的门店、超市、限定周边，发出来挂「官方」标签，说清楚是谁在卖。不接第三方广告位、不插别人的带货链接——收别人的钱替他说话，这事不做。</span>
+      <em>只推自营，标明官方</em>
+    </div>
+    <div class="biz-card reveal">
+      <b>把好作者雇成自己人</b>
+      <span>看到谁的菜真做得像样，就签成合作厨师：给报酬，他的菜可以进官方专题、上线下门店和超市的物料。作品还是他的——商用要单独授权、单独付钱，不是发了帖就默认同意；合作内容挂「合作」标签，不混进普通分享。</span>
+      <em>署名归作者，授权另签</em>
     </div>
     <div class="biz-card reveal">
       <b>给社团、小组做私有版</b>
@@ -1257,8 +1262,11 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
     </div>
   </div>
   <div class="cost-note reveal">
-    <b>成本实话：</b>现在就是一台小服务器加模型调用费，一个月几十块的量级，我一个人撑得住，所以才敢说不靠广告。
-    这三条一条都还没开始；真开始的时候，站内依旧不会出现广告位——这句话写在这儿，方便以后拿来对。
+    <b>成本实话：</b>现在就是一台小服务器加模型调用费，一个月几十块的量级，我一个人撑得住，所以才敢说不靠第三方广告。
+    这四条一条都还没开始；真开始的时候，站内依旧不会出现第三方广告位——这句话写在这儿，方便以后拿来对。
+    还有一条也写死：<b>给不给钱，不影响审核和评优</b>，花钱买不到「优秀饭帖」。
+    「官方 / 合作」标签和作品的商用授权流程，站内<b>都还没做</b>；真去谈合作之前得先做出来，
+    否则官方推广和普通用户的真实分享就分不开了。
   </div>
 </section>
 
