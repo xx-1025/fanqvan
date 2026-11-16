@@ -1844,7 +1844,8 @@ function actCardHtml(a) {
         '<div class="act-foot">' +
           '<span class="act-num">' + fmtCnt(a.signupCount) + ' 人想参加' +
             (a.capacity ? ' · 限 ' + a.capacity + ' 人' : '') + '</span>' +
-          actJoinBtn(a) +
+          // 列表卡片只用来浏览、进详情；报名/退出必须进详情页自己点，卡片上不放报名按钮
+          (a.joined ? '<span class="act-joined">' + icon('check') + ' 已报名</span>' : '') +
         '</div>' +
       '</div></div>';
 }

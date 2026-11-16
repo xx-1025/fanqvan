@@ -4467,6 +4467,13 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
   gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 8px;
 }
 .act-num { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+/* 列表卡片上只是个状态提示（不可点），报名/退出统一到详情页底部自己点 */
+.act-joined {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 800; color: var(--brand);
+}
+.act-joined .ic { font-size: 13px; }
 .act-btn {
   flex: none; height: 30px; padding: 0 14px; border-radius: var(--pill);
   border: 1px solid var(--brand); background: var(--brand); color: #fff;
@@ -4474,9 +4481,6 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
   display: inline-flex; align-items: center; gap: 4px;
   cursor: pointer; transition: .12s;
 }
-/* 只在列表卡片里把按钮顶到右边：换行时也不会左对齐，视觉一致。
-   详情页底部是一个居中的大按钮，不能带这条 */
-.act-card .act-btn { margin-left: auto; }
 .act-btn:hover { background: var(--brand-2); border-color: var(--brand-2); }
 .act-btn.on { background: var(--paper); color: var(--brand-2); border-color: var(--brand); }
 .act-btn.off {
