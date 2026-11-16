@@ -1974,6 +1974,85 @@ img { display: block; }
 .btn-follow:active { transform: none; box-shadow: none; }
 .btn-follow.on { background: var(--paper); color: var(--ink-2); }
 .btn-follow.on:hover { background: var(--red-soft); color: var(--red); border-color: var(--red); }
+/* 私密账号：还没批准时的两种状态。做成虚线/浅底，跟「已关注」的实心区分开，
+   免得用户以为已经关注成功（点下去其实只是提交了申请） */
+.btn-follow.req { background: var(--paper); color: var(--brand-2); border-color: var(--brand); }
+.btn-follow.pending {
+  background: var(--paper); color: var(--ink-3);
+  border-style: dashed; border-color: var(--line);
+  box-shadow: none;
+}
+.btn-follow.pending:hover { background: var(--red-soft); color: var(--red); border-color: var(--red); }
+.btn-primary.btn-sm { height: 32px; padding: 0 14px; font-size: 12.5px; flex: none; }
+
+/* ---------- 私密账号（2.38） ---------- */
+/* 昵称后面的小标签：一眼看出「这个号不是谁都能看」 */
+.pv-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin-left: 7px; padding: 2px 8px;
+  border-radius: var(--pill);
+  background: var(--cream); border: 1px solid var(--line);
+  font-size: 11px; font-weight: 900; color: var(--ink-2);
+  vertical-align: middle; letter-spacing: 0;
+}
+.pv-tag .ic { font-size: 12px; color: var(--brand-2); }
+
+/* 非粉丝进私密号主页看到的那块：不是「没有作品」，是「你还看不到」 */
+.pv-locked { padding: 40px 24px; line-height: 1.9; }
+.pv-locked .ic { width: 34px; height: 34px; color: var(--ink-3); margin-bottom: 10px; }
+.pv-locked b { font-size: 15px; color: var(--ink); }
+
+/* 编辑资料里的开关行 */
+.sw-row { display: flex; align-items: flex-start; gap: 16px; }
+.sw-txt { min-width: 0; flex: 1; }
+.sw-txt b { display: block; font-size: 14.5px; margin-bottom: 4px; }
+.sw-txt .edit-hint { margin: 0; }
+.sw-switch { position: relative; flex: 0 0 auto; width: 46px; height: 26px; margin-top: 3px; }
+.sw-switch input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  margin: 0; opacity: 0; cursor: pointer; z-index: 2;
+}
+.sw-switch i {
+  position: absolute; inset: 0; border-radius: 99px;
+  background: var(--line-2); border: 2px solid var(--line);
+  transition: background .16s, border-color .16s;
+  pointer-events: none;
+}
+.sw-switch i::after {
+  content: ""; position: absolute; left: 2px; top: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+  transition: transform .16s;
+}
+.sw-switch input:checked + i { background: var(--brand); border-color: var(--brand); }
+.sw-switch input:checked + i::after { transform: translateX(20px); }
+.sw-switch input:focus-visible + i { outline: 2px solid var(--brand-2); outline-offset: 2px; }
+
+/* 「关注申请 N 条」入口 */
+.sw-link {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 16px; padding: 11px 14px;
+  border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  font-size: 13.5px; font-weight: 800;
+}
+.sw-link:hover { background: var(--brand-soft); border-color: var(--brand); }
+.sw-link .ic { color: var(--brand); }
+.sw-link em {
+  margin-left: auto; font-style: normal;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: var(--pill); background: var(--red); color: #fff;
+  font-size: 11px; font-weight: 900; display: inline-grid; place-items: center;
+}
+.sw-link em.zero { background: var(--line-2); color: var(--ink-3); }
+
+/* 关注申请页顶部的说明条 */
+.fr-note {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; font-size: 12.5px; font-weight: 700; color: var(--ink-2);
+  line-height: 1.7;
+}
+.fr-note .ic { flex: none; color: var(--brand-2); }
 
 .badge-admin { background: var(--pink); color: var(--ink); }
 
@@ -4121,6 +4200,13 @@ html[data-theme="dark"] .note-item.unread:hover { background: rgba(255, 138, 61,
 /* 滚动条拇指是硬编码 #d9d9d9，深底上像一条白杠穿过面板 */
 html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3a3a46; }
 html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #4c4c5a; }
+/* 风险提示条（#fff6de 亮底 + 深棕字）在深色下是一块亮斑，改成低透明度的同色 */
+html[data-theme="dark"] .risk-note {
+  background: rgba(232, 185, 63, .12); border-color: rgba(232, 185, 63, .5); color: #e8c46a;
+}
+html[data-theme="dark"] .rv-risk:has(input:checked) {
+  background: rgba(232, 185, 63, .14); border-color: #8a6d20; color: var(--ink);
+}
 
 /* 系统深色（用户没手动选过时）：同一套规则换选择器，别再写两遍 */
 @media (prefers-color-scheme: dark) {
@@ -4189,6 +4275,12 @@ html:not([data-theme="light"]) .note-item.unread { background: rgba(255, 138, 61
 html:not([data-theme="light"]) .note-item.unread:hover { background: rgba(255, 138, 61, .17); }
 html:not([data-theme="light"]) ::-webkit-scrollbar-thumb { background: #3a3a46; }
 html:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover { background: #4c4c5a; }
+html:not([data-theme="light"]) .risk-note {
+  background: rgba(232, 185, 63, .12); border-color: rgba(232, 185, 63, .5); color: #e8c46a;
+}
+html:not([data-theme="light"]) .rv-risk:has(input:checked) {
+  background: rgba(232, 185, 63, .14); border-color: #8a6d20; color: var(--ink);
+}
 }
 
 /* =========================================================================
@@ -4317,6 +4409,13 @@ html:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover { background: #4c
 }
 .ptool:hover { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-2); }
 .ptool .ic { font-size: 16px; flex: none; color: var(--brand); }
+/* 待处理数量：挂在「关注申请」入口右上角 */
+.ptool-n {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: var(--pill); background: var(--red); color: #fff;
+  font-size: 10.5px; font-style: normal; font-weight: 900;
+  display: inline-grid; place-items: center;
+}
 
 /* 页面头多一个右侧按钮时（观帖记录的「清空」）：标题贴住返回键，按钮靠右 */
 .page-head.ph-act .sub { margin-right: auto; }
@@ -4645,6 +4744,9 @@ html:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover { background: #4c
   /* 手机端跟主页其它内容同一条左边线（28） */
   .profile-tools { padding: 0 28px 12px; }
   .ptool { flex: 1 1 0; height: 38px; font-size: 13px; gap: 6px; }
+  /* 私密账号多出一项「关注申请」，四个挤一行会把字压成省略号 —— 改成两行两列 */
+  .profile-tools.four { flex-wrap: wrap; }
+  .profile-tools.four .ptool { flex: 1 1 calc(50% - 5px); }
   /* 手机端卡片是通栏、无圆角的一整条，网格卡片留 10 的呼吸 + 小圆角 */
   .cv-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 12px; }
   .cv-card { border-radius: 12px; padding: 10px; box-shadow: none; }

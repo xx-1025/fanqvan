@@ -464,6 +464,9 @@ function migrate(d) {
     if (!Array.isArray(u.follows)) u.follows = [];
     if (typeof u.banned !== 'boolean') u.banned = false;
     if (!u.role) u.role = 'user';
+    // 私密账号（2.38）：被批准才看得见内容，别人关注要先申请
+    if (typeof u.private !== 'boolean') u.private = false;
+    if (!Array.isArray(u.followRequests)) u.followRequests = [];
     // 头像框：旧版渐变环的 key 换成新相框，未知值一律清空（别让前端拿到野 class）
     if (u.frame) {
       if (FRAME_LEGACY[u.frame]) u.frame = FRAME_LEGACY[u.frame];
@@ -856,9 +859,37 @@ function publicUser(u) {
     id: u.id, username: u.username, nickname: u.nickname,
     role: u.role, bio: u.bio, avatar: u.avatar, cover: u.cover || '', createdAt: u.createdAt,
     frame: u.frame || '',
+    private: !!u.private,
     followerCount: db.users.filter((x) => (x.follows || []).includes(u.id)).length,
     followingCount: (u.follows || []).length
   };
+}
+
+/* ============ 私密账号（跟抖音的「私密账号」一个意思） ============
+   - 打开开关后，作品只对「已批准的粉丝」、自己、审核员/管理员可见；
+   - 别人点关注不会直接成功，而是先提交申请，账号主人同意后才成为粉丝；
+   - 关闭时已有粉丝保留（抖音也是这样），不会把别人清出去。
+   注意「粉丝」在本站的存法：A 关注 B = A.follows 里含 B.id。
+   所以「viewer 是不是 owner 的粉丝」要看 viewer.follows，而不是反过来。
+   ============================================================== */
+function isFollowerOf(viewer, owner) {
+  if (!viewer || !owner) return false;
+  return (viewer.follows || []).includes(owner.id);
+}
+
+function canSeeUserPosts(viewer, owner) {
+  if (!owner) return true;
+  if (!owner.private) return true;
+  if (!viewer) return false;
+  if (viewer.id === owner.id) return true;
+  if (rankOf(viewer) >= 1) return true;      // 审核员/管理员照常看，否则没法审
+  return isFollowerOf(viewer, owner);
+}
+
+/** 列表里逐条判断；umap 是可选的 id→用户索引，避免每条都 find 一遍 */
+function canSeePost(viewer, p, umap) {
+  const owner = umap ? umap.get(p.authorId) : db.users.find((u) => u.id === p.authorId);
+  return canSeeUserPosts(viewer, owner);
 }
 
 function briefUser(u) {
@@ -3006,7 +3037,11 @@ async function handleApi(req, res, pathname, query) {
 
   if (pathname === '/api/me' && method === 'GET') {
     if (!me) return json(res, 401, { error: '未登录' });
-    return json(res, 200, { user: publicUser(me), mustChangePw: !!me.mustChangePw });
+    return json(res, 200, {
+      user: publicUser(me),
+      mustChangePw: !!me.mustChangePw,
+      followRequests: (me.followRequests || []).length
+    });
   }
 
   /* ============ 我的资料 ============ */
@@ -3043,8 +3078,17 @@ async function handleApi(req, res, pathname, query) {
       }
       me.frame = f;
     }
+    // 私密账号开关。从私密切回公开时，还没处理的关注申请就没意义了，一并清掉；
+    // 已有的粉丝不清（别人已经通过你同意了，取消的是「以后新人要不要申请」）。
+    if (b.private !== undefined) {
+      const next = !!b.private;
+      if (next !== !!me.private) {
+        me.private = next;
+        if (!next) me.followRequests = [];
+      }
+    }
     saveDB();
-    return json(res, 200, { user: publicUser(me) });
+    return json(res, 200, { user: publicUser(me), followRequests: (me.followRequests || []).length });
   }
 
   if (pathname === '/api/me/password' && method === 'POST') {
@@ -3381,6 +3425,10 @@ async function handleApi(req, res, pathname, query) {
 
     let list = db.posts.slice();
 
+    // 私密账号的作品先过一遍：非粉丝、未登录一律拿不到（审核台和自己除外）
+    const umap = new Map(db.users.map((u) => [u.id, u]));
+    list = list.filter((p) => canSeePost(me, p, umap));
+
     if (scope === 'feed') {
       // 公开信息流：所有人看到的内容一致（仅已通过）
       // 额外把"自己还在审核中"的内容一并返回，带 pending 标记，
@@ -3455,6 +3503,9 @@ async function handleApi(req, res, pathname, query) {
     const visible = p.status === 'approved' ||
       (me && (me.id === p.authorId || rankOf(me) >= 1));
     if (!visible) return json(res, 403, { error: '这条内容还没有通过审核' });
+    if (!canSeePost(me, p)) {
+      return json(res, 403, { error: '这是私密账号的内容，对方同意关注后才能看' });
+    }
     return json(res, 200, { post: serializePost(p, me, { withReports: rankOf(me) >= 1 }) });
   }
 
@@ -4131,7 +4182,9 @@ async function handleApi(req, res, pathname, query) {
   /* ============ 热搜 / 标签 ============ */
 
   if (pathname === '/api/hot' && method === 'GET') {
-    const approved = db.posts.filter((p) => p.status === 'approved');
+    const umap = new Map(db.users.map((u) => [u.id, u]));
+    // 私密账号的作品不进热搜、不上厨师榜、也不进右栏「优秀饭帖」
+    const approved = db.posts.filter((p) => p.status === 'approved' && canSeePost(me, p, umap));
     const midnight = new Date();
     midnight.setHours(0, 0, 0, 0);
 
@@ -4194,7 +4247,7 @@ async function handleApi(req, res, pathname, query) {
     // 「优秀饭帖」：审核员/管理员人工评优的作品。不受热门时间窗口影响，
     // 最新评优的排前面，前端右栏直接拿来渲染。
     const featuredAll = db.posts
-      .filter((p) => p.featured && p.status === 'approved')
+      .filter((p) => p.featured && p.status === 'approved' && canSeePost(me, p, umap))
       .sort((a, b) => (b.featuredAt || 0) - (a.featuredAt || 0));
     const featured = featuredAll.slice(0, 8).map((p) => ({
       id: p.id,
@@ -4240,7 +4293,10 @@ async function handleApi(req, res, pathname, query) {
     const u = db.users.find((x) => x.id === Number(userMatch[1]));
     if (!u) return json(res, 404, { error: '用户不存在' });
     const isSelf = me && me.id === u.id;
-    const list = db.posts.filter((p) => p.authorId === u.id &&
+    // 私密账号：非粉丝进来只看到「这是私密账号」，作品一条都不返回 ——
+    // 不能只靠前端遮罩，那样接口照样能把内容拉走
+    const privateLocked = !!u.private && !isSelf && !canSeeUserPosts(me, u);
+    const list = privateLocked ? [] : db.posts.filter((p) => p.authorId === u.id &&
       (p.status === 'approved' || isSelf || (me && rankOf(me) >= 1)));
     list.sort((a, b) => b.createdAt - a.createdAt);
     const likes = db.posts
@@ -4266,6 +4322,11 @@ async function handleApi(req, res, pathname, query) {
       ? (u.follows || []).map((id) => db.users.find((x) => x.id === id))
           .filter(Boolean).map(relUser).slice(0, 100)
       : null;
+    // 关注申请只有本人看得到（跟粉丝名单一样，不在前端藏、而是压根不返回）
+    const followRequests = isSelf
+      ? (u.followRequests || []).map((id) => db.users.find((x) => x.id === id))
+          .filter(Boolean).map(relUser).slice(0, 100)
+      : null;
     return json(res, 200, {
       user: publicUser(u),
       posts: list.slice(0, 30).map((p) => serializePost(p, me)),
@@ -4275,6 +4336,9 @@ async function handleApi(req, res, pathname, query) {
       },
       followers,
       following,
+      followRequests,
+      followPending: me ? (u.followRequests || []).includes(me.id) : false,
+      privateLocked,
       isFollowing: me ? (me.follows || []).includes(u.id) : false,
       isSelf: !!isSelf
     });
@@ -4289,15 +4353,66 @@ async function handleApi(req, res, pathname, query) {
     if (u.id === me.id) return json(res, 400, { error: '不能关注自己' });
     me.follows = me.follows || [];
     const i = me.follows.indexOf(u.id);
-    if (i >= 0) me.follows.splice(i, 1);
-    else {
+    if (i >= 0) {
+      me.follows.splice(i, 1);
+      // 顺手把还挂着的申请撤掉：取关之后不该继续占着对方的申请队列
+      u.followRequests = (u.followRequests || []).filter((x) => x !== me.id);
+    } else if (u.private) {
+      // 私密账号不直接关注，先提交申请，等对方同意；再点一次 = 撤回申请
+      u.followRequests = u.followRequests || [];
+      const qi = u.followRequests.indexOf(me.id);
+      if (qi >= 0) {
+        u.followRequests.splice(qi, 1);
+        saveDB();
+        return json(res, 200, {
+          following: false,
+          pending: false,
+          followerCount: db.users.filter((x) => (x.follows || []).includes(u.id)).length
+        });
+      }
+      u.followRequests.push(me.id);
+      pushNote(u.id, 'follow_request', me.id);
+      saveDB();
+      return json(res, 200, {
+        following: false,
+        pending: true,
+        followerCount: db.users.filter((x) => (x.follows || []).includes(u.id)).length
+      });
+    } else {
       me.follows.push(u.id);
       pushNote(u.id, 'follow', me.id);
     }
     saveDB();
     return json(res, 200, {
       following: me.follows.includes(u.id),
+      pending: false,
       followerCount: db.users.filter((x) => (x.follows || []).includes(u.id)).length
+    });
+  }
+
+  /* 关注申请：同意 / 拒绝。同意 = 把「我」写进对方的关注列表（本站粉丝就是这么存的），
+     对方下次打开就会看到「已关注」，权限也随之打开。 */
+  const frMatch = /^\/api\/me\/follow-requests\/(\d+)\/(approve|reject)$/.exec(pathname);
+  if (frMatch && method === 'POST') {
+    if (!me) return json(res, 401, { error: '请先登录' });
+    const uid = Number(frMatch[1]);
+    const action = frMatch[2];
+    me.followRequests = (me.followRequests || []).filter((x) => x !== uid);
+    const applicant = db.users.find((x) => x.id === uid);
+    if (applicant) {
+      if (action === 'approve') {
+        applicant.follows = applicant.follows || [];
+        if (!applicant.follows.includes(me.id)) applicant.follows.push(me.id);
+        pushNote(applicant.id, 'follow_accept', me.id);
+      } else {
+        pushNote(applicant.id, 'follow_reject', me.id);
+      }
+    }
+    saveDB();
+    return json(res, 200, {
+      ok: true,
+      approved: action === 'approve',
+      followCount: (me.followRequests || []).length
     });
   }
 

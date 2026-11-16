@@ -641,6 +641,8 @@ async function router() {
           state.data.favs = d.posts || [];
           state.data.favTotal = d.total || 0;
         }));
+        // 主页「关注申请」入口上的数字（私密账号才显示入口）
+        jobs.push(api('/api/me').then((d) => { state.data.followReqCount = d.followRequests || 0; }));
       }
       if (r.name === 'user') {
         jobs.push(api('/api/users/' + encodeURIComponent(r.id)).then((d) => { state.data.profile = d; }));
@@ -666,6 +668,9 @@ async function router() {
       countView(d.post);
     } else if (r.name === 'history') {
       await loadHistory(false);
+    } else if (r.name === 'requests') {
+      if (!state.me) { state.loading = false; go('#/login'); return; }
+      await loadFollowReqs();
     } else if (r.name === 'activity') {
       // #/activity 是列表，#/activity/12 是详情；id 不是数字就当列表，别去请求一个奇怪的地址
       if (r.id && /^\d+$/.test(r.id)) {
@@ -682,6 +687,11 @@ async function router() {
       if (!state.me) { state.loading = false; go('#/login'); return; }
       state.editAvatar = state.me.avatar || '';
       state.editFrame = state.me.frame || '';
+      // 隐私卡片上「关注申请」的待处理数字
+      try {
+        const dm = await api('/api/me');
+        state.data.followReqCount = dm.followRequests || 0;
+      } catch (e) { /* ignore */ }
       // 拉取最近一次审核员申请，决定显示「提交申请 / 等待审批 / 重新申请」
       state.data.myApp = null;
       if (state.me.role === 'user') {
@@ -730,13 +740,16 @@ function noteItemHtml(n) {
     apply: '提交了审核员申请', applyResult: '你的审核员申请有结果了',
     moderation: '有需要你处理的内容',
     feature: '把你的作品选进了「优秀饭帖」',
-    activity: '发布了新活动', activity_join: '报名了你的活动'
+    activity: '发布了新活动', activity_join: '报名了你的活动',
+    follow_request: '申请关注你', follow_accept: '通过了你的关注申请',
+    follow_reject: '拒绝了你的关注申请'
   }[n.type] || '有新消息';
   const ico = icon({
     like: 'heart-fill', comment: 'chat', follow: 'users', mention: 'at',
     approve: 'check', reject: 'ban', report: 'inbox', apply: 'clipboard',
     applyResult: 'medal', moderation: 'shield', feature: 'medal-fill',
-    activity: 'calendar', activity_join: 'calendar'
+    activity: 'calendar', activity_join: 'calendar',
+    follow_request: 'users', follow_accept: 'check', follow_reject: 'ban'
   }[n.type] || 'bell');
   // 活动类通知优先跳活动：点「报名了你的活动」却落在个人主页，等于没跳
   const href = n.activityId ? '#/activity/' + n.activityId
@@ -1437,6 +1450,19 @@ function photoGrid(posts) {
 
 // 主页那块「封面 + 头像 + 名字 + 简介 + 数字 + 页签」由本人和他人两页共用，
 // 只有按钮和部分数字的可见性不同，所以拼一份，避免两处各写一遍又慢慢长歪。
+/* 关注按钮的三种状态：已关注 / 已申请（私密号，等对方同意）/ 可关注
+   —— 私密号上写「+ 关注」会骗人：点下去并不会立刻关注成功，所以单独一个「申请关注」 */
+function followBtnHtml(u, d, extraCls) {
+  const pending = !!d.followPending;
+  const on = !!d.isFollowing;
+  let label = '+ 关注', cls = '';
+  if (on) { label = '已关注'; cls = ' on'; }
+  else if (pending) { label = '已申请'; cls = ' pending'; }
+  else if (u.private) { label = '申请关注'; cls = ' req'; }
+  return '<button class="btn-follow' + cls + (extraCls ? ' ' + extraCls : '') +
+    '" data-action="follow" data-id="' + u.id + '">' + label + '</button>';
+}
+
 function profileHeadHtml(u, opts) {
   opts = opts || {};
   const want = state.profileTab;
@@ -1455,7 +1481,9 @@ function profileHeadHtml(u, opts) {
         '<div class="profile-id">' + avatarHtml(u, 0) +
           '<div class="profile-name">' +
             // 昵称单独一层 .pn：h2 改 flex 后省略号要挂在文字上，徽标才不会被一起裁掉
-            '<h2><span class="pn">' + esc(u.nickname) + '</span>' + roleBadge(u) + '</h2>' +
+            '<h2><span class="pn">' + esc(u.nickname) + '</span>' + roleBadge(u) +
+              (u.private ? '<span class="pv-tag" title="私密账号：只有批准的粉丝能看到作品">' +
+                icon('lock') + '私密</span>' : '') + '</h2>' +
             '<p>@' + esc(u.username) + '</p>' +
           '</div>' +
         '</div>' +
@@ -1506,10 +1534,15 @@ function viewMine() {
       showFavs: true, favCount: state.data.favTotal || 0,
       // 数据类入口单独一排：塞进按钮区会把「编辑资料 / 审核中心 / 退出」挤成一团
       // 三个入口在手机上一行三等分，文案必须短：写「恰饭监控中心」会挤成省略号
-      tools: '<div class="profile-tools">' +
+      tools: '<div class="profile-tools' + (me.private ? ' four' : '') + '">' +
         '<a class="ptool" href="#/creator">' + icon('chart') + '监控中心</a>' +
         '<a class="ptool" href="#/history">' + icon('clock') + '观帖记录</a>' +
         '<a class="ptool" href="#/activity">' + icon('calendar') + '活动中心</a>' +
+        (me.private
+          ? '<a class="ptool" href="#/requests">' + icon('users') + '关注申请' +
+            ((state.data.followReqCount || 0)
+              ? '<i class="ptool-n">' + state.data.followReqCount + '</i>' : '') + '</a>'
+          : '') +
       '</div>'
     }) +
     '<div id="profile-list">' +
@@ -1536,8 +1569,7 @@ function viewUser() {
   const act = d.isSelf
     ? '<a class="btn-ghost btn-sm" href="#/edit">' + icon('pencil') + '编辑资料</a>'
     : (state.me
-      ? '<button class="btn-follow' + (d.isFollowing ? ' on' : '') +
-        '" data-action="follow" data-id="' + u.id + '">' + (d.isFollowing ? '已关注' : '+ 关注') + '</button>' +
+      ? followBtnHtml(u, d, '') +
         '<button class="btn-ghost btn-sm" data-action="msg-open" data-id="' + u.id + '">' +
           icon('chat') + '私信</button>'
       : '');
@@ -1558,9 +1590,12 @@ function viewUser() {
       postCount: stats.posts || posts.length, photoCount: photos.length
     }) +
     '<div id="profile-list">' +
-      (tab === 'photos'
-        ? photoGrid(photos)
-        : postList(posts, { noMore: true, emptyText: 'TA 还没有公开的作品' })) +
+      (d.privateLocked
+        ? '<div class="card empty pv-locked">' + icon('lock') +
+          '<div><b>这是一个私密账号</b><br>关注并等对方同意之后，才能看到 TA 的饭帖。</div></div>'
+        : tab === 'photos'
+          ? photoGrid(photos)
+          : postList(posts, { noMore: true, emptyText: 'TA 还没有公开的作品' })) +
     '</div>';
 }
 
@@ -1573,6 +1608,45 @@ function viewPost() {
     '</div>' +
     // 入口放在帖子前面：详情页默认展开评论，放下面会被一长串评论推到看不见的地方
     cookCtaHtml(p) + postCard(p, { showStatus: true, inDetail: true });
+}
+
+/* -------- 关注申请（私密账号专用） -------- */
+
+async function loadFollowReqs() {
+  if (!state.me) return;
+  const d = await api('/api/users/' + state.me.id);
+  state.data.followReqs = d.followRequests || [];
+  state.data.followReqCount = state.data.followReqs.length;
+}
+
+function viewRequests() {
+  const list = state.data.followReqs || null;
+  const head = '<div class="card page-head ph-act">' +
+    '<a class="btn-ghost" href="#/mine">' + icon('back') + '返回</a>' +
+    '<div class="sub">关注申请</div>' +
+  '</div>';
+
+  if (!list) return head + '<div class="card empty">加载中…</div>';
+  if (!list.length) {
+    return head + '<div class="card empty">' + icon('users') +
+      '<div>还没有人申请关注你。<br>开着「私密账号」时，别人关注你都要先申请，申请会出现在这里。</div></div>';
+  }
+  const rows = list.map((u) =>
+    '<div class="rel-row">' +
+      '<a class="rel-link" href="#/user/' + u.id + '">' + avatarHtml(u, 44) +
+        '<div class="rel-info">' +
+          '<div class="rel-name">' + esc(u.nickname) + '</div>' +
+          '<div class="rel-sub">@' + esc(u.username) + ' · ' + (u.postCount || 0) + ' 篇饭帖</div>' +
+          '<div class="rel-bio' + (u.bio ? '' : ' muted') + '">' + esc(u.bio || '这个人还没写简介') + '</div>' +
+        '</div>' +
+      '</a>' +
+      '<button class="btn-ghost btn-sm" data-action="fr-reject" data-id="' + u.id + '">拒绝</button>' +
+      '<button class="btn-primary btn-sm" data-action="fr-approve" data-id="' + u.id + '">同意</button>' +
+    '</div>').join('');
+  return head +
+    '<div class="card fr-note">' + icon('lock') +
+      '<span>同意之后，对方就能看到你的全部饭帖，也会变成你的粉丝。</span></div>' +
+    '<div class="card"><div class="rel-list">' + rows + '</div></div>';
 }
 
 /* -------- 观帖记录 -------- */
@@ -3365,6 +3439,30 @@ function reviewUsers() {
 
 /* -------- 资料编辑 -------- */
 
+/* 私密账号那块卡片：单独一个函数，切换开关时只重画这一块，
+   免得整页 render() 把用户刚填的昵称、简介冲掉 */
+function privacyCardHtml() {
+  const me = state.me || {};
+  const n = state.data.followReqCount || 0;
+  return '<div class="card edit-card" id="pv-card">' +
+    '<h3>' + icon('lock') + '隐私</h3>' +
+    '<div class="sw-row">' +
+      '<div class="sw-txt">' +
+        '<b>私密账号</b>' +
+        '<p class="edit-hint">打开后只有你批准的粉丝能看到你发的饭帖。别人点关注会先发申请，' +
+          '你同意了才成为粉丝；已经关注你的人不受影响。你在审核台的待审内容、评优照常。</p>' +
+      '</div>' +
+      '<label class="sw-switch" title="' + (me.private ? '点一下切回公开' : '点一下设为私密') + '">' +
+        '<input type="checkbox" data-action="toggle-private"' + (me.private ? ' checked' : '') + '><i></i>' +
+      '</label>' +
+    '</div>' +
+    (me.private
+      ? '<a class="sw-link" href="#/requests">' + icon('users') + '关注申请' +
+        '<em' + (n ? '' : ' class="zero"') + '>' + n + '</em>' + icon('chev') + '</a>'
+      : '') +
+  '</div>';
+}
+
 function viewEdit() {
   const me = state.me;
   if (!me) return '';
@@ -3448,9 +3546,9 @@ function viewEdit() {
       '</div>' +
       '<input type="file" id="cover-input" accept="image/*" hidden>' +
     '</div>' +
+    privacyCardHtml() +
     '<div class="card edit-card">' +
-      '<h3>' + icon('lock') + '修改密码</h3>' +
-      '<div class="field"><label>原密码</label><input id="pw-old" type="password" autocomplete="current-password" placeholder="当前密码"></div>' +
+      '<h3>' + icon('lock') + '修改密码</h3>' +      '<div class="field"><label>原密码</label><input id="pw-old" type="password" autocomplete="current-password" placeholder="当前密码"></div>' +
       '<div class="field"><label>新密码</label><input id="pw-new" type="password" autocomplete="new-password" placeholder="自己想一个，长度不限"></div>' +
       '<div class="field"><label>再输一遍新密码</label><input id="pw-new2" type="password" autocomplete="new-password" placeholder="确认新密码，两次要一样"></div>' +
       '<button class="btn-primary" data-action="change-password" style="height:40px;margin-top:6px">更新密码</button>' +
@@ -3563,6 +3661,7 @@ function viewMain() {
     case 'post': return viewPost();
     case 'history': return viewHistory();
     case 'activity': return state.route.id && /^\d+$/.test(state.route.id) ? viewActivityDetail() : viewActivity();
+    case 'requests': return viewRequests();
     case 'creator': return viewCreator();
     case 'messages': return viewMessages();
     case 'edit': return viewEdit();
@@ -4357,26 +4456,36 @@ async function openPending() {
 }
 
 async function toggleFollow(id, btn) {
+  const wasPending = btn ? btn.classList.contains('pending') : false;
+  const wasFollowing = btn ? btn.classList.contains('on') : false;
   try {
     const d = await api('/api/users/' + id + '/follow', { method: 'POST' });
+    const prof = state.data.profile && state.data.profile.user.id === Number(id) ? state.data.profile : null;
+    const isPrivate = prof ? !!prof.user.private : false;
     if (btn) {
       btn.classList.toggle('on', d.following);
-      btn.textContent = d.following ? '已关注' : '+ 关注';
+      btn.classList.toggle('pending', !!d.pending);
+      btn.textContent = d.following ? '已关注' : (d.pending ? '已申请' : (isPrivate ? '申请关注' : '+ 关注'));
     }
-    if (state.data.profile && state.data.profile.user.id === Number(id)) {
-      state.data.profile.isFollowing = d.following;
-      state.data.profile.user.followerCount = d.followerCount;
+    if (prof) {
+      prof.isFollowing = d.following;
+      prof.followPending = !!d.pending;
+      prof.user.followerCount = d.followerCount;
     }
     // 同步自己的「关注」计数，避免回到我的主页时数字是旧的
-    if (state.me) {
+    if (state.me && wasFollowing !== !!d.following) {
       state.me.followingCount = Math.max(0, (state.me.followingCount || 0) + (d.following ? 1 : -1));
     }
-    toast(d.following ? '已关注' : '已取消关注', '', d.following ? 'check' : '');
+    if (d.pending) toast('已发送关注申请，等对方同意', 'ok', 'check');
+    else if (wasPending) toast('已撤回申请', '', '');
+    else toast(d.following ? '已关注' : '已取消关注', '', d.following ? 'check' : '');
     // 名单弹窗开着：重新拉一次，让列表成员和按钮状态都跟上
     // （在「关注」页签里取关某人，TA 应当从名单里消失）
     if (state.modal && state.modal.type === 'relations') {
       await openRelations(state.modal.tab, state.modal.ownerId);
     }
+    // 私密号申请完，按钮状态变了，主页统计也要跟上（粉丝数在批准前不变，这里只是别留旧值）
+    if (prof && state.route.name === 'user') render();
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -4828,6 +4937,37 @@ document.addEventListener('click', (e) => {
     case 'user-unadmin': adminUser(id, 'unadmin'); break;
     case 'user-delete': adminUser(id, 'delete'); break;
     case 'follow': toggleFollow(id, el); break;
+    case 'toggle-private': {
+      const on = !!el.checked;
+      el.disabled = true;
+      api('/api/me', { method: 'PATCH', body: { private: on } })
+        .then((d) => {
+          state.me = d.user;
+          state.data.followReqCount = d.followRequests || 0;
+          // 只换这一块卡片：整页重绘会把用户刚填的昵称、简介冲掉
+          const card = $('#pv-card');
+          if (card) card.outerHTML = privacyCardHtml();
+          toast(on
+            ? '已设为私密账号，之后关注你都要先申请'
+            : '已切回公开，所有人都能看到你的饭帖', 'ok', on ? 'lock' : 'check');
+        })
+        .catch((e) => { el.checked = !on; toast(e.message, 'err'); });
+      break;
+    }
+    case 'fr-approve':
+    case 'fr-reject': {
+      const act = el.getAttribute('data-action') === 'fr-approve' ? 'approve' : 'reject';
+      el.disabled = true;
+      api('/api/me/follow-requests/' + id + '/' + act, { method: 'POST' })
+        .then(() => loadFollowReqs())
+        .then(() => {
+          render();
+          toast(act === 'approve' ? '已同意，对方现在能看到你的饭帖' : '已拒绝',
+            act === 'approve' ? 'ok' : '');
+        })
+        .catch((e) => { el.disabled = false; toast(e.message, 'err'); });
+      break;
+    }
     case 'cover-pick': {
       const inp = $('#cover-input');
       if (inp) inp.click();
