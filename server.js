@@ -1031,6 +1031,8 @@ function serializePost(p, me, opts) {
     aiAssisted: !!p.aiAssisted,
     status: p.status,
     rejectReason: p.rejectReason || '',
+    // 有风险的菜：审核员放行时挂的一句提醒，详情页会显示成一条黄条
+    riskNote: p.riskNote || '',
     createdAt: p.createdAt,
     author: briefUser(author),
     // 浏览量：进详情页才算一次（抖音口径），见 bumpView 的说明
@@ -3766,6 +3768,10 @@ async function handleApi(req, res, pathname, query) {
       if (rankOf(me) < 1) return json(res, 403, { error: '只有审核员和管理员能评优' });
       if (post.authorId === me.id) return json(res, 403, { error: '不能给自己的作品评优，去挑别人的好菜吧' });
       if (post.status !== 'approved') return json(res, 400, { error: '这条作品还没通过审核，先通过再评优' });
+      // 带风险提示的菜不进「优秀饭帖」：这是对外的承诺（官网 #rules 写着），必须硬拦
+      if (!post.featured && post.riskNote) {
+        return json(res, 400, { error: '这条标了安全风险，不参与评优' });
+      }
       post.featured = !post.featured;
       post.featuredAt = post.featured ? nowMs() : 0;
       post.featuredBy = post.featured ? me.id : 0;
@@ -3849,6 +3855,9 @@ async function handleApi(req, res, pathname, query) {
     if (action === 'approve') {
       post.status = 'approved';
       post.rejectReason = '';
+      // 风险提示：审核员放行但有风险的做法（生腌、半熟、野蘑菇…）可以带一句提醒，
+      // 传空字符串就是取消标记；不传这个字段则保留原样（避免别处调用误清）
+      if (b.risk !== undefined) post.riskNote = clean(b.risk, 100);
       pushNote(post.authorId, 'approve', me.id, { postId: post.id });
     } else if (action === 'reject') {
       post.status = 'rejected';

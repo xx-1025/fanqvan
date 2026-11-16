@@ -1038,6 +1038,24 @@ img { display: block; }
   font-weight: 600;
 }
 
+/* 有风险的菜：审核员放行时挂的提醒，详情页正文上方一条黄带。
+   和 reject-note 一个位置逻辑，但语气是「能做，注意点」不是「不行」 */
+.risk-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 10px;
+  padding: 10px 13px;
+  border-radius: var(--r-xs);
+  background: #fff6de;
+  border: 2px solid #e8b93f;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #8a6400;
+  font-weight: 600;
+}
+.risk-note .ic { flex: none; margin-top: 2px; color: #d99a00; }
+
 /* ---------------- 评论区 ---------------- */
 
 .comments {
@@ -1568,6 +1586,16 @@ img { display: block; }
 }
 .rv-chip:hover { border-color: var(--ink-3); color: var(--ink); }
 .rv-chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+/* 「标风险」勾：放行但有风险的做法（生腌/半熟/野采）挂一句提醒 */
+.rv-risk {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 13px;
+  background: var(--cream); border: 2px dashed var(--line); border-radius: var(--pill);
+  font-size: 12.5px; font-weight: 800; color: var(--ink-2); cursor: pointer;
+  flex: 0 0 auto;
+}
+.rv-risk input { margin: 0; accent-color: var(--brand); cursor: pointer; }
+.rv-risk:has(input:checked) { border-style: solid; border-color: #e8b93f; background: #fff6de; color: var(--ink); }
 
 .rv-reason {
   /* 和评论输入框同理：input 的 min-width:auto 让它无法收缩，会把右边的按钮挤出去 */

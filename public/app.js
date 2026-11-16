@@ -14,6 +14,10 @@ const REPORT_REASONS = ['广告营销', '不实内容', '人身攻击', '抄袭�
    对外也说得清「什么会被驳回」。点一下填进输入框，还能接着补一句。 */
 const REJECT_REASONS = ['广告引流', '抄袭搬运', '步骤没法照着做', '危险做法', '与美食无关', '人身攻击'];
 
+/* 有风险的菜不一刀切删：审核员放行时可以挂一句提醒，详情页会显示成黄条。
+   文案固定，别让每个人写一句——读者看到的应该是同一个口径。 */
+const RISK_NOTE_TEXT = '这道菜有安全风险（生食 / 半熟 / 野采等），做之前先查清做法和风险；别做给小孩、孕妇和肠胃弱的人吃。';
+
 const state = {
   me: null,
   token: '',
@@ -1087,7 +1091,7 @@ function postCard(p, opts) {
   const open = opts.openComments || state.openComments[p.id];
   // 评优入口只给审核员/管理员，且只能评别人的、已通过的作品（后端也会再拦一次）
   const canFeature = isMod() && !!state.me && p.status === 'approved' &&
-    p.author && p.author.id !== state.me.id;
+    p.author && p.author.id !== state.me.id && !p.riskNote;
   return '<article class="post' + (opts.inDetail ? ' post-detail' : '') + '" data-post="' + p.id + '">' +
     avatarHtml(p.author, 44) +
     '<div class="post-body">' +
@@ -1102,6 +1106,8 @@ function postCard(p, opts) {
         (state.me && (!p.author || p.author.id !== state.me.id)
           ? '<button class="act-more" data-action="report" data-id="' + p.id + '" title="举报">' + icon('flag') + '</button>' : '') +
       '</div>' +
+      (p.riskNote
+        ? '<div class="risk-note">' + icon('warn') + '<span>' + esc(p.riskNote) + '</span></div>' : '') +
       (p.content ? '<div class="post-text">' + richText(p.content) + '</div>' : '') +
       (p.images && p.images.length ? imgsHtml(p.images) : '') +
       (p.status === 'rejected' && p.rejectReason
@@ -3199,6 +3205,11 @@ function reviewPosts() {
               '<div class="rv-actions">' +
                 '<input class="rv-reason" data-reason-for="' + p.id + '" placeholder="补充一句（可选）" maxlength="60">' +
                 '<span class="spacer"></span>' +
+                (p.status === 'pending' || p.status === 'approved'
+                  ? '<label class="rv-risk" title="生腌、半熟、野采这类：放行但挂一句风险提醒">' +
+                      '<input type="checkbox" data-risk-for="' + p.id + '"' + (p.riskNote ? ' checked' : '') + '>' +
+                      '<span>标风险</span></label>'
+                  : '') +
                 (p.status === 'pending'
                   ? '<button class="btn-sm btn-approve" data-action="approve" data-id="' + p.id + '">' + icon('check') + '通过</button>'
                   : '') +
@@ -4159,11 +4170,14 @@ async function submitReport(postId) {
 async function doReview(id, action) {
   const reasonEl = $('[data-reason-for="' + id + '"]');
   const reason = reasonEl ? reasonEl.value.trim() : '';
+  // 「标风险」只在通过时有意义：勾了就用固定文案，不勾表示取消标记
+  const riskEl = $('[data-risk-for="' + id + '"]');
+  const risk = riskEl && riskEl.checked ? RISK_NOTE_TEXT : '';
   if (action === 'reject' && !reason && state.reviewTab === 'pending') {
     if (!confirm('不填理由直接驳回？')) return;
   }
   try {
-    await api('/api/review', { method: 'POST', body: { postId: Number(id), action, reason } });
+    await api('/api/review', { method: 'POST', body: { postId: Number(id), action, reason, risk } });
     toast(action === 'approve' ? '已通过，内容已公开' : '已处理', 'ok', 'check');
     await loadReview();
     await refreshSidebar();
