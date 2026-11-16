@@ -4114,6 +4114,13 @@ html[data-theme="dark"] ::selection { background: #6a4a22; color: #fff; }
 html[data-theme="dark"] .btn-feat { color: #e8b93f; }
 html[data-theme="dark"] .btn-feat:hover, html[data-theme="dark"] .btn-feat.on { background: #34280f; color: #f0d48a; }
 html[data-theme="dark"] .rv-nofeat { color: #b99a4e; }
+/* 通知条目：浅色下未读是暖白底（#fff7ec），深色下漏了这条覆盖 ——
+   亮米色块配浅灰字（--ink #e8e8ee），等于白纸上写白字，整条读不出来。 */
+html[data-theme="dark"] .note-item.unread { background: rgba(255, 138, 61, .10); }
+html[data-theme="dark"] .note-item.unread:hover { background: rgba(255, 138, 61, .17); }
+/* 滚动条拇指是硬编码 #d9d9d9，深底上像一条白杠穿过面板 */
+html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3a3a46; }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #4c4c5a; }
 
 /* 系统深色（用户没手动选过时）：同一套规则换选择器，别再写两遍 */
 @media (prefers-color-scheme: dark) {
@@ -4177,6 +4184,11 @@ html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
 html:not([data-theme="light"]) .btn-feat { color: #e8b93f; }
 html:not([data-theme="light"]) .btn-feat:hover, html:not([data-theme="light"]) .btn-feat.on { background: #34280f; color: #f0d48a; }
 html:not([data-theme="light"]) .rv-nofeat { color: #b99a4e; }
+/* 通知条目与滚动条：同 html[data-theme="dark"] 块，跟随系统的这一路也要有 */
+html:not([data-theme="light"]) .note-item.unread { background: rgba(255, 138, 61, .10); }
+html:not([data-theme="light"]) .note-item.unread:hover { background: rgba(255, 138, 61, .17); }
+html:not([data-theme="light"]) ::-webkit-scrollbar-thumb { background: #3a3a46; }
+html:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover { background: #4c4c5a; }
 }
 
 /* =========================================================================
