@@ -10,6 +10,10 @@ const AV_COLORS = ['#ff8140', '#ff5c39', '#f0a020', '#34c759', '#3b82f6', '#8b5c
 
 const REPORT_REASONS = ['广告营销', '不实内容', '人身攻击', '抄袭搬运', '与美食无关', '其他'];
 
+/* 驳回理由不让人自由发挥：口径统一了，作者收到的理由才一致，
+   对外也说得清「什么会被驳回」。点一下填进输入框，还能接着补一句。 */
+const REJECT_REASONS = ['广告引流', '抄袭搬运', '步骤没法照着做', '危险做法', '与美食无关', '人身攻击'];
+
 const state = {
   me: null,
   token: '',
@@ -952,7 +956,7 @@ function aiPanelHtml() {
       '</div>';
   } else {
     body = '<div class="ai-tip">先写几句你想说的——做了什么、什么味道、哪一步翻车了。' +
-      '小饭只在你的话上做优化，食材、用量、做法一个字都不改。</div>' +
+      '小饭只在你的话上做优化，食材、用量、做法一个字都不改；发出去之前，配比和火候你自己再核一遍。</div>' +
       '<div class="ai-act">' +
         '<button class="btn-primary btn-sm" data-action="ai-generate">帮我润色</button>' +
         '<button class="btn-ghost btn-sm" data-action="ai-close">收起</button>' +
@@ -2186,7 +2190,7 @@ function cookHtml() {
       ? '<div class="cook-ans">' +
           '<div class="cook-ans-head">' + icon('spark') + '<b>小饭说</b></div>' +
           '<p>' + esc(c.answer) + '</p>' +
-          '<div class="cook-ans-note">是厨友经验，不是标准教程；按你家锅的火力微调</div>' +
+          '<div class="cook-ans-note">是厨友经验，不是标准教程；按你家锅的火力微调。生食、半熟禽肉这类，别以它说的为准。</div>' +
         '</div>'
       : '';
     const ask = c.askOpen
@@ -2211,7 +2215,7 @@ function cookHtml() {
           '<div class="cook-ans-head">' + icon('spark') + '<b>小饭看了照片</b></div>' +
           (c.lookSee ? '<div class="cook-see">' + esc(c.lookSee) + '</div>' : '') +
           '<p>' + esc(c.lookAnswer) + '</p>' +
-          '<div class="cook-ans-note">它只看得见照片里的东西，咸淡和熟没熟还得你自己尝</div>' +
+          '<div class="cook-ans-note">它只看得见照片里的东西。熟没熟、能不能吃，还得你自己看一眼——筷子戳一下、拿刀切开确认中心。这只是参考，不能当食品安全依据。</div>' +
         '</div>'
       : '';
     const look = c.lookOpen
@@ -3188,8 +3192,12 @@ function reviewPosts() {
           (p.status === 'rejected' && p.rejectReason
             ? '<div class="reject-note">驳回理由：' + esc(p.rejectReason) + '</div>' : '') +
           (showActions
-            ? '<div class="rv-actions">' +
-                '<input class="rv-reason" data-reason-for="' + p.id + '" placeholder="驳回理由（可选）" maxlength="60">' +
+            ? '<div class="rv-reasons">' + REJECT_REASONS.map((r) =>
+                '<button type="button" class="rv-chip" data-action="reject-reason" data-id="' + p.id +
+                '" data-r="' + esc(r) + '">' + esc(r) + '</button>').join('') +
+              '</div>' +
+              '<div class="rv-actions">' +
+                '<input class="rv-reason" data-reason-for="' + p.id + '" placeholder="补充一句（可选）" maxlength="60">' +
                 '<span class="spacer"></span>' +
                 (p.status === 'pending'
                   ? '<button class="btn-sm btn-approve" data-action="approve" data-id="' + p.id + '">' + icon('check') + '通过</button>'
@@ -4708,6 +4716,20 @@ document.addEventListener('click', (e) => {
     case 'report-submit': submitReport(id); break;
     case 'modal-close': state.modal = null; state.ai.open = false; render(); break;
     case 'approve': doReview(id, 'approve'); break;
+    case 'reject-reason': {
+      // 点预设理由 = 把理由填进输入框，人还能接着补一句；不上抛、不提交
+      const reasonFor = el.getAttribute('data-id');
+      const reasonTxt = el.getAttribute('data-r') || '';
+      const reasonInput = $('[data-reason-for="' + reasonFor + '"]');
+      if (reasonInput) reasonInput.value = reasonTxt;
+      const chipBox = el.parentNode;
+      if (chipBox) {
+        Array.prototype.forEach.call(chipBox.querySelectorAll('.rv-chip'), function (c) {
+          c.classList.toggle('on', c === el);
+        });
+      }
+      break;
+    }
     case 'reject': doReview(id, 'reject'); break;
     case 'rep-dismiss': handleReport(id, 'dismiss'); break;
     case 'rep-remove': handleReport(id, 'remove'); break;

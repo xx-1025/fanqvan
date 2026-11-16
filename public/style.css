@@ -1553,6 +1553,22 @@ img { display: block; }
    窄屏一行排不下，允许换行、按内容定宽，别把右边缘顶出卡片 */
 .rv-actions .btn-sm { flex: 0 0 auto; }
 
+/* 驳回理由预设：点一下把理由填进下面的输入框，统一口径，
+   省得每个人写的理由都不一样、作者看着也懵 */
+.rv-reasons {
+  display: flex; flex-wrap: wrap; gap: 7px;
+  margin-top: 12px;
+}
+.rv-chip {
+  height: 29px; padding: 0 12px;
+  background: var(--paper); color: var(--ink-2);
+  border: 2px solid var(--line); border-radius: var(--pill);
+  font-family: inherit; font-size: 12.5px; font-weight: 800;
+  cursor: pointer; transition: .12s;
+}
+.rv-chip:hover { border-color: var(--ink-3); color: var(--ink); }
+.rv-chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+
 .rv-reason {
   /* 和评论输入框同理：input 的 min-width:auto 让它无法收缩，会把右边的按钮挤出去 */
   flex: 1 1 120px;

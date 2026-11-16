@@ -569,6 +569,112 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
 .ai-timer i{font-style:normal;opacity:.85;font-weight:800;}
 @media(max-width:840px){ .ai-demo{grid-template-columns:1fr;} }
 
+/* ---------- 首屏第二句（为什么值得换过来） ---------- */
+.hero-sub{
+  margin:13px 0 0; padding-left:13px; border-left:3px solid var(--brand);
+  font-size:13.8px; line-height:1.7; color:var(--ink-2);
+}
+
+/* ---------- 规矩：四条驳回线 ---------- */
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.rule{
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;
+  padding:18px;background:var(--paper);
+  border:var(--bw) solid var(--ink);border-radius:var(--r);box-shadow:var(--sh);
+  transition:transform .18s,box-shadow .18s;
+}
+.rule:hover{transform:translate(-2px,-2px);box-shadow:var(--sh-lg);}
+.rule-no{
+  width:29px;height:29px;border-radius:9px;display:grid;place-items:center;
+  background:#ffe9e3;border:2px solid var(--red);color:var(--red);
+  font-weight:900;font-size:13px;
+}
+.rule b{display:block;font-size:15.5px;margin-bottom:4px;}
+.rule span{display:block;font-size:13.4px;line-height:1.72;color:var(--ink-2);}
+@media(max-width:760px){ .rules{grid-template-columns:1fr;} }
+
+.rule-soft{
+  margin-top:15px;padding:16px 18px;
+  background:#fff6de;border:var(--bw) dashed var(--ink);border-radius:var(--r-sm);
+  font-size:13.5px;line-height:1.78;color:var(--ink-2);
+}
+.rule-soft b{color:var(--ink);}
+
+.copy-box{
+  margin-top:15px;padding:19px 20px;background:var(--paper);
+  border:var(--bw) solid var(--ink);border-radius:var(--r);box-shadow:var(--sh-sm);
+}
+.copy-box h3{margin:0 0 10px;font-size:15.5px;}
+.copy-box ol{margin:0;padding-left:20px;font-size:13.6px;line-height:1.9;color:var(--ink-2);}
+
+/* ---------- AI 的边界 ---------- */
+.ai-bound{
+  margin-top:22px;padding:18px 20px;
+  background:#fff6de;border:var(--bw) solid var(--ink);border-radius:var(--r-sm);
+  box-shadow:var(--sh-sm);
+}
+.ai-bound h3{margin:0 0 9px;font-size:15px;}
+.ai-bound ul{margin:0;padding-left:19px;font-size:13.4px;line-height:1.82;color:var(--ink-2);}
+.ai-bound .disc{
+  margin:11px 0 0;padding-top:10px;border-top:1px dashed #e8d3b4;
+  font-size:12.6px;font-weight:800;color:var(--ink-2);
+}
+
+/* ---------- 和别处比 ---------- */
+.cmps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:stretch;}
+.cmp{
+  display:flex;flex-direction:column;position:relative;
+  padding:18px 16px;background:var(--paper);
+  border:var(--bw) solid var(--ink);border-radius:var(--r-sm);box-shadow:var(--sh-sm);
+}
+.cmp h3{margin:0 0 12px;font-size:15px;}
+.cmp dl{margin:0;font-size:12.8px;line-height:1.65;}
+.cmp dt{margin-top:11px;font-size:11.2px;font-weight:900;letter-spacing:.3px;color:var(--ink-3);}
+.cmp dt:first-of-type{margin-top:0;}
+.cmp dd{margin:3px 0 0;color:var(--ink);font-weight:600;}
+.cmp.me{background:var(--brand-soft);border-color:var(--brand);}
+.cmp.me h3{color:var(--brand-2);font-size:16px;}
+.cmp.me dd{color:var(--ink);font-weight:700;}
+.cmp-flag{
+  position:absolute;top:-12px;right:13px;
+  background:var(--brand);color:#fff;border:2px solid var(--ink);border-radius:var(--pill);
+  padding:1px 9px;font-size:11px;font-weight:900;
+}
+@media(max-width:900px){ .cmps{grid-template-columns:1fr 1fr;} }
+@media(max-width:560px){ .cmps{grid-template-columns:1fr;} }
+
+.cmp-slogan{
+  margin:24px auto 0;text-align:center;font-size:clamp(15px,2.3vw,19px);
+  font-weight:900;line-height:1.7;
+}
+.cmp-slogan i{font-style:normal;color:var(--brand-2);}
+.cmp-note{
+  margin:10px auto 0;max-width:620px;text-align:center;
+  font-size:12.8px;line-height:1.75;color:var(--ink-3);
+}
+
+/* ---------- 怎么活下去 ---------- */
+.biz{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch;}
+.biz-card{
+  display:flex;flex-direction:column;
+  padding:20px 18px;background:var(--paper);
+  border:var(--bw) solid var(--ink);border-radius:var(--r-sm);box-shadow:var(--sh-sm);
+}
+.biz-card b{display:block;font-size:15px;margin-bottom:7px;}
+.biz-card span{font-size:13.2px;line-height:1.72;color:var(--ink-2);}
+.biz-card em{
+  margin-top:auto;padding-top:11px;font-style:normal;
+  font-size:12px;font-weight:900;color:var(--brand-2);
+}
+@media(max-width:840px){ .biz{grid-template-columns:1fr;} }
+
+.cost-note{
+  margin-top:18px;padding:17px 19px;background:var(--cream);
+  border:2px dashed var(--line);border-radius:var(--r-sm);
+  font-size:13.4px;line-height:1.8;color:var(--ink-2);
+}
+.cost-note b{color:var(--ink);}
+
 @media(max-width:640px){
   .sec{padding:60px 0;}
   .wrap{padding:0 18px;}
@@ -592,6 +698,8 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       <a href="#ai" data-only="user">AI 助手</a>
       <a href="#play" data-only="user" data-page-node-id="36nUFQc8u9t7gWxLBUv7JN">动手玩</a>
       <a href="#flow" data-page-node-id="hPgkBY74NF4jJWoCQ78dDz">怎么运作</a>
+      <a href="#rules" data-only="user">规矩</a>
+      <a href="#compare" data-only="user">和别处比</a>
       <a class="btn btn-primary top-cta" id="top-enter" href="/" data-page-node-id="nNOIgZ6vs8qla54gtGEuGe">进入饭圈
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="kBNQDHpepNRfGwlNBZ3xuu"><path d="M5 12h13M13 6l6 6-6 6" data-page-node-id="SG6C07oKfFwGnan7xx15An"/></svg>
       </a>
@@ -608,8 +716,11 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       <span class="kicker" data-page-node-id="y9XaHIyq2OIOJJm1i89rwS">🍳 美食社区 · 人人能上手</span>
       <h1 data-page-node-id="YUG1cUPvGBedaG9krJUSf2">把你那口<span class="hl" data-page-node-id="VaYYXWKBe1O4T8xiZs3JSa">绝活</span><br data-page-node-id="MlSkHVW9xaMqnIvsKWkEtH">端给懂的人看</h1>
       <p class="lead" data-page-node-id="6cgxS4SNcUSYFgFF9W3R16">
-        发一道菜、写清火候和配比，剩下的交给饭圈：真人审核后公开，做得好的会被评优挂上墙。
-        没有算法刷屏——只有一锅好菜和一群识货的人。
+        发一道菜、写清火候和配比，真人审核后公开，做得好的会被评优挂上墙。
+        你在别处发的菜，三小时就沉了；这里每一条，都有一个人读过才放上来。
+      </p>
+      <p class="hero-sub">
+        不用搬家——原来的号照用，两边并存。这里只是多一个「端上桌就有人认真看」的地方。
       </p>
       <div class="hero-actions" data-page-node-id="QQ35Ml5LAELW6jSyAI2XKS">
         <a class="btn btn-primary" href="#play" data-page-node-id="fBpauOh10ajSjZLY2L069y">先动手玩玩看
@@ -864,6 +975,15 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       </ul>
     </div>
   </div>
+  <div class="ai-bound reveal">
+    <h3>它只描述看见的，不替你判断「能不能吃」</h3>
+    <ul>
+      <li>它说「汁收得差不多、肉色发白」，不会说「放心吃」——最后那一口在你嘴里。</li>
+      <li>熟度留给你：筷子戳一下、拿刀切开看中心，这两件事它做不到。</li>
+      <li>看不清就说看不清，不猜一个糊弄过去。这条写进了它的规矩里。</li>
+    </ul>
+    <p class="disc">AI 的判断可能出错，不能当作食品安全依据。生食、孕妇、婴幼儿、过敏人群，请以专业意见为准。</p>
+  </div>
 </section>
 
 <!-- ========== 动手玩 ========== -->
@@ -1019,6 +1139,126 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       <h3 data-page-node-id="Jcs5oP7rbDaHNnbCwXS7ud">4 · 评优</h3>
       <p data-page-node-id="zRyon4cDBf4UC4qbCAv96n">够好的被评上「优秀饭帖」，挂上墙。</p>
     </div>
+  </div>
+</section>
+
+<!-- ========== 规矩 ========== -->
+<section class="sec wrap" id="rules" data-only="user">
+  <div class="sec-head reveal">
+    <span class="kicker">📌 什么会被驳回</span>
+    <h2>规矩写在明面上</h2>
+    <p>审核不靠某个人的口味。下面四类直接驳回，理由会回给你；不在这四类里的，都放行。</p>
+  </div>
+  <div class="rules">
+    <div class="rule reveal">
+      <div class="rule-no">1</div>
+      <div><b>广告和引流</b><span>微信号、二维码、店铺链接、私信拉人、评论区留联系方式。想推广就直说，别夹在菜谱里。</span></div>
+    </div>
+    <div class="rule reveal">
+      <div class="rule-no">2</div>
+      <div><b>搬运别人的</b><span>图不是自己拍的、做法是从别处抄的，没授权也没标来源。标了来源也请先问一句。</span></div>
+    </div>
+    <div class="rule reveal">
+      <div class="rule-no">3</div>
+      <div><b>步骤没法照着做</b><span>只有成品图没有做法，配比全写「适量」，或者一看就没下过厨的编造。补全了可以再发。</span></div>
+    </div>
+    <div class="rule reveal">
+      <div class="rule-no">4</div>
+      <div><b>危险做法</b><span>生食、生鸡蛋、半熟禽肉、野外采食野生菌这类可能吃出事的，不通过。这条没有商量余地。</span></div>
+    </div>
+  </div>
+  <div class="rule-soft reveal">
+    <b>有风险的菜，不一刀切删。</b>
+    生腌、三分熟牛排、自己上山采的蘑菇——这类过审，但会打上风险提示、不参与评优、不进新人推荐。
+    你想试是你自己的事，别让刚学做饭的人以为这是安全做法。
+  </div>
+  <div class="copy-box reveal">
+    <h3>转载不是不行，说清楚就行</h3>
+    <ol>
+      <li>发布即承诺：菜是自己做的，图是自己拍的。</li>
+      <li>搬别人的：先拿授权、写上来源；没授权就是抄。</li>
+      <li>收到侵权举报：先下架再核实，作者可以申诉；屡次搬运，封号。</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ========== 和别处比 ========== -->
+<section class="sec wrap" id="compare" data-only="user" style="padding-top:24px">
+  <div class="sec-head reveal">
+    <span class="kicker">⚖️ 和别处比</span>
+    <h2>不比谁的图好看，比谁做得对</h2>
+    <p>四个维度，全是可以自己去核的机制，不是形容词。</p>
+  </div>
+  <div class="cmps">
+    <div class="cmp reveal">
+      <h3>综合社区</h3>
+      <dl>
+        <dt>谁能发</dt><dd>发了就算</dd>
+        <dt>内容从哪来</dt><dd>转载混发</dd>
+        <dt>AI 干什么</dt><dd>给你推荐</dd>
+        <dt>出错谁兜着</dt><dd>举报了才处理</dd>
+      </dl>
+    </div>
+    <div class="cmp reveal">
+      <h3>菜谱站</h3>
+      <dl>
+        <dt>谁能发</dt><dd>多为事后抽查</dd>
+        <dt>内容从哪来</dt><dd>库内为主</dd>
+        <dt>AI 干什么</dt><dd>帮你搜索</dd>
+        <dt>出错谁兜着</dt><dd>举报了才处理</dd>
+      </dl>
+    </div>
+    <div class="cmp reveal">
+      <h3>AI 菜谱工具</h3>
+      <dl>
+        <dt>谁能发</dt><dd>不需要人</dd>
+        <dt>内容从哪来</dt><dd>模型生成</dd>
+        <dt>AI 干什么</dt><dd>生成配方</dd>
+        <dt>出错谁兜着</dt><dd>它不负责</dd>
+      </dl>
+    </div>
+    <div class="cmp me reveal">
+      <span class="cmp-flag">这里</span>
+      <h3>饭圈</h3>
+      <dl>
+        <dt>谁能发</dt><dd>每条真人先审后发</dd>
+        <dt>内容从哪来</dt><dd>本人实拍、本人做法</dd>
+        <dt>AI 干什么</dt><dd>只加工你写的字，不自创配方</dd>
+        <dt>出错谁兜着</dt><dd>驳回理由写给你，能申诉</dd>
+      </dl>
+    </div>
+  </div>
+  <p class="cmp-slogan reveal">0 个广告位 · <i>100% 先审后发</i> · 0 条 AI 自创配方</p>
+  <p class="cmp-note reveal">另外一句：站内内容不会被拿去训练模型，也不会卖给第三方。这条没有例外。</p>
+</section>
+
+<!-- ========== 怎么活下去 ========== -->
+<section class="sec wrap" id="sustain" data-only="user" style="padding-top:24px">
+  <div class="sec-head reveal">
+    <span class="kicker">🪙 怎么活下去</span>
+    <h2>不收钱，但也不能白烧</h2>
+    <p>现在零广告、零带货、没有付费墙。往后只走这三条，账摆在明面上。</p>
+  </div>
+  <div class="biz">
+    <div class="biz-card reveal">
+      <b>捐赠 + 买断的限定素材</b>
+      <span>喜欢就丢两块钱；或者买一款节日头像框、限定贴纸，一次性买断。不做订阅、不做月费，不买也不影响任何功能。</span>
+      <em>不锁功能</em>
+    </div>
+    <div class="biz-card reveal">
+      <b>和厨具、食材品牌做内容合作</b>
+      <span>联名专题、线下做饭局：品牌出场地和锅，我们出人和内容。不加广告位、不插信息流、不放带货链接。</span>
+      <em>不做硬广、不带货</em>
+    </div>
+    <div class="biz-card reveal">
+      <b>给社团、小组做私有版</b>
+      <span>学校社团、公司兴趣组、小店想要自己的频道，审核权下放给他们，只看自己人的菜。按年收服务费。</span>
+      <em>不动主站体验</em>
+    </div>
+  </div>
+  <div class="cost-note reveal">
+    <b>成本实话：</b>现在就是一台小服务器加模型调用费，一个月几十块的量级，我一个人撑得住，所以才敢说不靠广告。
+    这三条一条都还没开始；真开始的时候，站内依旧不会出现广告位——这句话写在这儿，方便以后拿来对。
   </div>
 </section>
 
