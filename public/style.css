@@ -452,6 +452,20 @@ img { display: block; }
 .u-del { color: var(--red); border-color: var(--red); }
 .u-del:hover { background: var(--red); color: #fff; }
 
+/* 「评优」：审核台上那颗金色小按钮。审核员一天要过很多条，
+   评优就在同一排按下去，不用为了挂「优秀饭帖」再跑回首页翻。
+   颜色跟绿「通过」、红「驳回」拉开，避免误点。 */
+.btn-feat {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 14px; font-size: 13px; font-weight: 800;
+  background: var(--paper); color: #a8750f; border: var(--bw) solid #e8b93f;
+  border-radius: var(--pill); box-shadow: var(--sh-sm); transition: .12s;
+  white-space: nowrap;
+}
+.btn-feat:hover { background: #fff6de; }
+.btn-feat.on { background: #fff6de; color: var(--ink); }
+.btn-feat:active { transform: none; box-shadow: none; }
+
 /* =========================================================
    页面标题
    ========================================================= */
@@ -1570,6 +1584,12 @@ img { display: block; }
 /* 这排按钮（忽略举报 / 仅下架内容 / 下架并封禁作者）字数多，
    窄屏一行排不下，允许换行、按内容定宽，别把右边缘顶出卡片 */
 .rv-actions .btn-sm { flex: 0 0 auto; }
+/* 带安全风险的作品不给评优：不是把按钮藏起来让人以为坏了，而是当面写清楚为什么 */
+.rv-nofeat {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; font-size: 12px; font-weight: 800;
+  color: #9a7a1e; flex: 0 0 auto;
+}
 
 /* 驳回理由预设：点一下把理由填进下面的输入框，统一口径，
    省得每个人写的理由都不一样、作者看着也懵 */
@@ -4090,6 +4110,10 @@ html[data-theme="dark"] .sk-avatar, html[data-theme="dark"] .sk-line, html[data-
 /* 墨玉框在深底上会整块糊掉，换成浅银环 */
 html[data-theme="dark"] .avatar.frame-night { --fx: conic-gradient(from 180deg, #ffffff, #9a9aa8, #5a5a68, #d8d8e0, #ffffff); }
 html[data-theme="dark"] ::selection { background: #6a4a22; color: #fff; }
+/* 评优那颗金按钮：深底上 #a8750f 的字几乎看不见，提亮文字、把 hover/选中态换成暗金底 */
+html[data-theme="dark"] .btn-feat { color: #e8b93f; }
+html[data-theme="dark"] .btn-feat:hover, html[data-theme="dark"] .btn-feat.on { background: #34280f; color: #f0d48a; }
+html[data-theme="dark"] .rv-nofeat { color: #b99a4e; }
 
 /* 系统深色（用户没手动选过时）：同一套规则换选择器，别再写两遍 */
 @media (prefers-color-scheme: dark) {
@@ -4150,6 +4174,9 @@ html:not([data-theme="light"]) .sk-avatar, html:not([data-theme="light"]) .sk-li
 /* 墨玉框在深底上会整块糊掉，换成浅银环 */
 html:not([data-theme="light"]) .avatar.frame-night { --fx: conic-gradient(from 180deg, #ffffff, #9a9aa8, #5a5a68, #d8d8e0, #ffffff); }
 html:not([data-theme="light"]) ::selection { background: #6a4a22; color: #fff; }
+html:not([data-theme="light"]) .btn-feat { color: #e8b93f; }
+html:not([data-theme="light"]) .btn-feat:hover, html:not([data-theme="light"]) .btn-feat.on { background: #34280f; color: #f0d48a; }
+html:not([data-theme="light"]) .rv-nofeat { color: #b99a4e; }
 }
 
 /* =========================================================================

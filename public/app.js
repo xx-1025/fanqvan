@@ -3187,6 +3187,9 @@ function reviewPosts() {
   const items = list.length
     ? list.map((p) => {
         const showActions = p.status === 'pending' || p.status === 'approved';
+        // 评优就在审核台上下手：审核员一天要过几十条，让他为了「评优」再回首页翻一遍不现实。
+        // 规则和首页那颗按钮、以及后端完全一致：已通过 + 别人的 + 没标风险。
+        const canFeat = p.status === 'approved' && p.author.id !== state.me.id && !p.riskNote;
         return '<div class="rv-box">' +
           '<div class="post-head">' + avatarHtml(p.author, 34) +
             '<a class="post-name" href="#/user/' + p.author.id + '">' + esc(p.author.nickname) + '</a>' +
@@ -3205,6 +3208,14 @@ function reviewPosts() {
               '<div class="rv-actions">' +
                 '<input class="rv-reason" data-reason-for="' + p.id + '" placeholder="补充一句（可选）" maxlength="60">' +
                 '<span class="spacer"></span>' +
+                (canFeat
+                  ? '<button class="btn-sm btn-feat' + (p.featured ? ' on' : '') + '" data-action="feature" data-id="' + p.id + '"' +
+                      ' title="' + (p.featured ? '从「优秀饭帖」里撤下来' : '把这条作品挂进「优秀饭帖」') + '">' +
+                      icon(p.featured ? 'medal-fill' : 'medal') + (p.featured ? '已评优' : '评优') + '</button>'
+                  : (p.status === 'approved' && p.riskNote
+                      ? '<span class="rv-nofeat" title="标了安全风险的作品不进「优秀饭帖」，这是对外承诺">' +
+                          icon('warn') + '不参与评优</span>'
+                      : '')) +
                 (p.status === 'pending' || p.status === 'approved'
                   ? '<label class="rv-risk" title="生腌、半熟、野采这类：放行但挂一句风险提醒">' +
                       '<input type="checkbox" data-risk-for="' + p.id + '"' + (p.riskNote ? ' checked' : '') + '>' +
@@ -4035,6 +4046,9 @@ async function toggleFeature(id, btn) {
     paintFeaturedBadge(id, on);
     const local = (state.data.posts || []).find((p) => p.id === Number(id));
     if (local) local.featured = on;
+    // 审核台自己那一条也要记住，否则待会儿切 tab 回来又变回「评优」
+    const rv = (state.data.reviewPosts || []).find((p) => p.id === Number(id));
+    if (rv) rv.featured = on;
     if (state.data.post && state.data.post.id === Number(id)) state.data.post.featured = on;
     toast(on ? '已挂进「优秀饭帖」' : '已从「优秀饭帖」撤下', 'ok', 'medal');
     refreshSidebar();                // 右栏那张卡立刻更新，不用手动刷新

@@ -3857,7 +3857,16 @@ async function handleApi(req, res, pathname, query) {
       post.rejectReason = '';
       // 风险提示：审核员放行但有风险的做法（生腌、半熟、野蘑菇…）可以带一句提醒，
       // 传空字符串就是取消标记；不传这个字段则保留原样（避免别处调用误清）
-      if (b.risk !== undefined) post.riskNote = clean(b.risk, 100);
+      if (b.risk !== undefined) {
+        post.riskNote = clean(b.risk, 100);
+        // 先评优、后标风险的情况：官网写着「带安全风险的不参与评优」，
+        // 那评优就不能在这儿留着，否则右栏会出现一条挂着黄条的「优秀饭帖」
+        if (post.riskNote && post.featured) {
+          post.featured = false;
+          post.featuredAt = 0;
+          post.featuredBy = 0;
+        }
+      }
       pushNote(post.authorId, 'approve', me.id, { postId: post.id });
     } else if (action === 'reject') {
       post.status = 'rejected';
