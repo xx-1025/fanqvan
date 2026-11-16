@@ -543,6 +543,28 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
 .ai-timer.on{background:var(--yellow);}
 .ai-timer.done{background:var(--green);color:#fff;}
 .ai-timer-lab{display:inline-flex;align-items:center;gap:5px;}
+
+/* 拆步骤演示：一步一屏（顶部「第 x / n 步」+ 进度条，底部「下一步」），
+   跟站内 cook 那一屏同一个规矩，只是尺寸小一号 */
+.ai-steps{display:flex;flex-direction:column;white-space:normal;}
+.stp-bar{height:7px;border-radius:var(--pill);background:var(--line);overflow:hidden;margin-bottom:9px;}
+.stp-bar i{display:block;height:100%;background:var(--brand);border-radius:var(--pill);transition:width .18s;}
+.stp-meta{font-size:11.5px;font-weight:900;color:var(--ink-3);}
+.stp-t{display:block;font-size:16.5px;margin:1px 0 6px;}
+.stp-d{margin:0 0 10px;font-size:13.5px;line-height:1.75;}
+.stp-w{margin:0;padding:8px 11px;border-radius:var(--r-xs);background:var(--brand-soft);color:var(--ink-2);font-size:12.5px;line-height:1.7;}
+.stp-w b{display:block;font-size:10.5px;letter-spacing:.08em;color:var(--brand-2);margin-bottom:2px;}
+.stp-foot{margin-top:12px;padding-top:11px;border-top:2px dashed var(--line);}
+.stp-foot .stp-next{width:100%;justify-content:center;}
+.stp-done{align-items:center;text-align:center;padding:4px 0;}
+.stp-done-ico{
+  width:42px;height:42px;border-radius:13px;border:2px solid var(--ink);
+  background:var(--green);color:#fff;display:grid;place-items:center;
+  box-shadow:var(--sh-sm);margin-bottom:10px;
+}
+.stp-done-ico svg{width:21px;height:21px;}
+.stp-done b{font-size:15.5px;}
+.stp-done p{margin:5px 0 12px;font-size:12.5px;line-height:1.7;color:var(--ink-2);}
 .ai-timer svg{width:14px;height:14px;flex:none;}
 .ai-timer i{font-style:normal;opacity:.85;font-weight:800;}
 @media(max-width:840px){ .ai-demo{grid-template-columns:1fr;} }
@@ -1033,7 +1055,7 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
 
 </main>
 
-<script src="/intro/intro.js?v=2026111602"></script>
+<script src="/intro/intro.js?v=2026111603"></script>
 
 </body>
 </html>

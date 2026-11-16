@@ -257,17 +257,31 @@
     },
     cook: {
       label: '帖子里写的做法', run: '拆成步骤', photo: false,
-      rules: ['只拆帖子里写过的做法，不另编菜谱', '每一步标上时长，点一下就倒计时', '作者没写的配比、火候，不替你补'],
+      rules: ['只拆帖子里写过的做法，不另编菜谱', '一步一屏、带进度，点「下一步」往下走', '帖子里说了时长的步骤，配一颗计时器'],
       items: [
         { q: '周六炖了锅红烧肉。五花肉两斤切麻将块，冷水下锅焯，撇掉浮沫捞出来。锅里放冰糖炒糖色，变枣红就下肉翻炒，加生抽老抽、姜片八角，倒热水没过肉，小火一个半小时，最后大火收汁。',
-          a: '这条帖子拆成 5 步：\n\n1 · 切块 —— 五花肉切成麻将块，两斤差不多一大盘。\n2 · 焯水 —— 冷水下锅，浮沫撇干净再捞出来。\n3 · 炒糖色 —— 冰糖化开变枣红，立刻下肉翻匀。\n4 · 焖 —— 加生抽老抽、姜片八角，倒热水没过肉。\n5 · 收汁 —— 转大火，汁能挂住勺子就关火。\n\n第 4 步作者写的是一个半小时，先把这一步的计时按下去。',
-          tm: [{ n: '焯水', s: 300 }, { n: '小火焖', s: 5400 }, { n: '大火收汁', s: 480 }] },
+          steps: [
+            { t: '切块', d: '五花肉切成麻将块，两斤差不多一大盘。', w: '切匀一点，厚薄一样才好一起熟。', timer: 0 },
+            { t: '焯水', d: '冷水下锅，浮沫撇干净再捞出来。', w: '水一开就转小火，浮沫撇透汤才清。', timer: 300 },
+            { t: '炒糖色', d: '冰糖化开变枣红，立刻下肉翻匀。', w: '枣红就下肉，晚一秒就发苦。', timer: 0 },
+            { t: '焖', d: '加生抽老抽、姜片八角，倒热水没过肉。', w: '一定加热水，冷水一激肉就紧。', timer: 5400 },
+            { t: '收汁', d: '转大火，汁能挂住勺子就关火。', w: '汁挂勺就关，再烧就咸了。', timer: 480 }
+          ] },
         { q: '今天的番茄炒蛋：番茄两个切块，鸡蛋三个打散加一小撮盐。热锅凉油先炒蛋，滑到半凝固就盛出来。补一点油下番茄，炒到出沙加半碗水煮两分钟，倒回蛋翻两下出锅。',
-          a: '这条帖子拆成 4 步：\n\n1 · 备料 —— 番茄两个切块，鸡蛋三个打散，加一小撮盐。\n2 · 炒蛋 —— 热锅凉油，蛋液滑到半凝固就盛出来。\n3 · 炒番茄 —— 补一点油，番茄炒到出沙，加半碗水煮开。\n4 · 合炒 —— 倒回鸡蛋，翻两下就出锅，别久炒。\n\n作者写的「半凝固」和「出沙」，就是两个要盯着的点。',
-          tm: [{ n: '炒蛋', s: 90 }, { n: '番茄出沙', s: 180 }, { n: '煮汁', s: 120 }] },
+          steps: [
+            { t: '备料', d: '番茄两个切块，鸡蛋三个打散，加一小撮盐。', w: '番茄去皮口感更顺，懒得去皮也能做。', timer: 0 },
+            { t: '炒蛋', d: '热锅凉油，蛋液滑到半凝固就盛出来。', w: '还带一点湿就关火，余温会继续把它烘熟。', timer: 90 },
+            { t: '炒番茄', d: '补一点油，番茄炒到出沙，加半碗水煮开。', w: '出沙就是番茄软塌出汁、锅底有明显汤汁。', timer: 180 },
+            { t: '合炒', d: '倒回鸡蛋，翻两下就出锅，别久炒。', w: '鸡蛋久炒就老，翻匀就盛出来。', timer: 0 }
+          ] },
         { q: '第一次做戚风居然没塌。蛋黄糊：蛋黄 4 个加牛奶 40g、玉米油 40g、低粉 70g 拌匀。蛋白分三次加糖打到硬性发泡，分三次翻拌进去。倒进模子震两下，150 度烤 50 分钟，出炉立刻倒扣放凉。',
-          a: '这条帖子拆成 5 步：\n\n1 · 蛋黄糊 —— 蛋黄 4 个，加牛奶 40g、油 40g、低粉 70g 拌匀。\n2 · 打蛋白 —— 糖分三次加，打到提起有直立小尖。\n3 · 翻拌 —— 蛋白分三次拌进蛋黄糊，从底部兜起来，别画圈。\n4 · 烤 —— 倒进模子震两下，150 度烤 50 分钟。\n5 · 倒扣 —— 出炉立刻倒扣，彻底放凉再脱模。\n\n第 4 步是五十分钟，先按计时，中间别开炉门。',
-          tm: [{ n: '打蛋白', s: 240 }, { n: '烘烤', s: 3000 }, { n: '倒扣放凉', s: 1800 }] }
+          steps: [
+            { t: '蛋黄糊', d: '蛋黄 4 个，加牛奶 40g、油 40g、低粉 70g 拌匀。', w: '拌到没有干粉就停，别过度搅打起筋。', timer: 0 },
+            { t: '打蛋白', d: '糖分三次加，打到提起有直立小尖。', w: '盆倒过来蛋白不流动，就是够硬了。', timer: 240 },
+            { t: '翻拌', d: '蛋白分三次拌进蛋黄糊，从底部兜起来。', w: '画圈会消泡，塌腰多半坏在这一步。', timer: 0 },
+            { t: '烤', d: '倒进模子震两下，150 度烤 50 分钟。', w: '中间别开炉门，温度一掉就塌。', timer: 3000 },
+            { t: '倒扣', d: '出炉立刻倒扣，彻底放凉再脱模。', w: '不倒扣必塌腰，这一步别省。', timer: 1800 }
+          ] }
       ]
     },
     look: {
@@ -309,7 +323,7 @@
     ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.1 1.9"/></svg>';
 
-  function paintTimers(item){
+  function paintTimers(item, host, before){
     if(!item || !item.tm || !item.tm.length) return;
     var box = document.createElement('div');
     box.className = 'ai-timers';
@@ -356,7 +370,62 @@
       });
       box.appendChild(b);
     });
-    aiOut.appendChild(box);
+    var at = host || aiOut;
+    if(before && before.parentNode === at) at.insertBefore(box, before);
+    else at.appendChild(box);
+  }
+
+  /* ---------- 拆步骤：一步一屏 ----------
+     站内是 `cookHtml()` 那套：顶部「第 x / n 步」+ 进度条，中间一屏一步，
+     底部「下一步」按钮，走完进完成态。官网不能把五步一次性梭出来。 */
+  var aiStep = 0;
+  var CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"' +
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 12.6l5 5 9.8-10"/></svg>';
+
+  function escTxt(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function paintStepDone(item){
+    stopTicks();
+    aiOut.innerHTML =
+      '<div class="ai-steps stp-done">' +
+        '<div class="stp-done-ico">' + CHECK_SVG + '</div>' +
+        '<b>这道菜做完了</b>' +
+        '<p>' + item.steps.length + ' 步走完。站内走到这里会提示「发一条成品」，让下一个人也能照着做。</p>' +
+        '<button type="button" class="btn stp-again">再看一遍</button>' +
+      '</div>';
+    var again = aiOut.querySelector('.stp-again');
+    if(again) again.addEventListener('click', function(){ aiStep = 0; renderStep(item); });
+  }
+
+  function renderStep(item){
+    var steps = item.steps || [], n = steps.length;
+    if(aiStep >= n){ paintStepDone(item); return; }
+    stopTicks();
+    var s = steps[aiStep], last = aiStep + 1 >= n;
+
+    aiOut.innerHTML =
+      '<div class="ai-steps">' +
+        '<div class="stp-bar"><i style="width:' + Math.round(((aiStep + 1) / n) * 100) + '%"></i></div>' +
+        '<div class="stp-meta">第 ' + (aiStep + 1) + ' / ' + n + ' 步</div>' +
+        '<b class="stp-t">' + escTxt(s.t) + '</b>' +
+        '<p class="stp-d">' + escTxt(s.d) + '</p>' +
+        (s.w ? '<p class="stp-w"><b>看着点</b>' + escTxt(s.w) + '</p>' : '') +
+        '<div class="stp-foot"><button type="button" class="btn btn-primary stp-next">' +
+          (last ? '做完了' : '下一步') + '</button></div>' +
+      '</div>';
+
+    var box = aiOut.querySelector('.ai-steps');
+    var foot = aiOut.querySelector('.stp-foot');
+    // 这一步帖子里写了时长，才给计时器（跟站内一致：没写时长就没有那颗按钮）
+    if(s.timer) paintTimers({ tm: [{ n: s.t, s: s.timer }] }, box, foot);
+
+    aiOut.querySelector('.stp-next').addEventListener('click', function(){
+      aiStep++;
+      renderStep(item);
+    });
   }
 
   function aiPaint(){
@@ -364,6 +433,7 @@
     var mode = AI_EX[aiMode], set = mode.items, it = set[aiIdx % set.length];
     if(aiTimer){ clearInterval(aiTimer); aiTimer = null; }
     stopTicks();
+    aiStep = 0;
     aiIn.value = it.q;
     aiOut.innerHTML = '<span class="ph">点左边的「' + mode.run + '」试试。</span>';
     if(aiLabel) aiLabel.textContent = mode.label;
@@ -405,6 +475,8 @@
     aiRun.addEventListener('click', function(){
       var set = AI_EX[aiMode].items;
       var it = set[aiIdx % set.length];
+      // 拆步骤是一步一屏，不是一段文字；润色/拍给我看才走打字机
+      if(it.steps){ aiStep = 0; renderStep(it); return; }
       aiType(it.a, it);
     });
     var rs = $('#ai-reset');
