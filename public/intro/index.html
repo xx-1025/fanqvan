@@ -340,10 +340,18 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
 }
 .share-title{font-size:19px;font-weight:900;}
 .share-sub{font-size:13px;color:var(--ink-3);margin:4px 0 16px;}
-.share-list{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;overscroll-behavior:contain;}
+/* 列表只许上下滑：`overflow-y:auto` 会让浏览器把 `overflow-x` 也算成 auto，
+   手机上左右一蹭就会出现「横向橡皮筋」，看着像多了一个可以左右拖的模块。
+   这里显式关掉 x 轴，并用 touch-action:pan-y 把横向手势交还给浏览器。 */
+.share-list{
+  display:flex;flex-direction:column;gap:8px;max-height:42vh;
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
+  touch-action:pan-y;
+}
 .share-row{
   display:flex;align-items:center;gap:12px;background:var(--cream);border:2px solid var(--ink);
   border-radius:var(--r-sm);padding:9px 13px;cursor:pointer;font:inherit;text-align:left;
+  width:100%;max-width:100%;min-width:0;   /* 长名字也只能在行内省略，不许把行撑宽 */
   transition:transform .12s,box-shadow .12s,background .12s;
 }
 .share-row:hover{background:#fff;transform:translate(1px,1px);box-shadow:var(--sh-sm);}
@@ -352,8 +360,9 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
   display:grid;place-items:center;font-size:19px;background:#fff;
 }
 .s-txt{flex:1;min-width:0;}
-.s-txt b{display:block;font-size:14.5px;}
-.s-txt em{font-style:normal;font-size:12px;color:var(--ink-3);font-weight:700;}
+.s-txt b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.s-txt em{display:block;font-style:normal;font-size:12px;color:var(--ink-3);font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .s-go{
   background:var(--brand);color:#fff;border:2px solid var(--ink);border-radius:var(--pill);
   padding:5px 13px;font-size:12.5px;font-weight:900;flex:none;
@@ -377,6 +386,8 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
   border:var(--bw) solid var(--ink);box-shadow:var(--sh);display:grid;place-items:center;
   font-size:28px;position:relative;z-index:2;
 }
+/* 四步的图是自己画的线稿（不再用系统 emoji），统一 34px、粗描边、圆头 */
+.flow-dot svg{width:34px;height:34px;display:block;}
 .flow-step h3{font-size:16px;font-weight:900;margin-bottom:6px;}
 .flow-step p{font-size:13.5px;color:var(--ink-2);margin:0;}
 .flow-step:not(:last-child)::after{
@@ -508,6 +519,32 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
 @keyframes blink{50%{opacity:0;}}
 .ai-rules{margin:12px 0 0;padding-left:18px;font-size:12.5px;color:var(--ink-2);}
 .ai-rules li{margin:3px 0;}
+
+/* 「拍给我看」左边那张示意照片：裁成一条横幅，别把左边的输入区顶得太高 */
+.ai-shot{
+  display:none;margin:0 0 12px;border:2px solid var(--ink);border-radius:var(--r-xs);
+  overflow:hidden;background:#000;box-shadow:var(--sh-sm);
+}
+.ai-shot img{display:block;width:100%;height:150px;object-fit:cover;object-position:center;}
+.ai-shot.on{display:block;}
+
+/* 步骤计时器：拆完步骤给的几个「点一下就倒计时」的胶囊 */
+.ai-timers{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:11px;border-top:2px dashed var(--line);}
+.ai-timer{
+  font:inherit;font-size:12.5px;font-weight:900;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;
+  border:2px solid var(--ink);border-radius:var(--pill);padding:5px 12px;
+  background:var(--paper);color:var(--ink);box-shadow:var(--sh-sm);
+  transition:transform .12s,box-shadow .12s,background .12s;
+  font-variant-numeric:tabular-nums;
+}
+.ai-timer:hover{transform:translate(1px,1px);box-shadow:var(--sh-sm);}
+.ai-timer:active{transform:translate(2px,2px);box-shadow:none;}
+.ai-timer.on{background:var(--yellow);}
+.ai-timer.done{background:var(--green);color:#fff;}
+.ai-timer-lab{display:inline-flex;align-items:center;gap:5px;}
+.ai-timer svg{width:14px;height:14px;flex:none;}
+.ai-timer i{font-style:normal;opacity:.85;font-weight:800;}
 @media(max-width:840px){ .ai-demo{grid-template-columns:1fr;} }
 
 @media(max-width:640px){
@@ -758,8 +795,8 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
 <section class="sec wrap" id="ai" data-only="user">
   <div class="sec-head reveal">
     <span class="kicker">✨ AI 厨房助手</span>
-    <h2>它既可以帮你把话说顺，<br class="br-desk">还可以协助你做饭</h2>
-    <p>两种用法，都从你自己写的东西开始，不替你决定吃什么。</p>
+    <h2>说顺你写的话，拆细你的步骤，<br class="br-desk">还看得懂锅里那张照片</h2>
+    <p>四种用法，都从你自己的话、食材和照片开始，不替你决定吃什么。</p>
   </div>
   <div class="ai-points reveal">
     <div class="ai-point">
@@ -767,16 +804,26 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       <span>随手打的几句大白话，改成一条看得下去的饭帖：补上结构、收掉口水话，配比和火候没写就不替你编。</span>
     </div>
     <div class="ai-point">
-      <b>协助做饭</b>
-      <span>报上冰箱里有什么，给你一套能照着走的步骤：先下什么、火开多大、哪一步要盯着。</span>
+      <b>拍给我看</b>
+      <span>锅里什么样，拍一张发过去。它先说自己看见了什么——汁多汁少、上色深浅、熟没熟，再告诉你现在该怎么办。</span>
+    </div>
+    <div class="ai-point">
+      <b>拆成步骤</b>
+      <span>一条饭帖、或报上冰箱里有什么，拆成能照着走的步骤：先下什么、火开多大、哪一步要盯着。</span>
+    </div>
+    <div class="ai-point">
+      <b>步骤带计时</b>
+      <span>每一步的时长都算好，点一下就地倒计时，锅上忙起来也不用另外找表、不用记时间。</span>
     </div>
   </div>
   <div class="ai-demo reveal">
     <div class="ai-panel">
       <div class="ai-tabs" id="ai-tabs">
         <button class="ai-tab on" data-ai="polish" type="button">润色原话</button>
-        <button class="ai-tab" data-ai="cook" type="button">做饭模式</button>
+        <button class="ai-tab" data-ai="cook" type="button">拆成步骤</button>
+        <button class="ai-tab" data-ai="look" type="button">拍给我看</button>
       </div>
+      <div class="ai-shot" id="ai-shot"><img src="shots/food-09.webp" alt="锅里正在收汁的菜" loading="lazy"></div>
       <div class="ai-label" id="ai-label">你写的原话</div>
       <textarea class="ai-in" id="ai-in" rows="3"></textarea>
       <div class="ai-foot">
@@ -788,7 +835,7 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
     <div class="ai-panel ai-out-panel">
       <div class="ai-label">结果</div>
       <div class="ai-out" id="ai-out"><span class="ph">点左边的「让 AI 改一遍」试试。</span></div>
-      <ul class="ai-rules">
+      <ul class="ai-rules" id="ai-rules">
         <li>只用你自己的话，不凭空加菜谱</li>
         <li>配比、火候没写就不替你编</li>
         <li>改完还是你的口吻</li>
@@ -902,22 +949,51 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
   </div>
   <div class="flow" data-page-node-id="YoGIK7PcliAkh4rZHVC4nN">
     <div class="flow-step reveal" data-page-node-id="xREWZVR0ZOJ8SWpj6abWkL">
-      <div class="flow-dot" data-page-node-id="RMYGCETF4AE6dUmzSrVtsd">📝</div>
+      <div class="flow-dot" data-page-node-id="RMYGCETF4AE6dUmzSrVtsd">
+        <!-- 发布：一张写好的帖子 + 一支笔（自己画的线稿，不用 emoji） -->
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5.4" y="4.4" width="13.6" height="19" rx="2.6" fill="#fff8ee"/>
+          <path d="M8.6 10.2h7.2M8.6 14.2h7.2M8.6 18.2h4.6"/>
+          <path d="M18.3 26.3l-4.3 1.1 1.1-4.3 8.2-8.2 3.2 3.2z" fill="#ffd166"/>
+          <path d="M20.5 17.9l3.2 3.2"/>
+        </svg>
+      </div>
       <h3 data-page-node-id="B3d9c79m3h75aXezwPfLnx">1 · 发布</h3>
       <p data-page-node-id="3JlMKHfccEB2iFLTcRuO8I">写好配比火候、配上图，提交。</p>
     </div>
     <div class="flow-step reveal" data-page-node-id="Cp65Y2XdTEVAAVp2qZTNjZ">
-      <div class="flow-dot" data-page-node-id="26gRAlDhrPGZUQkpMhVYEv">🔍</div>
+      <div class="flow-dot" data-page-node-id="26gRAlDhrPGZUQkpMhVYEv">
+        <!-- 审核：放大镜里一个勾 -->
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="13" cy="13" r="7.6" fill="#fff8ee"/>
+          <path d="M18.7 18.7l7.4 7.4" stroke-width="2.6"/>
+          <path d="M9.7 13.1l2.5 2.7 4.2-5" stroke="#ff8a3d" stroke-width="2.4"/>
+        </svg>
+      </div>
       <h3 data-page-node-id="iKLorxWzIvqsGmI82RULgD">2 · 审核</h3>
       <p data-page-node-id="IJpWBcUNsy4EWztyXcZZPA">内容进审核中心，真人逐条把关。</p>
     </div>
     <div class="flow-step reveal" data-page-node-id="gOkZ1yxT30H5KT23bZKGMy">
-      <div class="flow-dot" data-page-node-id="RABjearUeqiSk3i3qjPAGF">🎉</div>
+      <div class="flow-dot" data-page-node-id="RABjearUeqiSk3i3qjPAGF">
+        <!-- 公开：进了首页，墙上挂着一颗心 -->
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4.4 15.4L16 5.4l11.6 10"/>
+          <path d="M7.6 13.6V26h16.8V13.6" fill="#fff8ee"/>
+          <path d="M16 22.4c-2.9-2-4.1-3.4-4.1-5 0-1.1.9-2 2-2 .8 0 1.6.5 2.1 1.2.5-.7 1.3-1.2 2.1-1.2 1.1 0 2 .9 2 2 0 1.6-1.2 3-4.1 5z" fill="#ff9ebb"/>
+        </svg>
+      </div>
       <h3 data-page-node-id="pOEgICSAVdQLpI5C564Y7L">3 · 公开</h3>
       <p data-page-node-id="FA7m7cBn9vCFi5RB3U1WCP">通过后进首页，厨友们点赞评论。</p>
     </div>
     <div class="flow-step reveal" data-page-node-id="5Rwe7Mb8mPwmx8Fojm8ZGi">
-      <div class="flow-dot" data-page-node-id="BZG03fLU09PndJqW6AhOm1">🏅</div>
+      <div class="flow-dot" data-page-node-id="BZG03fLU09PndJqW6AhOm1">
+        <!-- 评优：奖牌 + 缎带 + 一颗星 -->
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11.2 17.4L8.7 27.2l7.3-3.2 7.3 3.2-2.5-9.8"/>
+          <circle cx="16" cy="11.6" r="7.3" fill="#ffd166"/>
+          <path d="M16 7.3l1.5 3.1 3.4.5-2.5 2.4.6 3.4-3-1.6-3 1.6.6-3.4-2.5-2.4 3.4-.5z" fill="#40291b" stroke="none"/>
+        </svg>
+      </div>
       <h3 data-page-node-id="Jcs5oP7rbDaHNnbCwXS7ud">4 · 评优</h3>
       <p data-page-node-id="zRyon4cDBf4UC4qbCAv96n">够好的被评上「优秀饭帖」，挂上墙。</p>
     </div>

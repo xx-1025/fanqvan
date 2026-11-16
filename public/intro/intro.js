@@ -236,38 +236,141 @@
   });
 
   /* ---------- AI 区（官网展示） ----------
-     文本写死在这里，点按钮只是逐字打出来，不发请求、不碰 /api/ai。 */
+     文本写死在这里，点按钮只是逐字打出来，不发请求、不碰 /api/ai。
+     三种演示对应站内三个真实入口：润色 / 做饭模式(拆步骤+计时) / 拍给我看。 */
   var AI_EX = {
-    polish: [
-      { q: '今天炒了个蛋炒饭 挺好吃的 就是有点咸 下次少放点盐',
-        a: '今天炒了个蛋炒饭，挺好吃的，就是有点咸。下次少放点盐，味道就正好了。' },
-      { q: '红烧肉火太大 糖色炒糊了 肉有点苦',
-        a: '红烧肉这次火大了，糖色炒糊，肉也带了点苦味。\n记下来：糖色一变成枣红就得立刻下肉，晚一秒就苦。' },
-      { q: '第一次做戚风 没塌 开心',
-        a: '第一次做戚风，居然没塌，开心。\n关键是蛋白打到硬性发泡，翻拌时从底部兜起来、别画圈。' }
-    ],
-    cook: [
-      { q: '冰箱里只有鸡蛋 两个番茄 半碗米饭',
-        a: '就这些也能做一顿：\n\n1. 番茄切块，鸡蛋打散，加一小撮盐。\n2. 热锅凉油，鸡蛋滑到半凝固先盛出来。\n3. 补一点油，番茄下锅炒到出沙，加半碗水煮开。\n4. 倒回鸡蛋，连汁浇在热米饭上。\n\n前后约 10 分钟，不用再买菜。' },
-      { q: '一块鸡胸肉 一个土豆 半根胡萝卜',
-        a: '一锅炖最省事：\n\n1. 鸡胸切块，用盐和一点生抽抓匀。\n2. 土豆、胡萝卜切滚刀块。\n3. 先煎鸡肉到上色，下蔬菜翻炒两下。\n4. 加水没过一半，小火 15 分钟，开盖收汁。' },
-      { q: '剩的两片吐司 一个鸡蛋 一点芝士',
-        a: '做个热三明治：\n\n1. 鸡蛋煎到边缘微焦，蛋黄别全熟。\n2. 吐司一面抹薄薄一层黄油。\n3. 铺芝士和蛋，盖上另一片。\n4. 小火两面各烙 1 分钟，芝士化开就好。' }
-    ]
+    polish: {
+      label: '你写的原话', run: '让 AI 改一遍', photo: false,
+      rules: ['只用你自己的话，不凭空加菜谱', '配比、火候没写就不替你编', '改完还是你的口吻'],
+      items: [
+        { q: '今天炒了个蛋炒饭 挺好吃的 就是有点咸 下次少放点盐',
+          a: '今天炒了个蛋炒饭，挺好吃的，就是有点咸。下次少放点盐，味道就正好了。' },
+        { q: '红烧肉火太大 糖色炒糊了 肉有点苦',
+          a: '红烧肉这次火大了，糖色炒糊，肉也带了点苦味。\n记下来：糖色一变成枣红就得立刻下肉，晚一秒就苦。' },
+        { q: '第一次做戚风 没塌 开心',
+          a: '第一次做戚风，居然没塌，开心。\n关键是蛋白打到硬性发泡，翻拌时从底部兜起来、别画圈。' }
+      ]
+    },
+    cook: {
+      label: '手里有什么 / 想做的菜', run: '拆成步骤', photo: false,
+      rules: ['先下什么、火多大，一步步写清楚', '每一步都给时长，点一下就倒计时', '只用手上的食材，不加买不到的'],
+      items: [
+        { q: '冰箱里只有鸡蛋 两个番茄 半碗米饭',
+          a: '就这些也能做一顿：\n\n1. 番茄切块，鸡蛋打散，加一小撮盐。\n2. 热锅凉油，鸡蛋滑到半凝固先盛出来。\n3. 补一点油，番茄下锅炒到出沙，加半碗水煮开。\n4. 倒回鸡蛋，连汁浇在热米饭上。\n\n前后约 10 分钟，不用再买菜。',
+          tm: [{ n: '番茄出沙', s: 180 }, { n: '小火煮汁', s: 120 }] },
+        { q: '一块鸡胸肉 一个土豆 半根胡萝卜',
+          a: '一锅炖最省事：\n\n1. 鸡胸切块，用盐和一点生抽抓匀。\n2. 土豆、胡萝卜切滚刀块。\n3. 先煎鸡肉到上色，下蔬菜翻炒两下。\n4. 加水没过一半，小火 15 分钟，开盖收汁。',
+          tm: [{ n: '小火焖', s: 900 }, { n: '开盖收汁', s: 180 }] },
+        { q: '剩的两片吐司 一个鸡蛋 一点芝士',
+          a: '做个热三明治：\n\n1. 鸡蛋煎到边缘微焦，蛋黄别全熟。\n2. 吐司一面抹薄薄一层黄油。\n3. 铺芝士和蛋，盖上另一片。\n4. 小火两面各烙 1 分钟，芝士化开就好。',
+          tm: [{ n: '煎蛋', s: 120 }, { n: '两面各烙', s: 60 }] }
+      ]
+    },
+    look: {
+      label: '你想问的', run: '让它看看', photo: true,
+      rules: ['先说看见什么，再说怎么办', '看不清就说看不清，不瞎猜', '只给火候判断，不替你决定吃什么'],
+      items: [
+        { q: '蛋皮是不是有点老了？咖喱还要不要再收一下',
+          a: '它看见的：蛋皮旋得挺匀，表面还润，边缘没焦；咖喱汁偏稀，浮着一层水光，胡萝卜块偏大。\n\n下一步：蛋包饭别再动火，先盛出来。咖喱开中火再收两分钟，勺子背面能挂住一层就关火。',
+          tm: [{ n: '收咖喱', s: 120 }] },
+        { q: '这个颜色算不算上色到位了',
+          a: '它看见的：蛋皮是嫩黄，没有焦边；旁边的西兰花还发亮，胡萝卜边角有点硬。\n\n下一步：蛋皮已经到位，别回锅。蔬菜再煮三分钟到能咬断，咖喱最后调味就行。',
+          tm: [{ n: '蔬菜再煮', s: 180 }] }
+      ]
+    }
   };
-  var aiMode = 'polish', aiIdx = 0, aiTimer = null;
-  var aiIn = $('#ai-in'), aiOut = $('#ai-out'), aiNote = $('#ai-note'), aiLabel = $('#ai-label');
+  var aiMode = 'polish', aiIdx = 0, aiTimer = null, aiTicks = [];
+  var aiIn = $('#ai-in'), aiOut = $('#ai-out'), aiNote = $('#ai-note'),
+      aiLabel = $('#ai-label'), aiRun = $('#ai-run'), aiShot = $('#ai-shot'),
+      aiRules = $('#ai-rules');
+
+  function mmss(sec){
+    var m = Math.floor(sec / 60), r = sec % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+  // 切例子/切 tab 时把所有倒计时一起停掉，别留在后台空转
+  function stopTicks(){
+    aiTicks.forEach(function(id){ clearInterval(id); });
+    aiTicks = [];
+  }
+  function dropTick(id){
+    var k = aiTicks.indexOf(id);
+    if(k >= 0) aiTicks.splice(k, 1);
+  }
+
+  /* 步骤计时：跟站内 `cook-timer` 一样的规矩——点一下开始/暂停，到点变「时间到」，
+     再点一下回到原时长（站内是连点两下重置，这里简化成到点后点一下重来）。
+     时钟图标自己画，跟页面其它线稿一个笔触，不用 emoji。 */
+  var CLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"' +
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.1 1.9"/></svg>';
+
+  function paintTimers(item){
+    if(!item || !item.tm || !item.tm.length) return;
+    var box = document.createElement('div');
+    box.className = 'ai-timers';
+    item.tm.forEach(function(t){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ai-timer';
+      var lab = document.createElement('span');
+      lab.className = 'ai-timer-lab';
+      lab.innerHTML = CLOCK_SVG;
+      lab.appendChild(document.createTextNode(t.n));
+      var num = document.createElement('i');
+      num.textContent = mmss(t.s);
+      b.appendChild(lab);
+      b.appendChild(num);
+
+      var id = null, left = t.s;
+      b.addEventListener('click', function(){
+        if(b.classList.contains('done')){          // 到点后再点 = 重来一轮
+          b.classList.remove('done');
+          num.textContent = mmss(t.s);
+          left = t.s;
+          return;
+        }
+        if(id){                                    // 正在走 → 暂停
+          clearInterval(id); dropTick(id); id = null;
+          b.classList.remove('on');
+          return;
+        }
+        if(left <= 0) left = t.s;
+        b.classList.add('on');
+        id = setInterval(function(){
+          left--;
+          if(left <= 0){
+            clearInterval(id); dropTick(id); id = null;
+            b.classList.remove('on');
+            b.classList.add('done');
+            num.textContent = '时间到';
+            return;
+          }
+          num.textContent = mmss(left);
+        }, 1000);
+        aiTicks.push(id);
+      });
+      box.appendChild(b);
+    });
+    aiOut.appendChild(box);
+  }
+
   function aiPaint(){
     if(!aiIn || !aiOut) return;
-    var set = AI_EX[aiMode], it = set[aiIdx % set.length];
+    var mode = AI_EX[aiMode], set = mode.items, it = set[aiIdx % set.length];
     if(aiTimer){ clearInterval(aiTimer); aiTimer = null; }
+    stopTicks();
     aiIn.value = it.q;
-    aiOut.innerHTML = '<span class="ph">点「让 AI 改一遍」试试。</span>';
-    if(aiLabel) aiLabel.textContent = aiMode === 'cook' ? '手里有什么食材' : '你写的原话';
+    aiOut.innerHTML = '<span class="ph">点左边的「' + mode.run + '」试试。</span>';
+    if(aiLabel) aiLabel.textContent = mode.label;
+    if(aiRun) aiRun.textContent = mode.run;
+    if(aiShot) aiShot.classList.toggle('on', !!mode.photo);
+    if(aiRules && mode.rules) aiRules.innerHTML = mode.rules.map(function(r){ return '<li>' + r + '</li>'; }).join('');
     if(aiNote) aiNote.textContent = '示例 ' + ((aiIdx % set.length) + 1) + ' / ' + set.length;
   }
-  function aiType(text){
+  function aiType(text, item){
     if(aiTimer) clearInterval(aiTimer);
+    stopTicks();
     aiOut.textContent = '';
     var caret = document.createElement('span');
     caret.className = 'caret';
@@ -279,11 +382,12 @@
       aiOut.appendChild(caret);
       if(i >= text.length){
         clearInterval(aiTimer); aiTimer = null;
-        setTimeout(function(){ if(caret.parentNode) caret.parentNode.removeChild(caret); }, 1000);
+        caret.parentNode && caret.parentNode.removeChild(caret);
+        paintTimers(item);
       }
     }, 16);
   }
-  if(aiIn && aiOut && $('#ai-run')){
+  if(aiIn && aiOut && aiRun){
     aiPaint();
     $$('#ai-tabs .ai-tab').forEach(function(b){
       b.addEventListener('click', function(){
@@ -294,9 +398,10 @@
         aiPaint();
       });
     });
-    $('#ai-run').addEventListener('click', function(){
-      var set = AI_EX[aiMode];
-      aiType(set[aiIdx % set.length].a);
+    aiRun.addEventListener('click', function(){
+      var set = AI_EX[aiMode].items;
+      var it = set[aiIdx % set.length];
+      aiType(it.a, it);
     });
     var rs = $('#ai-reset');
     if(rs) rs.addEventListener('click', function(){ aiIdx++; aiPaint(); });
