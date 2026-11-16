@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-11-16 早（AI 主模型换成 deepseek-v4.1-flash-1017）
+
+- 用户要求换模型、key 不变：`.env` 与 `ai.config.json` 的 `model` 由 `qwen3.8-27b` 改为 `deepseek-v4.1-flash-1017`。
+  **两份必须一起改**（`.env` 优先级更高但平台不上传点文件，线上实际读的是 `ai.config.json`）。
+- 看图模型仍是 `qwen3-vl-plus`（deepseek 不看图，别混用）；base / key 未动，仍是阿里云百炼兼容端点。
+- 实测：直连 `/chat/completions`（带 `enable_thinking:false`）200 / 0.89s；
+  站内 `POST /api/ai/compose` 全程 0.73s、`provider:"model"`、标题/正文/标签结构正常，一次过未触发退回重写。
+
+---
+
 ## 2026-11-16 早（2.32 · 上线活动中心两处修复）
 
 - 把 11-13 的活动中心修复（进行中可报名 / 发布拦截过去时间）与「报名只在详情页」一起发布上线。
