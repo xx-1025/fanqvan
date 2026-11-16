@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-11-16 早（看图模型也换成 deepseek-v4.1-flash-1017）
+
+- 用户要求看图模型同样换成 `deepseek-v4.1-flash-1017`。**先实测再改**（此前记录说「deepseek 不能看图」，
+  那只针对老型号 `deepseek-v4-flash-0731`）。
+- 实测证据（同一 key / 同一端点）：
+  - 几何图（5 红圆 + 1 蓝方块）：返回 200、`image_tokens: 184`、**答对 5 圆 1 方块**；
+    对照 `qwen3-vl-plus` 的 `image_tokens: 66`，把 5 个数成 6 个。
+  - 真实菜品照（webp，三道菜）：返回 200、`image_tokens: 439`、3.0s，三道菜与容器描述准确，
+    看不清的食材会明说「看不清」，不乱编；同题 `qwen3-vl-plus` 4.9s。
+- 改动：`ai.config.json` 的 `visionModel`、`.env` 新增 `FQ_AI_VISION_MODEL` 均设为 `deepseek-v4.1-flash-1017`。
+- 站内全链路复测 `POST /api/ai/look`（真实菜品图）：2.7s，`see` 描述准确、`answer` 给出「挂勺发亮就该关火」这类可执行建议。
+- **判断能不能看图的唯一标准：`usage.prompt_tokens_details.image_tokens`（≈9 = 没读图，几百 = 真读了）。**
+
+---
+
 ## 2026-11-16 早（AI 主模型换成 deepseek-v4.1-flash-1017）
 
 - 用户要求换模型、key 不变：`.env` 与 `ai.config.json` 的 `model` 由 `qwen3.8-27b` 改为 `deepseek-v4.1-flash-1017`。
