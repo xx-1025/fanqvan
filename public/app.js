@@ -59,6 +59,7 @@ const state = {
   loading: false,
   list: { scope: 'feed', userId: 0, offset: 0, hasMore: false, total: 0, loadingMore: false },
   notes: [],
+  notesLoaded: false,    // 通知列表是否已经拉过一次；没拉过就别写「还没有收到消息」
   noteOpen: false,
   modal: null,
   suggest: [],
@@ -489,6 +490,7 @@ async function loadNotes() {
     const d = await api('/api/notifications');
     state.notes = d.notifications;
     state.data.unread = d.unread;
+    state.notesLoaded = true;
   } catch (e) { /* ignore */ }
 }
 
@@ -748,17 +750,48 @@ function noteItemHtml(n) {
   '</a>';
 }
 
-function notePanel() {
+/* 面板内层（head + 列表）。单独拆出来，是为了数据回来后只换这里，
+   不重建 .note-panel 本身 —— 面板一旦重建，入场动画就会重播，看着就是「闪一下」。 */
+function noteBody() {
   const unread = state.data.unread || 0;
-  const items = state.notes.length
-    ? state.notes.map(noteItemHtml).join('')
-    : '<div class="note-empty">还没有收到消息</div>';
-  return '<div class="note-panel' + (state.noteOpen ? ' open' : '') + '" id="note-panel">' +
-    '<div class="note-head"><b>消息通知</b>' +
+  let items;
+  if (!state.notes.length) {
+    items = '<div class="note-empty">' + (state.notesLoaded ? '还没有收到消息' : '正在读取…') + '</div>';
+  } else {
+    items = state.notes.map(noteItemHtml).join('');
+  }
+  return '<div class="note-head"><b>消息通知</b>' +
       (unread ? '<button class="link-btn" data-action="note-read-all">全部已读</button>' : '') +
     '</div>' +
-    '<div class="note-list">' + items + '</div>' +
-  '</div>';
+    '<div class="note-list">' + items + '</div>';
+}
+
+function notePanel() {
+  return '<div class="note-panel' + (state.noteOpen ? ' open' : '') + '" id="note-panel">' + noteBody() + '</div>';
+}
+
+/* 只刷新面板内容，不动面板元素本身（动了就会重播动画） */
+function paintNotes() {
+  const p = $('#note-panel');
+  if (!p) return;
+  p.innerHTML = noteBody();
+  p.classList.toggle('open', !!state.noteOpen);
+}
+
+/* 展开时播一次入场动画：元素一直在 DOM 里、只是 display:none，
+   光切 class 不会触发 CSS 动画，所以要手动把 animation 重置一次。 */
+function openNotePanel() {
+  const p = $('#note-panel');
+  if (!p) return;
+  p.classList.add('open');
+  p.style.animation = 'none';
+  void p.offsetWidth;
+  p.style.animation = '';
+}
+
+function closeNotePanel() {
+  const p = $('#note-panel');
+  if (p) p.classList.remove('open');
 }
 
 /* 手机端底部导航：首页 / 发现 / 发布 / 消息 / 我 —— 微博 App 的五个位置。
@@ -4668,7 +4701,7 @@ document.addEventListener('click', (e) => {
 
   // 点击空白关闭通知面板
   if (!e.target.closest('#note-panel') && !e.target.closest('[data-action="note-toggle"]')) {
-    if (state.noteOpen) { state.noteOpen = false; render(); }
+    if (state.noteOpen) { state.noteOpen = false; closeNotePanel(); }
   }
   if (!e.target.closest('.suggest-box')) hideSuggest();
 
@@ -4990,13 +5023,21 @@ document.addEventListener('click', (e) => {
     }
     case 'note-toggle': {
       state.noteOpen = !state.noteOpen;
-      if (state.noteOpen) loadNotes().then(render);
-      render();
+      if (state.noteOpen) {
+        // 先展开（用现有数据，通常早就在内存里了），数据回来只换内层 ——
+        // 原来这里整页 render()，会把顶栏、列表、图片全部重画一遍，用户看到的就是「闪一下」
+        openNotePanel();
+        loadNotes().then(() => { paintNotes(); updateBell(); }).catch(() => {});
+      } else {
+        closeNotePanel();
+      }
       break;
     }
     case 'note-read-all': {
       api('/api/notifications/read', { method: 'POST', body: {} })
-        .then(() => loadNotes()).then(render).catch(() => {});
+        .then(() => loadNotes())
+        .then(() => { paintNotes(); updateBell(); })
+        .catch(() => {});
       break;
     }
     case 'note-open': {
