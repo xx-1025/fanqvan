@@ -360,6 +360,20 @@ async function api(path, opts) {
   let data = {};
   try { data = await res.json(); } catch (e) { /* ignore */ }
   if (!res.ok) {
+    /* 403 且响应里连 error 字段都没有 —— 这不是应用返回的，是平台网关拦下的授权页。
+       最常见的原因就是授权 cookie（__wb_rsc）没下来：安卓离线包把首页也喂了本地文件时，
+       那条导航没上网，网关的 Set-Cookie 就永远发不出去，于是 App 里所有 /api/* 全 403，
+       验证码第一个露馅（一直空白、点刷新还是空白）。
+       客户端已在启动时补 cookie，这里只负责把话说清楚，别让用户只看到「请求失败 403」。 */
+    if (res.status === 403 && !data.error) {
+      const ge = new Error(nativeApp()
+        ? '链接授权失效，把 App 完全退出后重新打开'
+        : '链接授权失效，请从官网重新进入');
+      ge.status = 403;
+      ge.code = 'GATEWAY_DENIED';
+      ge.gateway = true;
+      throw ge;
+    }
     const err = new Error(data.error || ('请求失败 ' + res.status));
     err.status = res.status;
     err.code = data.code || '';
@@ -3433,7 +3447,16 @@ async function loadCaptcha(silent) {
     const hint = $('#cap-hint');
     if (hint) { hint.className = 'field-hint'; hint.textContent = '不区分大小写 · 看不清就点图片换一张'; }
   } catch (e) {
-    if (!silent) toast('验证码没刷出来，点图片再试一次', 'err');
+    /* 提示不留白：取不到图的时候要写清是「网关卡了授权」，不是「这张图坏了」。
+       原来只弹一句 toast，静默重试时连 toast 都没有，界面上就是一块空白。 */
+    const hint = $('#cap-hint');
+    if (hint) {
+      hint.className = 'field-hint bad';
+      hint.textContent = (e && e.gateway)
+        ? (nativeApp() ? '图片没取到：把 App 完全退出后重新打开' : '图片没取到：链接授权失效，请从官网进入')
+        : '图片没取到，点图片再试一次';
+    }
+    if (!silent) toast(e && e.gateway ? e.message : '验证码没刷出来，点图片再试一次', 'err');
   }
 }
 
