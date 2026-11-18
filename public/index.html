@@ -85,6 +85,8 @@ html[data-theme="dark"] #boot .boot-ring{border-color:rgba(255,138,61,.16);borde
   </div>
   <div id="app"></div>
   <div id="toast-wrap"></div>
+  <!-- 必须排在 app.js 前面：它负责接住 app.js 自身的解析/加载失败（白屏时唯一的线索） -->
+  <script src="/boot-guard.js?v=__FQ_V__"></script>
   <script src="/app.js?v=__FQ_V__" fetchpriority="high"></script>
 </body>
 </html>

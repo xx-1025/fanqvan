@@ -423,6 +423,71 @@
 
   /* ---------------- 详情弹层 ---------------- */
 
+  /* ---------------- 前端报错 ---------------- */
+
+  function errKindWord(k) {
+    if (k === 'reject') return '异步未处理';
+    if (k === 'asset') return '资源没加载上';
+    return '脚本报错';
+  }
+
+  function errRowHtml(e, full) {
+    var t = Date.parse(e.t) || Date.now();
+    var html = '<div class="op-err">' +
+      '<div class="op-err-h"><b>' + esc(errKindWord(e.kind)) + '</b>' +
+        '<span>' + esc(ago(t)) + (e.ver ? ' · v' + esc(e.ver) : '') + '</span></div>' +
+      '<div class="op-err-m">' + esc(e.msg) + '</div>';
+    if (full) {
+      if (e.url) html += '<div class="op-err-x">页面 ' + esc(e.url) + '</div>';
+      if (e.ua) html += '<div class="op-err-x">设备 ' + esc(uaWords(e.ua)) + '</div>';
+      if (e.ip) html += '<div class="op-err-x">来源 ' + esc(e.ip) +
+        (e.uid ? ' · 用户 ' + e.uid : ' · 未登录') + '</div>';
+      if (e.stack) html += '<pre class="op-err-s">' + esc(e.stack) + '</pre>';
+    }
+    return html + '</div>';
+  }
+
+  function paintErrs(d) {
+    var box = $('#op-errs');
+    if (!box) return;
+    var list = (d && d.recent) || [];
+    var total = (d && d.total) || 0;
+    $('#op-err-sub').textContent = total ? ('本次启动收到 ' + total + ' 条') : '还没收到';
+    if (!list.length) {
+      box.innerHTML = '<div class="op-empty">暂时没有前端报错。真出问题时这里会自己亮起来。</div>';
+      return;
+    }
+    box.innerHTML = list.map(function (e) { return errRowHtml(e, false); }).join('');
+  }
+
+  function openErrs() {
+    get('/api/ops/client-errors').then(function (d) {
+      var rows = (d.ring || []).map(function (e) { return errRowHtml(e, true); }).join('');
+      var days = (d.daily || []).map(function (b) {
+        var kb = (b.size / 1024).toFixed(1) + ' KB';
+        return '<i>' + esc(String(b.name).replace(/^db-|\.json$/g, '')) + '</i><span>' + kb + '</span>';
+      }).join('');
+
+      var html = '<h3>前端报错 / 数据备份</h3>' +
+        '<div class="m-sub">报错来自真实用户的浏览器（包括 App 内置的 WebView）。' +
+        '「脚本报错」是代码抛错了；「资源没加载上」多半是断网或 cdn 抽了一下；' +
+        '「异步未处理」是某个请求失败后没人接住。同一个会话最多报 5 条，刷不爆服务器。</div>' +
+        (rows ? '<div class="op-errs full">' + rows + '</div>'
+              : '<div class="op-empty">这次启动以来还没收到报错。</div>') +
+        '<div class="m-sub" style="margin:16px 0 6px">每日自动快照（存在服务器上，留 14 天）</div>' +
+        (days
+          ? '<div class="kv">' + days + '</div>' +
+            '<div class="m-sub">⚠ 这些快照和数据库在同一块盘上，容器一重建就一起没了。' +
+            '真要留住数据，用顶栏的「下载备份」存一份到自己电脑上。</div>'
+          : '<div class="op-empty">还没有快照 —— 今天第一次写库之后才会有。</div>') +
+        '<div class="m-acts"><button class="op-btn ghost" id="op-close">关闭</button></div>';
+
+      $('#op-modal-box').innerHTML = html;
+      $('#op-modal').hidden = false;
+      $('#op-close').addEventListener('click', closeModal);
+    }).catch(function (e) { alert(e.message); });
+  }
+
   function closeModal() {
     $('#op-modal').hidden = true;
     $('#op-modal-box').innerHTML = '';
@@ -621,6 +686,7 @@
       paintNets(o.nets);
       paintBlocks(o.blocks);
       paintEvents(o.events);
+      paintErrs(o.clientErr);
     }).catch(function (e) {
       if (e.status === 403) deny(e.message);
     });
@@ -720,6 +786,7 @@
     });
 
     $('#op-diag').addEventListener('click', openDiag);
+    $('#op-err-more').addEventListener('click', openErrs);
 
     // 标签页切回前台时立刻刷一次，别让用户盯着一屏过期数据
     document.addEventListener('visibilitychange', function () {

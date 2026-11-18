@@ -282,6 +282,130 @@ function secLog(kind, req, extra) {
   } catch (e) { /* 日志失败绝不影响业务 */ }
 }
 
+/* ------------------------------------------------------------------ */
+/* 前端崩溃日志                                                          */
+/*                                                                      */
+/* 浏览器里报的错以前只有用户自己看得见（白屏就是白屏，没人知道为什么）。  */
+/* 这里收三条路来的：全局 error、unhandledrejection、资源加载失败，       */
+/* 由 public/boot-guard.js 在最前面挂好钩子发过来。                       */
+/*                                                                      */
+/* 和 security.log 分开存：一个是「有人想搞事」，一个是「我们自己写坏了」， */
+/* 混在一起查起来互相污染。                                              */
+/* ------------------------------------------------------------------ */
+
+/* 跟着 DB_FILE 走：测试库（FQ_DB 指到 tmp/）的报错日志也落在 tmp/，
+   不会混进 data/ 里被当成真事故来查。 */
+const ERR_LOG = path.join(path.dirname(DB_FILE), 'client-errors.log');
+const ERR_LOG_MAX = 512 * 1024;
+let errLogBytes = -1;
+
+/* 内存里留最近 60 条给控制台看：/ops 每两秒刷一次，每次都读盘太浪费，
+   而且日志轮转之后老文件里还有，内存这份只负责「刚刚有没有新报错」。 */
+const ERR_RING_MAX = 60;
+const errRing = [];
+let errTotal = 0;
+
+function clientErrLog(rec) {
+  errTotal++;
+  errRing.push(rec);
+  while (errRing.length > ERR_RING_MAX) errRing.shift();
+  try {
+    const line = JSON.stringify(rec) + '\n';
+    if (errLogBytes < 0) {
+      try { errLogBytes = fs.statSync(ERR_LOG).size; } catch { errLogBytes = 0; }
+    }
+    if (errLogBytes + line.length > ERR_LOG_MAX) {
+      try { fs.renameSync(ERR_LOG, ERR_LOG + '.1'); } catch {}
+      errLogBytes = 0;
+    }
+    errLogBytes += Buffer.byteLength(line);
+    fs.appendFile(ERR_LOG, line, () => {});
+  } catch (e) { /* 日志失败绝不影响请求 */ }
+}
+
+/* 从文件尾部倒着读最近 limit 条。只在「进程刚重启、内存环还是空的」时走这条路，
+   所以不追求效率；文件上限 512KB，一次读完可以接受。坏行直接跳过，别让一条脏数据
+   把整个面板打成空白。 */
+function errTailFromFile(limit) {
+  try {
+    const lines = fs.readFileSync(ERR_LOG, 'utf8').split('\n');
+    const out = [];
+    for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
+      const s = lines[i].trim();
+      if (!s) continue;
+      try { out.push(JSON.parse(s)); } catch {}
+    }
+    return out;
+  } catch (e) { return []; }
+}
+
+/* ------------------------------------------------------------------ */
+/* 每日快照                                                              */
+/*                                                                      */
+/* 防的是「手滑」：误删帖子、误封号、某个接口把数据写坏了 —— 这类事故当天 */
+/* 就能发现，用前一天的库能救回来。                                       */
+/*                                                                      */
+/* 它**不防容器重建**：快照和 db.json 在同一块盘上，容器一没就一起没。     */
+/* 真正「出了容器」的备份只有一个 —— 管理员在 /ops 点「下载备份」拉到自己 */
+/* 电脑上。这两件事都要有，别指望其中一个顶两个用。                        */
+/*                                                                      */
+/* 时机特意选在「今天第一次准备写库之前」：存下来的是今天所有改动之前的     */
+/* 那份，等于每天开工前的存档。写坏了也要先有库才能判断写坏了。            */
+/* ------------------------------------------------------------------ */
+
+/* 跟着 DB_FILE 走：测试库（FQ_DB 指到 tmp/）的快照也落在 tmp/ 里，
+   不会混进 data/ 被误当成真数据。 */
+const BACKUP_DIR = path.join(path.dirname(DB_FILE), 'backups');
+const BACKUP_KEEP = 14;
+const BACKUP_NAME = /^db-\d{4}-\d{2}-\d{2}\.json$/;
+let snapDay = '';
+
+/* 按东八区切日：服务器时区通常是 UTC，但「今天」应该按人所在时区算，
+   否则早上 8 点前的操作会被记到「昨天」的快照里。 */
+function dayKey(ms) {
+  const d = new Date(ms + 8 * 3600 * 1000);
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+}
+
+function dailySnapshot() {
+  const day = dayKey(Date.now());
+  if (snapDay === day) return;
+  snapDay = day;
+  try {
+    if (!fs.existsSync(DB_FILE)) return;      // 还没建过库，没有东西可存
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const file = path.join(BACKUP_DIR, 'db-' + day + '.json');
+    if (fs.existsSync(file)) return;          // 今天已经存过（一天内重启多次也不会重复）
+    fs.copyFileSync(DB_FILE, file);
+    pruneBackups();
+  } catch (e) {
+    console.warn('[backup] 每日快照失败：' + e.message);
+  }
+}
+
+function pruneBackups() {
+  try {
+    const files = fs.readdirSync(BACKUP_DIR).filter((f) => BACKUP_NAME.test(f)).sort();
+    while (files.length > BACKUP_KEEP) {
+      const f = files.shift();
+      try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch {}
+    }
+  } catch (e) { /* 清理失败不影响主流程 */ }
+}
+
+function backupList() {
+  try {
+    return fs.readdirSync(BACKUP_DIR).filter((f) => BACKUP_NAME.test(f))
+      .sort().reverse().slice(0, BACKUP_KEEP)
+      .map((f) => {
+        let size = 0; let at = 0;
+        try { const s = fs.statSync(path.join(BACKUP_DIR, f)); size = s.size; at = s.mtimeMs; } catch {}
+        return { name: f, size, at };
+      });
+  } catch (e) { return []; }
+}
+
 const ROLE_RANK = { user: 0, reviewer: 1, admin: 2 };
 function rankOf(u) { return u ? (ROLE_RANK[u.role] || 0) : -1; }
 
@@ -548,18 +672,26 @@ function ensureBootstrap() {
 /*                                                                     */
 /* 只在「账号刚建出来」或「它还在用 123456 这类弱口令」时触发一次。          */
 /* 目的很明确：让 admin/123456 这种全网都在扫的组合彻底失效。              */
-/* 口令不写进代码、不进 db 的明文，只有这一次输出 + data/password-reset.txt */
-/* （0600 权限，静态目录访问不到）。登录后请立刻改密并删除该文件。           */
+/* 口令不写进代码、不进 db 的明文，只在这一行启动日志里出现一次。            */
+/*                                                                     */
+/* 以前还会 append 到 data/password-reset.txt —— 2.42 起**默认不落盘**。   */
+/* 原因：那个文件只会越攒越多（本地实测十几次建库攒到 7KB），没人会回来删， */
+/* 于是一份「历史上所有初始口令」长期躺在服务器上，比不生成更危险。        */
+/* 真要留档（比如本机首次建库、要抄下来发给别人），启动时设 FQ_PW_FILE=1。  */
 /* ------------------------------------------------------------------ */
 
 function printInitialCredentials(list, why) {
   const when = new Date().toISOString();
+  const keepFile = String(process.env.FQ_PW_FILE || '') === '1';
   console.log('');
   console.log('  [SECURITY] ' + why + '账号的初始口令（只打印这一次，请立刻保存并修改）：');
   for (const [name, pw] of list) console.log('    ' + name + '  ' + pw);
-  console.log('    同时已写入 data/password-reset.txt（权限 0600）');
+  console.log(keepFile
+    ? '    同时已写入 data/password-reset.txt（FQ_PW_FILE=1，权限 0600）'
+    : '    不落盘：这条日志是唯一一次机会，请现在就抄下来');
   console.log('');
 
+  if (!keepFile) return;
   try {
     const file = path.join(DATA_DIR, 'password-reset.txt');
     const head = '# 饭圈 · ' + why + '口令（' + when + '）\n' +
@@ -572,6 +704,29 @@ function printInitialCredentials(list, why) {
   }
 }
 
+/* 历史遗留的明文口令文件：2.42 之前每次建号都会往 data/password-reset.txt
+   里 append 一段，从不清理。现在既然不再生成，就顺手把旧的那份清掉 ——
+   但**先把内容打到启动日志一次**再删：万一有人确实靠它找回过口令，
+   直接无声销毁等于把最后一条线索掐了。文件后面的历史段落只留最后一次。 */
+function scrubLegacyPasswordFile() {
+  const file = path.join(DATA_DIR, 'password-reset.txt');
+  let raw = '';
+  try { raw = fs.readFileSync(file, 'utf8'); } catch (e) { return; }
+  try {
+    if (!raw.trim()) { fs.unlinkSync(file); return; }
+    const keep = raw.length > 2000 ? '（内容过长，只打印末尾 2000 字）\n' + raw.slice(-2000) : raw;
+    console.log('');
+    console.log('  [SECURITY] 发现遗留的 data/password-reset.txt（' + Buffer.byteLength(raw) + ' 字节明文口令）。');
+    console.log('             以下内容只打印这一次，文件随后删除；2.42 起不会再生成。');
+    console.log(keep.trim().split('\n').map((l) => '    ' + l).join('\n'));
+    fs.unlinkSync(file);
+    console.log('  [SECURITY] 已删除 data/password-reset.txt');
+    console.log('');
+  } catch (e) {
+    console.warn('  [SECURITY] 删不掉 data/password-reset.txt（' + e.message + '），请手动删掉它');
+  }
+}
+
 /* 老库里可能还留着 123456 / password 这种。启动时扫一遍（每个账号只扫一次，
    用 pwChecked 记账，避免每次启动都跑一堆 scrypt）。
    **只做标记，绝不改口令。**
@@ -579,6 +734,7 @@ function printInitialCredentials(list, why) {
    新口令只打印在那一次的启动日志里，本地没留存就彻底找不回（真实踩过）。
    产品要求「密码不严格」：登录永远认用户原来设的那个口令，
    强度规则只在**注册**和**主动改密**时检查。 */
+
 const KNOWN_WEAK = ['123456', '12345678', '123456789', 'password', 'passw0rd', 'admin123', 'fanqvan123', 'abc123', 'qwerty'];
 
 function rotateWeakCredentials() {
@@ -620,6 +776,7 @@ function saveDB() {
 }
 function saveNow() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  dailySnapshot();
   try {
     const tmp = DB_FILE + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
@@ -628,6 +785,7 @@ function saveNow() {
     console.error('[db] 写入失败：', e.message);
   }
 }
+scrubLegacyPasswordFile();
 saveNow();
 ensureBootstrap();
 applyPasswordResetFromConfig();
@@ -2847,6 +3005,35 @@ async function handleApi(req, res, pathname, query) {
      二是即便主站某个业务出错，控制台也应该还能打开。 */
   if (pathname.startsWith('/api/ops/')) return handleOps(req, res, pathname, query, me);
 
+  /* ============ 前端崩溃上报 ============
+     放在登录门禁**之前**：登录页白屏的时候用户还没登录，而那种错偏偏最该被知道。
+     代价是这个接口对匿名开放，所以三条防线：8 条/分钟/IP 的限流、字段全部截断、
+     只记「哪里错了」不记任何用户内容。
+     超限直接 204 静默丢，**不回 429** —— 回了 4xx，boot-guard 会把它当成一次新错误
+     再去报一遍，自己把自己刷成风暴。 */
+  if (pathname === '/api/client-error' && method === 'POST') {
+    const drop = () => { res.writeHead(204, { 'Cache-Control': 'no-store' }).end(); };
+    if (!rateLimit('cerr:' + ip, 8, 60 * 1000)) return drop();
+    let b = {};
+    try { b = await readBody(req); } catch (e) { b = {}; }
+    const kinds = ['error', 'reject', 'asset'];
+    const kind = kinds.indexOf(String(b.kind || '')) >= 0 ? String(b.kind) : 'error';
+    const msg = String(b.msg || '').slice(0, 300);
+    if (!msg) return drop();
+    clientErrLog({
+      t: new Date().toISOString(),
+      kind,
+      msg,
+      stack: String(b.stack || '').slice(0, 1200),
+      url: String(b.url || '').slice(0, 200),
+      ua: String(b.ua || '').slice(0, 200),
+      ver: String(b.ver || '').slice(0, 20),
+      ip,
+      uid: me ? me.id : 0
+    });
+    return drop();
+  }
+
   /* ============ 未登录不给看内容 ============
      站内的一切内容（帖子、评论、用户、热搜、搜索、通知、私信）只对登录用户开放。
      以前游客能匿名浏览，等于把整站内容白送：随便写个脚本就能把帖子全量拖走，
@@ -4892,7 +5079,7 @@ async function assetVersion() {
   const now = Date.now();
   if (assetVerCache.v && now - assetVerCache.at < 5000) return assetVerCache.v;
   let sig = '';
-  for (const f of ['app.js', 'style.css', 'ops.css', 'ops.js']) {
+  for (const f of ['app.js', 'style.css', 'boot-guard.js', 'ops.css', 'ops.js']) {
     try {
       const s = await fsp.stat(path.join(PUBLIC_DIR, f));
       sig += f + ':' + s.size + ':' + Math.floor(s.mtimeMs) + ';';
@@ -5616,6 +5803,9 @@ async function handleOps(req, res, pathname, query, me) {
       threats,
       nets,
       events: opsEventTail(40),
+      /* 前端报错只给个「有多少条 + 最近三条」：控制台每 2 秒刷一次，
+         整表塞进来会让这个接口从几百字节涨到几十 KB。点开卡片再单独拉全量。 */
+      clientErr: { total: errTotal, recent: errRing.slice(-3).reverse() },
       blocks: active.map((b) => ({
         ip: b.ip, until: b.until, reason: b.reason, by: b.by, auto: !!b.auto,
         hits: b.hits || 0, at: b.at
@@ -5698,6 +5888,47 @@ async function handleOps(req, res, pathname, query, me) {
   if (pathname === '/api/ops/events' && method === 'GET') {
     const lim = Number(query.searchParams.get('limit') || 60) || 60;
     return json(res, 200, { events: opsEventTail(lim) });
+  }
+
+  /* 前端报错明细：控制台点开卡片才拉，平时只靠 overview 里的计数和最近三条。 */
+  if (pathname === '/api/ops/client-errors' && method === 'GET') {
+    let fsize = 0;
+    try { fsize = fs.statSync(ERR_LOG).size; } catch {}
+    /* 内存环只装「本次启动」收到的。重启之后它是空的，但日志文件里还有 ——
+       这种情况下读文件尾部，不然刚重启完进来会看到「一条都没有」，误以为没出事。 */
+    const ring = errRing.length ? errRing.slice().reverse() : errTailFromFile(60);
+    return json(res, 200, {
+      total: errTotal,
+      size: fsize,
+      ring,
+      daily: backupList()
+    });
+  }
+
+  /* 一键下载整库。
+     为什么要有它：db.json 只在服务器容器里活一份，容器重建 = 一切归零。
+     管理员在控制台点一下就能把「此刻的完整数据」落到自己电脑上，这是唯一
+     真正出了容器的备份。直接序列化内存里的 db（而不是读磁盘），
+     这样拿到的就是当前状态，不用管 60ms 的防抖写还没落盘。 */
+  if (pathname === '/api/ops/backup' && method === 'GET') {
+    let body;
+    try {
+      body = Buffer.from(JSON.stringify(db, null, 2), 'utf8');
+    } catch (e) {
+      return json(res, 500, { error: '导出失败：' + e.message });
+    }
+    const d = new Date();
+    const p = (n) => (n < 10 ? '0' : '') + n;
+    const stamp = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+    secLog('ops_backup', req, { by: me.username, bytes: body.length });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="fanqvan-db-' + stamp + '.json"',
+      'Content-Length': body.length,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    return res.end(body);
   }
 
   /* 网关诊断：看不到真实 IP 时，靠它判断该配哪个头。

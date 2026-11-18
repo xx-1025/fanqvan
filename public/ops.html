@@ -23,6 +23,8 @@
   </div>
   <div class="op-actions">
     <span class="op-live" id="op-live"><i></i>实时</span>
+    <!-- 整库下载：这是唯一真正「出了服务器」的备份，容器重建也还在 -->
+    <a class="op-btn ghost" href="/api/ops/backup" title="把此刻的完整数据存一份到自己电脑上">下载备份</a>
     <button class="op-btn ghost" id="op-diag">排错工具</button>
     <a class="op-btn ghost" href="/">回站点</a>
   </div>
@@ -78,6 +80,18 @@
         <span class="op-sub">同一片区冒出很多地址</span>
       </div>
       <div class="op-nets" id="op-nets"></div>
+    </div>
+
+    <div class="op-card">
+      <div class="op-head">
+        <h2>前端报错</h2>
+        <span class="op-sub" id="op-err-sub">还没收到</span>
+      </div>
+      <div class="op-errs" id="op-errs"></div>
+      <div class="op-err-foot">
+        <span>每天自动留一份数据快照</span>
+        <button class="op-btn ghost" id="op-err-more">报错与备份</button>
+      </div>
     </div>
 
     <div class="op-card">
