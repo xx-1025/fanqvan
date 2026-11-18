@@ -476,6 +476,11 @@ function migrate(d) {
   for (const p of d.posts) {
     if (!Array.isArray(p.likes)) p.likes = [];
     if (!Array.isArray(p.comments)) p.comments = [];
+    // 评论点赞 + 楼中楼（2.42）：老数据补字段，parentId=0 就是顶层楼层
+    for (const c of p.comments) {
+      if (!Array.isArray(c.likes)) c.likes = [];
+      if (typeof c.parentId !== 'number') c.parentId = 0;
+    }
     if (!Array.isArray(p.reposts)) p.reposts = [];
     // 收藏：谁把这条收进了自己的收藏夹（只有本人能看到「我的收藏」列表）
     if (!Array.isArray(p.favs)) p.favs = [];
@@ -1084,6 +1089,10 @@ function serializePost(p, me, opts) {
       id: c.id,
       content: c.content,
       createdAt: c.createdAt,
+      // 楼中楼只做一层：parentId 指向顶层评论，0 就是顶层。前端按它归堆
+      parentId: c.parentId || 0,
+      likeCount: (c.likes || []).length,
+      liked: me ? (c.likes || []).includes(me.id) : false,
       canDelete: me ? (me.id === c.userId || me.id === p.authorId || rankOf(me) >= 1) : false,
       user: briefUser(db.users.find((u) => u.id === c.userId))
     })),
@@ -3835,11 +3844,19 @@ async function handleApi(req, res, pathname, query) {
       const b = await readBody(req);
       const content = clean(b.content, 500);
       if (!content) return json(res, 400, { error: '评论不能为空' });
-      const c = { id: db.seq++, userId: me.id, content, createdAt: nowMs() };
       post.comments = post.comments || [];
+      // 楼中楼只挂一层：回一条楼中楼，仍然算在那个顶层楼层下面（B 站也是这样）
+      let parentId = Number(b.parentId) || 0;
+      let parent = parentId ? post.comments.find((x) => x.id === parentId) : null;
+      if (parentId && !parent) return json(res, 404, { error: '要回复的评论已经不在了' });
+      if (parent && parent.parentId) parentId = parent.parentId;
+      if (parent) parent = post.comments.find((x) => x.id === parentId) || parent;
+      const c = { id: db.seq++, userId: me.id, content, createdAt: nowMs(), parentId, likes: [] };
       post.comments.push(c);
       bumpDay(post, 'c', 1);
-      pushNote(post.authorId, 'comment', me.id, { postId: post.id, text: content.slice(0, 40) });
+      // 回复楼中楼时通知被回复的那个人；顶层评论才通知楼主（别让楼主被每一条楼中楼轰炸）
+      const toUser = parent && parent.userId ? parent.userId : post.authorId;
+      if (toUser !== me.id) pushNote(toUser, 'comment', me.id, { postId: post.id, text: content.slice(0, 40) });
       notifyMentions(content, me, post.id, '在一条评论里');
       saveDB();
       return json(res, 200, { post: serializePost(post, me) });
@@ -3875,6 +3892,23 @@ async function handleApi(req, res, pathname, query) {
     }
   }
 
+  /* ============ 给评论点赞（B 站那种：每层楼右下角一个手形数字） ============ */
+
+  const cmtLikeMatch = /^\/api\/posts\/(\d+)\/comments\/(\d+)\/like$/.exec(pathname);
+  if (cmtLikeMatch && method === 'POST') {
+    if (!me) return json(res, 401, { error: '请先登录' });
+    if (me.banned) return json(res, 403, { error: '账号已被封禁' });
+    const post = db.posts.find((x) => x.id === Number(cmtLikeMatch[1]));
+    if (!post) return json(res, 404, { error: '帖子不存在' });
+    const c = (post.comments || []).find((x) => x.id === Number(cmtLikeMatch[2]));
+    if (!c) return json(res, 404, { error: '评论不存在' });
+    c.likes = Array.isArray(c.likes) ? c.likes : [];
+    const ci = c.likes.indexOf(me.id);
+    if (ci >= 0) c.likes.splice(ci, 1); else c.likes.push(me.id);
+    saveDB();
+    return json(res, 200, { post: serializePost(post, me) });
+  }
+
   /* ============ 删除评论 ============ */
 
   const cmtMatch = /^\/api\/posts\/(\d+)\/comments\/(\d+)$/.exec(pathname);
@@ -3889,6 +3923,8 @@ async function handleApi(req, res, pathname, query) {
       return json(res, 403, { error: '只能删除自己的评论' });
     }
     post.comments.splice(idx, 1);
+    // 删顶层楼层要连楼中楼一起删；不然回复会变成 parentId 指向不存在的孤儿，前端直接看不见
+    if (!c.parentId) post.comments = post.comments.filter((x) => x.parentId !== c.id);
     saveDB();
     return json(res, 200, { post: serializePost(post, me) });
   }

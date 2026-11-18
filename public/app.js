@@ -56,7 +56,10 @@ const state = {
   reviewMode: 'posts',
   authTab: 'login',
   captcha: { id: '', img: '' },   // 登录验证码：{ id 给后端对账, img 是 data-URI 的 PNG 图 }
-  cmt: null,             // 评论弹层：{ post } —— 2.41 起评论在底部面板里看，不再在卡片里展开
+  cmtSort: 'hot',        // 评论区排序：hot 最热 / new 最新（B 站那两个页签）
+  cmtOpen: {},           // 楼中楼展开到「全部」的楼层 id -> true
+  replyTo: null,         // 正在回复哪条评论 { pid, cid }；为 null 就是发新评论
+  gotoCmt: 0,            // 从信息流点「评论 N」进来时要滚到评论区的那条帖子 id
   cmtSending: false,     // 评论发送中，挡连点
   loading: false,
   list: { scope: 'feed', userId: 0, offset: 0, hasMore: false, total: 0, loadingMore: false },
@@ -626,7 +629,7 @@ async function router() {
   // 换页时收掉所有浮层（弹窗 / 通知面板 / @补全），避免盖在新页面上
   state.modal = null;
   state.noteOpen = false;
-  if (state.cmt) closeComments(true);   // 评论面板挂在 body 上，不跟着 #app 重绘，换页要显式收
+  state.replyTo = null;                  // 换页时收起「回复某条评论」的输入框
   // 做饭模式是全屏独立层，不跟着 #app 重绘走，换页必须显式关掉
   if (state.cook.open) closeCook();
   // AI 面板也跟着收：草稿留在 state.draft，换页不该挂着一个上一页生成的面板
@@ -694,6 +697,11 @@ async function router() {
       state.data.post = d.post;
       prefetchCook(d.post);
       countView(d.post);
+      if (state.gotoCmt === d.post.id) {
+        // 从信息流点「评论 N」进来的：等这一帧画完再滚，不然 #cmt-sec 还不存在
+        state.gotoCmt = 0;
+        setTimeout(scrollToComments, 80);
+      }
     } else if (r.name === 'history') {
       await loadHistory(false);
     } else if (r.name === 'requests') {
@@ -1228,112 +1236,168 @@ function postCard(p, opts) {
     '</div></article>';
 }
 
-/* ---------------------- 评论弹层 ----------------------
-   用户：「评论查看起来不是很舒服，能不能搞成详情里面查看像抖音逻辑一样」。
-   以前评论是展开在帖子卡片下面的：信息流里点一下就把整张卡往下撑、长评论把后面的帖子全推走；
-   详情页更是默认全展开，一屏都是评论。
-   现在统一走抖音那套：点「评论」→ 底部滑上来一块面板，列表自己滚，输入框钉在面板底部。
-   面板挂在 body 的 #cmt-layer 上，不进 #app —— 发评论/删评论只重画面板，
-   页面不重建，面板里的输入内容也不会被冲掉。 */
+/* ---------------------- 评论区（2.42 · B 站那套） ----------------------
+   用户：「改成哔哩哔哩那种吧」。B 站的评论区不是弹层，而是跟着内容一起往下滚：
+   一行「评论 N」+ 最热 / 最新，输入框在列表上方，楼中楼折在楼层里。
+   好处是能边看帖边翻评论，也不会像弹层那样一盖就是大半屏、还得专门找个地方关掉。
+   只有详情页有评论区；信息流里点「评论 N」= 跳到详情页并滚到这一块（B 站也是这么走的）。
+   ⚠️ 点赞 / 回复 / 删除只重画 #cmt-sec，不整页 render ——
+      整页重绘会把正在打的字冲掉，滚动位置也会跳。 */
 
-function cmtLayer() {
-  let el = document.getElementById('cmt-layer');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'cmt-layer';
-    document.body.appendChild(el);
-  }
-  return el;
+function cmtSortKey(c, replyN) {
+  // 最热：点赞为主、回复次之（B 站也是这个权重顺序），同分看谁更新
+  return (c.likeCount || 0) * 3 + (replyN || 0) * 2;
 }
 
-/* 一条评论：左边头像，右边昵称 / 正文 / 时间。抖音就是这一列，别再加边框气泡 */
-function cmtItemHtml(p, c) {
-  return '<div class="cmt-item">' +
-    avatarHtml(c.user, 34) +
-    '<div class="cmt-main">' +
-      '<div class="cmt-name">' + esc(c.user.nickname) + '</div>' +
-      '<div class="cmt-text">' + richText(c.content) + '</div>' +
-      '<div class="cmt-meta">' + timeAgo(c.createdAt) +
-        (c.canDelete
-          ? '<button class="cmt-del" data-action="cmt-del" data-pid="' + p.id +
-            '" data-cid="' + c.id + '">删除</button>'
+/* 每一层楼有多少条楼中楼：算一次给排序和「共 N 条回复」共用 */
+function cmtReplyCounts(p) {
+  const m = {};
+  for (const c of (p.comments || [])) {
+    if (c.parentId) m[c.parentId] = (m[c.parentId] || 0) + 1;
+  }
+  return m;
+}
+
+function cmtKids(p, cid) {
+  return (p.comments || [])
+    .filter((c) => c.parentId === cid)
+    .sort((a, b) => a.createdAt - b.createdAt);   // 楼中楼按时间正序，像对话
+}
+
+function cmtTopLevel(p, counts) {
+  const tops = (p.comments || []).filter((c) => !c.parentId);
+  if (state.cmtSort === 'hot') {
+    tops.sort((a, b) => cmtSortKey(b, counts[b.id]) - cmtSortKey(a, counts[a.id]) || b.createdAt - a.createdAt);
+  } else {
+    tops.sort((a, b) => b.createdAt - a.createdAt);
+  }
+  return tops;
+}
+
+/* 一行评论。头像是单独画的（顶层 34、楼中楼 26），这里只出右边那列 */
+function cmtRowHtml(p, c, opts) {
+  opts = opts || {};
+  const kid = !!opts.kid;
+  const counts = opts.counts || {};
+  const isAuthor = c.user && p.author && c.user.id === p.author.id;
+  const replying = !!(state.replyTo && state.replyTo.pid === p.id && state.replyTo.cid === c.id);
+
+  const like = '<button class="cmt-opt' + (c.liked ? ' on' : '') +
+    '" data-action="cmt-like" data-pid="' + p.id + '" data-cid="' + c.id + '"' +
+    ' title="' + (c.liked ? '取消点赞' : '点赞') + '">' +
+    icon(c.liked ? 'heart-fill' : 'heart') +
+    (c.likeCount ? '<em>' + c.likeCount + '</em>' : '') + '</button>';
+
+  const meta = '<div class="cmt-meta"><span>' + timeAgo(c.createdAt) + '</span>' +
+    like +
+    '<button class="cmt-opt" data-action="cmt-reply" data-pid="' + p.id + '" data-cid="' + c.id + '">回复</button>' +
+    (c.canDelete
+      ? '<button class="cmt-opt del" data-action="cmt-del" data-pid="' + p.id + '" data-cid="' + c.id + '">删除</button>'
+      : '') +
+    '</div>';
+
+  // 楼中楼：默认露两条，多的折成「共 N 条回复 ∨」。B 站就是这个折法
+  let kidsHtml = '';
+  if (!kid) {
+    const list = cmtKids(p, c.id);
+    if (list.length) {
+      const openAll = !!state.cmtOpen[c.id];
+      const shown = openAll ? list : list.slice(0, 2);
+      kidsHtml = '<div class="cmt-kids">' +
+        shown.map((k) => cmtRowHtml(p, k, { kid: true, pid: p.id })).join('') +
+        (list.length > shown.length
+          ? '<button class="cmt-more" data-action="cmt-more" data-pid="' + p.id + '" data-cid="' + c.id + '">' +
+            '共 ' + list.length + ' 条回复' + icon('chev') + '</button>'
           : '') +
-      '</div>' +
+        '</div>';
+    }
+  }
+
+  // 回复框就挂在这条评论下面（B 站也是点了「回复」就在楼下长出一个输入框）
+  const editor = replying ? cmtEditorHtml(p, c) : '';
+
+  return '<div class="cmt-item' + (kid ? ' kid' : '') + '">' +
+    avatarHtml(c.user, kid ? 26 : 34) +
+    '<div class="cmt-main">' +
+      '<div class="cmt-name">' + esc(c.user.nickname) +
+        (isAuthor ? '<i class="cmt-owner">作者</i>' : '') + '</div>' +
+      '<div class="cmt-text">' + richText(c.content) + '</div>' +
+      meta + kidsHtml + editor +
     '</div></div>';
 }
 
-function cmtSheetHtml() {
-  const p = state.cmt && state.cmt.post;
-  if (!p) return '';
-  // 新的在上面：发完立刻看到自己那条，不用往下翻（后端是按时间往数组后面 push 的）
-  const list = (p.comments || []).slice().reverse();
-  const items = list.length
-    ? list.map((c) => cmtItemHtml(p, c)).join('')
+/* 输入框：target 为空 = 发顶层评论；给了评论 = 回复它 */
+function cmtEditorHtml(p, target) {
+  if (!state.me) {
+    return '<div class="cmt-editor guest">' + icon('lock') + '<span>登录后就能评论</span></div>';
+  }
+  const main = !target;
+  const ph = main ? '发一条友善的评论…' : '回复 @' + target.user.nickname + '：';
+  return '<div class="cmt-editor' + (main ? '' : ' inline') + '">' +
+    avatarHtml(state.me, main ? 34 : 26) +
+    '<input id="' + (main ? 'cmt-input' : 'cmt-reply-input') + '" maxlength="500" autocomplete="off" ' +
+      'data-cid="' + (main ? 0 : target.id) + '" placeholder="' + esc(ph) + '">' +
+    '<button class="cmt-pub" data-action="cmt-send" data-cid="' + (main ? 0 : target.id) + '">发布</button>' +
+    (main ? '' : '<button class="cmt-cancel" data-action="cmt-reply-cancel">取消</button>') +
+  '</div>';
+}
+
+function cmtSectionHtml(p) {
+  const counts = cmtReplyCounts(p);
+  const tops = cmtTopLevel(p, counts);
+  const total = (p.comments || []).length;
+  const sortBtn = (k, label) => '<button class="' + (state.cmtSort === k ? 'on' : '') +
+    '" data-action="cmt-sort" data-sort="' + k + '">' + label + '</button>';
+  const list = tops.length
+    ? tops.map((c) => cmtRowHtml(p, c, { counts })).join('')
     : '<div class="cmt-empty">' + icon('sofa') + '<span>还没有人评论，来说第一句</span></div>';
-  const n = p.commentCount || (p.comments || []).length;
-  const form = state.me
-    ? '<div class="cmt-form">' +
-        '<input id="cmt-input" maxlength="500" autocomplete="off" ' +
-          'placeholder="说点什么… 用 @ 提到厨友">' +
-        '<button class="btn-primary" data-action="cmt-send">发送</button>' +
-      '</div>'
-    : '<div class="cmt-form"><input disabled placeholder="登录后参与评论"></div>';
-  return '<div class="cmt-mask" data-action="cmt-close"></div>' +
-    '<section class="cmt-sheet" role="dialog" aria-modal="true" aria-label="评论">' +
-      '<div class="cmt-head"><span class="cmt-grip"></span>' +
-        '<b>共 ' + n + ' 条评论</b>' +
-        '<button class="cmt-x" data-action="cmt-close" aria-label="关闭">' + icon('cross') + '</button>' +
-      '</div>' +
-      '<div class="cmt-list" id="cmt-list">' + items + '</div>' +
-      form +
-    '</section>';
+  return '<div class="cmt-hd">' +
+      '<b>评论 <em>' + total + '</em></b>' +
+      '<div class="cmt-sort">' + sortBtn('hot', '最热') + sortBtn('new', '最新') + '</div>' +
+    '</div>' +
+    cmtEditorHtml(p) +
+    '<div class="cmt-list" id="cmt-list">' + list + '</div>';
 }
 
+/* 只重画评论区。保留正在打的字 —— 点个赞不该把没发出去的评论冲掉 */
 function paintComments() {
-  const layer = cmtLayer();
-  const open = !!(state.cmt && state.cmt.post);
-  layer.innerHTML = open ? cmtSheetHtml() : '';
-  layer.className = open ? 'open' : '';
-  // 面板盖住页面时锁住背后滚动；和弹窗共用一套锁，谁在都算锁着
-  setModalLock(!!state.modal || !!state.cook.open || open);
+  const p = state.data.post;
+  const sec = document.getElementById('cmt-sec');
+  if (!p || !sec) return;
+  const a = document.getElementById('cmt-input');
+  const b = document.getElementById('cmt-reply-input');
+  const da = a ? a.value : '';
+  const db = b ? b.value : '';
+  sec.innerHTML = cmtSectionHtml(p);
+  if (da) { const i = document.getElementById('cmt-input'); if (i) i.value = da; }
+  if (db) { const i = document.getElementById('cmt-reply-input'); if (i) i.value = db; }
 }
 
-async function openComments(pid) {
-  const id = Number(pid);
-  let p = (state.data.posts || []).find((x) => x.id === id);
-  if (!p && state.data.post && state.data.post.id === id) p = state.data.post;
-  if (!p) p = (state.data.reviewPosts || []).find((x) => x.id === id);
-  if (!p) { toast('这条内容已经不在了', 'err'); return; }
-  // 个别列表接口不返回评论明细，补拉一次详情再开面板（别开一个空面板）
-  if (!Array.isArray(p.comments)) {
-    try { const d = await api('/api/posts/' + id); applyPostUpdate(d.post); p = d.post; }
-    catch (e) { toast(e.message, 'err'); return; }
-  }
-  state.cmt = { post: p };
-  // 压一条同地址的历史：安卓返回键 / 浏览器后退先关面板，而不是直接离开这一页
-  // （不压的话按返回就直接退出帖子，评论还开着，很容易误触）
-  try { history.pushState({ cmt: id }, '', location.hash || '#/'); state.cmt.pushed = true; }
-  catch (e) { /* 某些 WebView 不允许，退化成面板只能点关闭 */ }
-  paintComments();
-  // 桌面自动把光标放进输入框；手机不聚焦 —— 一进来就弹键盘，半屏面板会被顶上去一截
+function scrollToComments() {
+  const sec = document.getElementById('cmt-sec');
+  if (!sec) return;
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // 桌面顺手把光标放进输入框；手机不聚焦 —— 键盘一弹，刚滚到的位置就被顶上去了
   if (window.innerWidth >= 760) {
-    const inp = document.getElementById('cmt-input');
-    if (inp) inp.focus();
+    const i = document.getElementById('cmt-input');
+    if (i) i.focus({ preventScroll: true });
   }
 }
 
-/* keepHistory = true：换页时调用的，历史交给路由自己管。
-   反过来说，点关闭 / Esc / 点遮罩都要 history.back() 撤掉打开时压的那条，不然历史越积越多。 */
-function closeComments(keepHistory) {
-  if (!state.cmt) return;
-  const pushed = state.cmt.pushed;
-  state.cmt = null;
-  paintComments();
-  if (pushed && !keepHistory) { try { history.back(); } catch (e) {} }
+/* 点「评论 N」：在详情页就滚过去，不在就跳过去再滚（B 站也是这个行为） */
+function openComments(pid) {
+  const id = Number(pid);
+  if (!state.me) { go('#/login?next=' + encodeURIComponent('#/post/' + id)); return; }
+  if (state.route.name === 'post' && state.data.post && state.data.post.id === id) {
+    scrollToComments();
+    return;
+  }
+  state.gotoCmt = id;
+  go('#/post/' + id);
 }
 
 /* 评论增删后，把同一条帖子在各个列表里的那份数据一起改掉，
-   否则关掉面板回到信息流，「评论 12」还写着旧数字 */
+   否则回到信息流，「评论 12」还写着旧数字 */
 function applyPostUpdate(post) {
   if (!post) return;
   const hit = (state.data.posts || []).find((x) => x.id === post.id);
@@ -1341,7 +1405,6 @@ function applyPostUpdate(post) {
   if (state.data.post && state.data.post.id === post.id) state.data.post = post;
   const rv = (state.data.reviewPosts || []).find((x) => x.id === post.id);
   if (rv) Object.assign(rv, post);
-  if (state.cmt && state.cmt.post && state.cmt.post.id === post.id) state.cmt.post = post;
 }
 
 function postList(posts, opts) {
@@ -1739,12 +1802,8 @@ function viewPost() {
       '<div class="sub">帖子详情</div>' +
     '</div>' +
     cookCtaHtml(p) + postCard(p, { showStatus: true, inDetail: true }) +
-    // 手机上把评论入口钉在底部（抖音那套）：短帖子下面本来是一大片空白，
-    // 有了它就随时知道「评论点这里」。桌面不显示 —— 操作条本来就在视野里。
-    '<button type="button" class="cmt-entry" data-action="comment-toggle" data-id="' + p.id + '">' +
-      icon('comment') + '<span>写评论…</span>' +
-      '<em>共 ' + (p.commentCount || 0) + ' 条</em>' + icon('chev') +
-    '</button><div class="cmt-entry-gap"></div>';
+    // 评论区跟着内容一起往下滚（B 站）：一进来就看得见，不用再点开一个面板
+    '<section class="card cmt-sec" id="cmt-sec">' + cmtSectionHtml(p) + '</section>';
 }
 
 /* -------- 关注申请（私密账号专用） -------- */
@@ -4149,7 +4208,7 @@ function render() {
     state.route.name === 'messages' && !!threadRouteId());
 
   // 有弹窗时锁住背后的页面滚动（登录页不渲染弹窗，排除掉）
-  setModalLock((!!state.modal || !!state.cook.open || !!state.cmt) && state.route.name !== 'login');
+  setModalLock((!!state.modal || !!state.cook.open) && state.route.name !== 'login');
 
   if (keepId) {
     const el = document.getElementById(keepId);
@@ -4510,22 +4569,44 @@ async function shareTo(postId, peerId) {
   finally { shareBusy = false; }
 }
 
-async function submitComment(pid) {
-  const input = document.getElementById('cmt-input');
-  const content = input ? input.value.trim() : '';
-  if (!content) { toast('评论不能为空', 'err'); return; }
+async function submitComment(pid, parentId) {
   if (state.cmtSending) return;
+  const pidN = Number(pid) || (state.data.post && state.data.post.id) || 0;
+  // ⚠️ data-cid 是字符串："0" 也是真值。不先转数字，主输入框（data-cid="0"）
+  //    会被当成「在回复」，去找根本不存在（或属于别人）的回复框 —— 复现过：
+  //    回复框开着时点主「发布」，回复内容会变成一条顶层评论。
+  const par = Number(parentId) || 0;
+  const input = document.getElementById(par ? 'cmt-reply-input' : 'cmt-input');
+  const content = input ? input.value.trim() : '';
+  if (!content) { toast(par ? '回复不能为空' : '评论不能为空', 'err'); return; }
   state.cmtSending = true;
   try {
-    const d = await api('/api/posts/' + pid + '/comments', { method: 'POST', body: { content } });
+    const d = await api('/api/posts/' + pidN + '/comments', {
+      method: 'POST', body: { content, parentId: par }
+    });
     if (input) input.value = '';
     applyPostUpdate(d.post);
-    paintComments();   // 面板自己刷：新评论排在第一条，不用等页面重绘
-    render();          // 卡片上的「评论 N」也要跟着变
-    const list = document.getElementById('cmt-list');
-    if (list) list.scrollTop = 0;
+    // 刚回完的那一楼展开，用户能马上看到自己那句
+    if (par) { state.cmtOpen[par] = true; state.replyTo = null; }
+    if (!par) state.cmtSort = 'new';   // 自己刚发的要在最上面：切到「最新」才看得见
+    render();                                // 操作条上的「评论 N」也要跟着变
+    if (!par && input) {                     // 发完继续打，不抢滚动
+      if (window.innerWidth >= 760) {
+        const i2 = document.getElementById('cmt-input');
+        if (i2) i2.focus({ preventScroll: true });
+      }
+    }
   } catch (e) { toast(e.message, 'err'); }
   finally { state.cmtSending = false; }
+}
+
+/* 给评论点赞：只刷评论区。整页 render 会让楼层顺序、滚动位置全重排 */
+async function toggleCommentLike(pid, cid) {
+  try {
+    const d = await api('/api/posts/' + pid + '/comments/' + cid + '/like', { method: 'POST' });
+    applyPostUpdate(d.post);
+    paintComments();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function deleteComment(pid, cid) {
@@ -4533,7 +4614,6 @@ async function deleteComment(pid, cid) {
   try {
     const d = await api('/api/posts/' + pid + '/comments/' + cid, { method: 'DELETE' });
     applyPostUpdate(d.post);
-    paintComments();   // 面板留着，只把那条划掉
     render();
   } catch (e) { toast(e.message, 'err'); }
 }
@@ -5029,7 +5109,7 @@ document.addEventListener('pointerup', (e) => {
   const st = tapStart;
   tapStart = null;
   if (!st || e.pointerType === 'mouse') return;
-  if (state.modal || state.cook.open || state.cmt) return;
+  if (state.modal || state.cook.open) return;
   if (state.route.name === 'post') return;
   if (Math.abs(e.clientX - st.x) > 10 || Math.abs(e.clientY - st.y) > 10) return;  // 划了一下
   if (Date.now() - st.t > 700) return;                                            // 长按
@@ -5141,8 +5221,32 @@ document.addEventListener('click', (e) => {
     case 'share': openShare(id); break;
     case 'share-to': shareTo(el.getAttribute('data-pid'), id); break;
     case 'comment-toggle': openComments(id); break;
-    case 'cmt-close': closeComments(); break;
-    case 'cmt-send': submitComment(state.cmt && state.cmt.post ? state.cmt.post.id : id); break;
+    case 'cmt-sort': {
+      const s2 = el.getAttribute('data-sort');
+      if (s2 === state.cmtSort) break;
+      state.cmtSort = s2;
+      paintComments();
+      break;
+    }
+    case 'cmt-send': submitComment(state.data.post ? state.data.post.id : id, el.getAttribute('data-cid')); break;
+    case 'cmt-like': toggleCommentLike(el.getAttribute('data-pid'), el.getAttribute('data-cid')); break;
+    case 'cmt-reply': {
+      state.replyTo = { pid: Number(el.getAttribute('data-pid')), cid: Number(el.getAttribute('data-cid')) };
+      paintComments();
+      const ri = document.getElementById('cmt-reply-input');
+      if (ri) ri.focus();
+      break;
+    }
+    case 'cmt-reply-cancel': {
+      state.replyTo = null;
+      paintComments();
+      break;
+    }
+    case 'cmt-more': {
+      state.cmtOpen[el.getAttribute('data-cid')] = true;
+      paintComments();
+      break;
+    }
     case 'cmt-del': deleteComment(el.getAttribute('data-pid'), el.getAttribute('data-cid')); break;
     case 'delete': doDelete(id); break;
     case 'report': state.modal = { type: 'report', postId: Number(id) }; render(); break;
@@ -5597,7 +5701,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     // 做饭模式在最上层：先关它，别顺手把背后的页面弹窗也关了
     if (state.cook.open) { closeCook(); return; }
-    if (state.cmt) { closeComments(); return; }
+    if (state.replyTo) { state.replyTo = null; paintComments(); return; }
     hideSuggest();
     if (state.modal) { state.modal = null; render(); }
     if (state.noteOpen) { state.noteOpen = false; render(); }
@@ -5613,9 +5717,9 @@ document.addEventListener('keydown', (e) => {
       return;
     }
   }
-  if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'cmt-input') {
+  if (e.key === 'Enter' && !e.shiftKey && (e.target.id === 'cmt-input' || e.target.id === 'cmt-reply-input')) {
     e.preventDefault();
-    submitComment(state.cmt && state.cmt.post ? state.cmt.post.id : 0);
+    submitComment(state.data.post ? state.data.post.id : 0, e.target.getAttribute('data-cid'));
     return;
   }
   // 私信 / 群聊：Enter 发送，Shift+Enter 换行
@@ -5668,14 +5772,6 @@ document.addEventListener('wheel', (e) => {
 
 window.addEventListener('hashchange', router);
 
-/* 评论面板自己压的那条历史被退到（安卓返回键 / 浏览器后退）——只关面板。
-   这里绝不能再 history.back()：人已经退回来了，再退一次会把页面带走。
-   hash 没变所以也不会触发 hashchange → 路由不会动。 */
-window.addEventListener('popstate', () => {
-  if (!state.cmt) return;
-  state.cmt = null;
-  paintComments();
-});
 window.addEventListener('resize', hideSuggest);
 window.addEventListener('scroll', hideSuggest, true);
 
