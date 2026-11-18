@@ -56,7 +56,8 @@ const state = {
   reviewMode: 'posts',
   authTab: 'login',
   captcha: { id: '', img: '' },   // 登录验证码：{ id 给后端对账, img 是 data-URI 的 PNG 图 }
-  openComments: {},
+  cmt: null,             // 评论弹层：{ post } —— 2.41 起评论在底部面板里看，不再在卡片里展开
+  cmtSending: false,     // 评论发送中，挡连点
   loading: false,
   list: { scope: 'feed', userId: 0, offset: 0, hasMore: false, total: 0, loadingMore: false },
   notes: [],
@@ -625,6 +626,7 @@ async function router() {
   // 换页时收掉所有浮层（弹窗 / 通知面板 / @补全），避免盖在新页面上
   state.modal = null;
   state.noteOpen = false;
+  if (state.cmt) closeComments(true);   // 评论面板挂在 body 上，不跟着 #app 重绘，换页要显式收
   // 做饭模式是全屏独立层，不跟着 #app 重绘走，换页必须显式关掉
   if (state.cook.open) closeCook();
   // AI 面板也跟着收：草稿留在 state.draft，换页不该挂着一个上一页生成的面板
@@ -690,7 +692,6 @@ async function router() {
     } else if (r.name === 'post') {
       const d = await api('/api/posts/' + encodeURIComponent(r.id));
       state.data.post = d.post;
-      state.openComments[d.post.id] = true;
       prefetchCook(d.post);
       countView(d.post);
     } else if (r.name === 'history') {
@@ -1175,7 +1176,6 @@ function imgsHtml(images) {
 
 function postCard(p, opts) {
   opts = opts || {};
-  const open = opts.openComments || state.openComments[p.id];
   // 评优入口只给审核员/管理员，且只能评别人的、已通过的作品（后端也会再拦一次）
   const canFeature = isMod() && !!state.me && p.status === 'approved' &&
     p.author && p.author.id !== state.me.id && !p.riskNote;
@@ -1225,27 +1225,123 @@ function postCard(p, opts) {
           ? '<button class="act danger" data-action="delete" data-id="' + p.id + '" style="margin-left:auto">' +
             '<span class="ico">' + icon('trash') + '</span>删除</button>' : '') +
       '</div>' +
-      (open ? commentsHtml(p) : '') +
     '</div></article>';
 }
 
-function commentsHtml(p) {
-  const inner = p.comments.length
-    ? p.comments.map((c) =>
-        '<div class="comment"><b>' + esc(c.user.nickname) + '</b>：' + richText(c.content) +
-        '<span class="t">' + timeAgo(c.createdAt) + '</span>' +
-        (c.canDelete ? '<button class="cmt-del" data-action="cmt-del" data-pid="' + p.id +
-          '" data-cid="' + c.id + '" title="删除评论">×</button>' : '') +
-        '</div>').join('')
-    : '<div style="font-size:13px;color:var(--ink-3);padding:4px 0">' + icon('sofa') + ' 还没有评论，来抢沙发</div>';
+/* ---------------------- 评论弹层 ----------------------
+   用户：「评论查看起来不是很舒服，能不能搞成详情里面查看像抖音逻辑一样」。
+   以前评论是展开在帖子卡片下面的：信息流里点一下就把整张卡往下撑、长评论把后面的帖子全推走；
+   详情页更是默认全展开，一屏都是评论。
+   现在统一走抖音那套：点「评论」→ 底部滑上来一块面板，列表自己滚，输入框钉在面板底部。
+   面板挂在 body 的 #cmt-layer 上，不进 #app —— 发评论/删评论只重画面板，
+   页面不重建，面板里的输入内容也不会被冲掉。 */
+
+function cmtLayer() {
+  let el = document.getElementById('cmt-layer');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'cmt-layer';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+/* 一条评论：左边头像，右边昵称 / 正文 / 时间。抖音就是这一列，别再加边框气泡 */
+function cmtItemHtml(p, c) {
+  return '<div class="cmt-item">' +
+    avatarHtml(c.user, 34) +
+    '<div class="cmt-main">' +
+      '<div class="cmt-name">' + esc(c.user.nickname) + '</div>' +
+      '<div class="cmt-text">' + richText(c.content) + '</div>' +
+      '<div class="cmt-meta">' + timeAgo(c.createdAt) +
+        (c.canDelete
+          ? '<button class="cmt-del" data-action="cmt-del" data-pid="' + p.id +
+            '" data-cid="' + c.id + '">删除</button>'
+          : '') +
+      '</div>' +
+    '</div></div>';
+}
+
+function cmtSheetHtml() {
+  const p = state.cmt && state.cmt.post;
+  if (!p) return '';
+  // 新的在上面：发完立刻看到自己那条，不用往下翻（后端是按时间往数组后面 push 的）
+  const list = (p.comments || []).slice().reverse();
+  const items = list.length
+    ? list.map((c) => cmtItemHtml(p, c)).join('')
+    : '<div class="cmt-empty">' + icon('sofa') + '<span>还没有人评论，来说第一句</span></div>';
+  const n = p.commentCount || (p.comments || []).length;
   const form = state.me
-    ? '<div class="comment-form">' +
-        '<input data-comment-input="' + p.id + '" placeholder="说点什么… 用 @ 提到厨友" maxlength="500">' +
-        '<button class="btn-primary btn-sm" data-action="comment-submit" data-id="' + p.id +
-        '" style="height:34px;border-radius:17px">发送</button>' +
+    ? '<div class="cmt-form">' +
+        '<input id="cmt-input" maxlength="500" autocomplete="off" ' +
+          'placeholder="说点什么… 用 @ 提到厨友">' +
+        '<button class="btn-primary" data-action="cmt-send">发送</button>' +
       '</div>'
-    : '<div class="comment-form"><input disabled placeholder="登录后参与评论"></div>';
-  return '<div class="comments">' + inner + form + '</div>';
+    : '<div class="cmt-form"><input disabled placeholder="登录后参与评论"></div>';
+  return '<div class="cmt-mask" data-action="cmt-close"></div>' +
+    '<section class="cmt-sheet" role="dialog" aria-modal="true" aria-label="评论">' +
+      '<div class="cmt-head"><span class="cmt-grip"></span>' +
+        '<b>共 ' + n + ' 条评论</b>' +
+        '<button class="cmt-x" data-action="cmt-close" aria-label="关闭">' + icon('cross') + '</button>' +
+      '</div>' +
+      '<div class="cmt-list" id="cmt-list">' + items + '</div>' +
+      form +
+    '</section>';
+}
+
+function paintComments() {
+  const layer = cmtLayer();
+  const open = !!(state.cmt && state.cmt.post);
+  layer.innerHTML = open ? cmtSheetHtml() : '';
+  layer.className = open ? 'open' : '';
+  // 面板盖住页面时锁住背后滚动；和弹窗共用一套锁，谁在都算锁着
+  setModalLock(!!state.modal || !!state.cook.open || open);
+}
+
+async function openComments(pid) {
+  const id = Number(pid);
+  let p = (state.data.posts || []).find((x) => x.id === id);
+  if (!p && state.data.post && state.data.post.id === id) p = state.data.post;
+  if (!p) p = (state.data.reviewPosts || []).find((x) => x.id === id);
+  if (!p) { toast('这条内容已经不在了', 'err'); return; }
+  // 个别列表接口不返回评论明细，补拉一次详情再开面板（别开一个空面板）
+  if (!Array.isArray(p.comments)) {
+    try { const d = await api('/api/posts/' + id); applyPostUpdate(d.post); p = d.post; }
+    catch (e) { toast(e.message, 'err'); return; }
+  }
+  state.cmt = { post: p };
+  // 压一条同地址的历史：安卓返回键 / 浏览器后退先关面板，而不是直接离开这一页
+  // （不压的话按返回就直接退出帖子，评论还开着，很容易误触）
+  try { history.pushState({ cmt: id }, '', location.hash || '#/'); state.cmt.pushed = true; }
+  catch (e) { /* 某些 WebView 不允许，退化成面板只能点关闭 */ }
+  paintComments();
+  // 桌面自动把光标放进输入框；手机不聚焦 —— 一进来就弹键盘，半屏面板会被顶上去一截
+  if (window.innerWidth >= 760) {
+    const inp = document.getElementById('cmt-input');
+    if (inp) inp.focus();
+  }
+}
+
+/* keepHistory = true：换页时调用的，历史交给路由自己管。
+   反过来说，点关闭 / Esc / 点遮罩都要 history.back() 撤掉打开时压的那条，不然历史越积越多。 */
+function closeComments(keepHistory) {
+  if (!state.cmt) return;
+  const pushed = state.cmt.pushed;
+  state.cmt = null;
+  paintComments();
+  if (pushed && !keepHistory) { try { history.back(); } catch (e) {} }
+}
+
+/* 评论增删后，把同一条帖子在各个列表里的那份数据一起改掉，
+   否则关掉面板回到信息流，「评论 12」还写着旧数字 */
+function applyPostUpdate(post) {
+  if (!post) return;
+  const hit = (state.data.posts || []).find((x) => x.id === post.id);
+  if (hit) Object.assign(hit, post);
+  if (state.data.post && state.data.post.id === post.id) state.data.post = post;
+  const rv = (state.data.reviewPosts || []).find((x) => x.id === post.id);
+  if (rv) Object.assign(rv, post);
+  if (state.cmt && state.cmt.post && state.cmt.post.id === post.id) state.cmt.post = post;
 }
 
 function postList(posts, opts) {
@@ -1642,8 +1738,13 @@ function viewPost() {
         esc(state.postFrom || '#/') + '">' + icon('back') + '返回</button>' +
       '<div class="sub">帖子详情</div>' +
     '</div>' +
-    // 入口放在帖子前面：详情页默认展开评论，放下面会被一长串评论推到看不见的地方
-    cookCtaHtml(p) + postCard(p, { showStatus: true, inDetail: true });
+    cookCtaHtml(p) + postCard(p, { showStatus: true, inDetail: true }) +
+    // 手机上把评论入口钉在底部（抖音那套）：短帖子下面本来是一大片空白，
+    // 有了它就随时知道「评论点这里」。桌面不显示 —— 操作条本来就在视野里。
+    '<button type="button" class="cmt-entry" data-action="comment-toggle" data-id="' + p.id + '">' +
+      icon('comment') + '<span>写评论…</span>' +
+      '<em>共 ' + (p.commentCount || 0) + ' 条</em>' + icon('chev') +
+    '</button><div class="cmt-entry-gap"></div>';
 }
 
 /* -------- 关注申请（私密账号专用） -------- */
@@ -4048,7 +4149,7 @@ function render() {
     state.route.name === 'messages' && !!threadRouteId());
 
   // 有弹窗时锁住背后的页面滚动（登录页不渲染弹窗，排除掉）
-  setModalLock((!!state.modal || !!state.cook.open) && state.route.name !== 'login');
+  setModalLock((!!state.modal || !!state.cook.open || !!state.cmt) && state.route.name !== 'login');
 
   if (keepId) {
     const el = document.getElementById(keepId);
@@ -4409,28 +4510,30 @@ async function shareTo(postId, peerId) {
   finally { shareBusy = false; }
 }
 
-async function submitComment(id) {
-  const input = $('[data-comment-input="' + id + '"]');
+async function submitComment(pid) {
+  const input = document.getElementById('cmt-input');
   const content = input ? input.value.trim() : '';
   if (!content) { toast('评论不能为空', 'err'); return; }
+  if (state.cmtSending) return;
+  state.cmtSending = true;
   try {
-    const d = await api('/api/posts/' + id + '/comments', { method: 'POST', body: { content } });
-    const local = (state.data.posts || []).find((p) => p.id === Number(id));
-    if (local) { local.comments = d.post.comments; local.commentCount = d.post.commentCount; }
-    if (state.data.post && state.data.post.id === Number(id)) state.data.post = d.post;
-    state.openComments[id] = true;
-    render();
+    const d = await api('/api/posts/' + pid + '/comments', { method: 'POST', body: { content } });
+    if (input) input.value = '';
+    applyPostUpdate(d.post);
+    paintComments();   // 面板自己刷：新评论排在第一条，不用等页面重绘
+    render();          // 卡片上的「评论 N」也要跟着变
+    const list = document.getElementById('cmt-list');
+    if (list) list.scrollTop = 0;
   } catch (e) { toast(e.message, 'err'); }
+  finally { state.cmtSending = false; }
 }
 
 async function deleteComment(pid, cid) {
   if (!confirm('删除这条评论？')) return;
   try {
     const d = await api('/api/posts/' + pid + '/comments/' + cid, { method: 'DELETE' });
-    const local = (state.data.posts || []).find((p) => p.id === Number(pid));
-    if (local) { local.comments = d.post.comments; local.commentCount = d.post.commentCount; }
-    if (state.data.post && state.data.post.id === Number(pid)) state.data.post = d.post;
-    state.openComments[pid] = true;
+    applyPostUpdate(d.post);
+    paintComments();   // 面板留着，只把那条划掉
     render();
   } catch (e) { toast(e.message, 'err'); }
 }
@@ -4897,7 +5000,7 @@ function postIdAt(target, x, y) {
 }
 
 // 这些位置上的点击归各自的功能（按钮 / 链接 / 输入 / 评论 / 举报），不该跳详情
-const POST_SKIP = 'a, button, input, textarea, select, label, [data-action], [data-zoom], .comment, .comments, .msg-share';
+const POST_SKIP = 'a, button, input, textarea, select, label, [data-action], [data-zoom], .msg-share';
 
 function tryOpenPost(target, x, y) {
   if (!target || !target.closest) return false;
@@ -4926,7 +5029,7 @@ document.addEventListener('pointerup', (e) => {
   const st = tapStart;
   tapStart = null;
   if (!st || e.pointerType === 'mouse') return;
-  if (state.modal || state.cook.open) return;
+  if (state.modal || state.cook.open || state.cmt) return;
   if (state.route.name === 'post') return;
   if (Math.abs(e.clientX - st.x) > 10 || Math.abs(e.clientY - st.y) > 10) return;  // 划了一下
   if (Date.now() - st.t > 700) return;                                            // 长按
@@ -5037,16 +5140,9 @@ document.addEventListener('click', (e) => {
     case 'feature': toggleFeature(id, el); break;
     case 'share': openShare(id); break;
     case 'share-to': shareTo(el.getAttribute('data-pid'), id); break;
-    case 'comment-toggle': {
-      state.openComments[id] = !state.openComments[id];
-      render();
-      if (state.openComments[id]) {
-        const inp = $('[data-comment-input="' + id + '"]');
-        if (inp) inp.focus();
-      }
-      break;
-    }
-    case 'comment-submit': submitComment(id); break;
+    case 'comment-toggle': openComments(id); break;
+    case 'cmt-close': closeComments(); break;
+    case 'cmt-send': submitComment(state.cmt && state.cmt.post ? state.cmt.post.id : id); break;
     case 'cmt-del': deleteComment(el.getAttribute('data-pid'), el.getAttribute('data-cid')); break;
     case 'delete': doDelete(id); break;
     case 'report': state.modal = { type: 'report', postId: Number(id) }; render(); break;
@@ -5501,6 +5597,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     // 做饭模式在最上层：先关它，别顺手把背后的页面弹窗也关了
     if (state.cook.open) { closeCook(); return; }
+    if (state.cmt) { closeComments(); return; }
     hideSuggest();
     if (state.modal) { state.modal = null; render(); }
     if (state.noteOpen) { state.noteOpen = false; render(); }
@@ -5516,9 +5613,9 @@ document.addEventListener('keydown', (e) => {
       return;
     }
   }
-  if (e.key === 'Enter' && !e.shiftKey && e.target.closest('[data-comment-input]')) {
+  if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'cmt-input') {
     e.preventDefault();
-    submitComment(e.target.getAttribute('data-comment-input'));
+    submitComment(state.cmt && state.cmt.post ? state.cmt.post.id : 0);
     return;
   }
   // 私信 / 群聊：Enter 发送，Shift+Enter 换行
@@ -5570,6 +5667,15 @@ document.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 window.addEventListener('hashchange', router);
+
+/* 评论面板自己压的那条历史被退到（安卓返回键 / 浏览器后退）——只关面板。
+   这里绝不能再 history.back()：人已经退回来了，再退一次会把页面带走。
+   hash 没变所以也不会触发 hashchange → 路由不会动。 */
+window.addEventListener('popstate', () => {
+  if (!state.cmt) return;
+  state.cmt = null;
+  paintComments();
+});
 window.addEventListener('resize', hideSuggest);
 window.addEventListener('scroll', hideSuggest, true);
 

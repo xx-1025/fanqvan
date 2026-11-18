@@ -1070,37 +1070,156 @@ img { display: block; }
 }
 .risk-note .ic { flex: none; margin-top: 2px; color: #d99a00; }
 
-/* ---------------- 评论区 ---------------- */
+/* ---------------- 评论弹层（2.41 · 抖音那套） ----------------
 
-.comments {
-  margin-top: 12px;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 11px 14px;
+   以前的评论是展开在帖子卡片下面的：点一下把整张卡往下撑，长评论把后面的帖子全推走；
+   详情页更是默认全展开。现在改成底部面板：列表自己滚，输入框钉在面板底部。
+
+   面板挂在 body 的 #cmt-layer 上（不进 #app），一是不用跟着整页重绘，
+   二是能盖住底部导航。层级 780：顶栏 60、底部导航 80、弹窗 700 都在它下面；
+   灯箱 900、做饭模式 950、toast 999 在它上面。
+   ⚠️ 这里一个写死的亮色都不能有 —— 写死一个 = 深色模式一条白杠。 */
+
+#cmt-layer { position: fixed; inset: 0; z-index: 780; pointer-events: none; }
+#cmt-layer.open { pointer-events: auto; }
+
+.cmt-mask {
+  position: absolute; inset: 0;
+  background: rgba(40, 26, 16, .42);
+  animation: cmt-fade .2s ease both;
 }
-.comment { font-size: 13.5px; line-height: 1.8; padding: 3px 0; font-weight: 500; }
-.comment b { color: var(--brand-2); font-weight: 800; }
-.comment .t { color: var(--ink-3); font-size: 11.5px; margin-left: 7px; font-weight: 600; }
 
-.comment-form { display: flex; gap: 8px; margin-top: 10px; min-width: 0; }
-.comment-form input {
-  /* input 默认 min-width:auto（隐式 size=20 ≈ 20 个字宽），flex 里不肯收缩，
-     窄屏会把「发送」整颗挤到卡片外面 —— 必须显式给 0。 */
-  flex: 1 1 0;
-  min-width: 0;
-  height: 38px;
-  padding: 0 16px;
-  border-radius: var(--pill);
-  border: var(--bw) solid var(--line);
+.cmt-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  height: 74vh;
+  height: 74dvh;              /* 手机地址栏收起 / 键盘弹出时按真实可视高度算 */
   background: var(--paper);
-  outline: none;
-  font-weight: 500;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 40px rgba(40, 20, 10, .18);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  overflow: hidden;
+  animation: cmt-up .26s cubic-bezier(.22, .9, .3, 1) both;
 }
-/* 发送键按内容定宽，别跟着输入框一起被压 */
-.comment-form .btn-primary { flex: 0 0 auto; }
-.comment-form input:focus { box-shadow: var(--sh-sm); }
-.comment-form input::placeholder { color: var(--ink-3); }
+
+.cmt-head {
+  position: relative; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  height: 52px; padding: 0 52px;
+  border-bottom: 1px solid var(--line);
+}
+.cmt-head b { font-size: 13.5px; font-weight: 800; color: var(--ink); }
+/* 顶上那道小把手：让人一眼看出这块是刚滑上来的面板 */
+.cmt-grip {
+  position: absolute; left: 50%; top: 7px; transform: translateX(-50%);
+  width: 34px; height: 4px; border-radius: 2px; background: var(--line);
+}
+.cmt-x {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 32px; height: 32px; border: 0; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer;
+  background: var(--cream); color: var(--ink-3);
+}
+.cmt-x:hover { background: var(--fill-1); color: var(--ink); }
+.cmt-x svg { width: 15px; height: 15px; }
+
+.cmt-list {
+  flex: 1; min-height: 0;            /* 少了这行，flex 子项不肯收缩，列表会把输入框挤出面板 */
+  overflow-y: auto;
+  overscroll-behavior: contain;      /* 滚到底别把后面的页面一起带着滚 */
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 16px 12px;
+}
+
+.cmt-item { display: flex; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.cmt-item:last-child { border-bottom: 0; }
+.cmt-main { flex: 1; min-width: 0; }
+.cmt-name { font-size: 12.5px; font-weight: 800; color: var(--ink-2); }
+.cmt-text {
+  margin-top: 2px; font-size: 14px; line-height: 1.62; color: var(--ink);
+  word-break: break-word; white-space: pre-wrap;
+}
+.cmt-meta { margin-top: 4px; font-size: 11.5px; font-weight: 600; color: var(--ink-4); }
+
+.cmt-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 46px 0; font-size: 13px; color: var(--ink-3);
+}
+.cmt-empty svg { width: 26px; height: 26px; opacity: .55; }
+
+.cmt-form {
+  flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+.cmt-form input {
+  flex: 1 1 0;
+  min-width: 0;               /* input 隐式 min-width:auto，不写这行窄屏会把发送键挤出去 */
+  height: 40px; padding: 0 16px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--pill);
+  background: var(--cream); color: var(--ink);
+  outline: none; font-weight: 500;
+}
+.cmt-form input:focus { background: var(--paper); box-shadow: var(--sh-sm); }
+.cmt-form input::placeholder { color: var(--ink-3); }
+.cmt-form .btn-primary { flex: 0 0 auto; height: 40px; border-radius: 20px; padding: 0 18px; }
+
+/* 桌面不铺满整个宽度：560 就够了，再宽一行字太长反而难读。
+   居中用 left/right + margin auto，别用 transform —— 入场动画占着 transform。 */
+@media (min-width: 761px) {
+  .cmt-sheet {
+    left: 0; right: 0; margin: 0 auto;
+    width: 560px; max-width: calc(100vw - 40px);
+    height: 68vh; height: 68dvh;
+  }
+}
+@media (max-width: 760px) {
+  .cmt-sheet { height: 78vh; height: 78dvh; border-radius: 16px 16px 0 0; }
+  .cmt-head { height: 48px; }
+  .cmt-list { padding: 2px 14px 10px; }
+}
+
+@keyframes cmt-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes cmt-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .cmt-sheet, .cmt-mask { animation: none; }
+}
+
+/* 详情页底部「写评论」入口（2.41）
+   只在手机上出现：抖音就是把评论入口钉在底部导航上面。
+   桌面端不显示 —— 帖子下面那条操作条本来就在视野里，再钉一条是重复。 */
+.cmt-entry, .cmt-entry-gap { display: none; }
+
+@media (max-width: 760px) {
+  .cmt-entry {
+    display: flex; align-items: center; gap: 8px;
+    position: fixed; left: 12px; right: 12px;
+    bottom: calc(60px + env(safe-area-inset-bottom));   /* 底部导航 52 + 8 的间距 */
+    z-index: 70;
+    height: 44px; padding: 0 16px;
+    border: var(--bw) solid var(--line);
+    border-radius: var(--pill);
+    background: var(--paper);
+    color: var(--ink-3);
+    font-family: inherit;
+    font-size: 13.5px; font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(40, 20, 10, .12);
+  }
+  .cmt-entry:active { transform: scale(.995); }
+  .cmt-entry svg { width: 17px; height: 17px; flex: none; }
+  .cmt-entry span { flex: 1; min-width: 0; }
+  .cmt-entry em {
+    font-style: normal; flex: none;
+    font-size: 12px; color: var(--ink-4); font-weight: 600;
+  }
+  /* 悬浮条不占布局，得补一段占位的空隙，否则最后一行内容会被它压住 */
+  .cmt-entry-gap { display: block; height: 60px; }
+}
 
 /* =========================================================
    头像
@@ -1971,18 +2090,16 @@ button.cover-back { padding: 0; }
 }
 .act-more:hover { opacity: 1; background: var(--cream); }
 
+/* 删除评论：挂在时间后面当一行小字，不再是红点 ——
+   面板里每行都挂个红点太吵，也容易点错 */
 .cmt-del {
-  margin-left: 6px;
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  background: var(--red); color: #fff;
-  font-size: 12px; line-height: 1;
-  display: inline-grid; place-items: center;
-  vertical-align: middle;
-  opacity: .5;
-  transition: .12s;
+  margin-left: 10px; padding: 0;
+  border: 0; background: none;
+  font-size: 11.5px; font-weight: 600;
+  color: var(--ink-4); cursor: pointer;
+  font-family: inherit;
 }
-.cmt-del:hover { opacity: 1; }
+.cmt-del:hover { color: var(--red); }
 
 .btn-follow {
   height: 38px; padding: 0 24px;
@@ -3456,18 +3573,6 @@ a:hover { color: var(--brand-2); }
 .badge-feat { background: var(--brand-soft); color: #d4380d; }
 .badge-ai { background: var(--ai-soft); color: #5b48c0; }
 
-/* 评论区 */
-.comments { background: var(--fill-1); border: 0; border-radius: 8px; padding: 12px 14px; }
-.comment { border-bottom: 1px solid var(--line); padding: 7px 0; font-size: 13.5px; }
-.comment b { font-weight: 600; color: var(--ink); }
-.comment .t { color: var(--ink-4); font-size: 12px; margin-left: 6px; }
-.comment-form input {
-  border: 1px solid var(--line) !important;
-  background: var(--paper);
-  border-radius: 18px;
-  height: 36px;
-  box-shadow: none;
-}
 
 /* ---------- 发帖框 ---------- */
 .composer { border: 0; border-radius: 8px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,.035); }
