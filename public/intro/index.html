@@ -620,6 +620,135 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
   font-size:12.6px;font-weight:800;color:var(--ink-2);
 }
 
+/* ---------- 实时盯锅 ---------- */
+.watch-grid{display:grid;grid-template-columns:340px 1fr;gap:32px;align-items:center;}
+.watch-phone{
+  position:relative;width:100%;max-width:302px;margin:0 auto;padding:11px;
+  box-sizing:border-box;
+  background:var(--paper);border:var(--bw) solid var(--ink);
+  border-radius:36px;box-shadow:var(--sh-lg);
+}
+.watch-scr{
+  position:relative;overflow:hidden;border-radius:26px;
+  background:#241a14;aspect-ratio:9/16;
+}
+.watch-cam{
+  position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 60%, #e6a94f 0%, #bd7430 26%, #6d3d1c 54%, #2b1c12 80%);
+}
+.watch-cam::before{
+  content:"";position:absolute;left:-10%;right:-10%;top:54%;height:66%;
+  border-radius:50%;
+  background:radial-gradient(ellipse at 50% 26%, #3d2c1e 0%, #1b120c 60%, rgba(27,18,12,0) 74%);
+  box-shadow:inset 0 12px 26px rgba(0,0,0,.55);
+}
+.watch-cam::after{
+  content:"";position:absolute;left:50%;top:22%;width:84px;height:84px;margin-left:-42px;
+  border-radius:50%;background:rgba(255,255,255,.15);filter:blur(17px);
+  animation:steam 3.6s ease-in-out infinite;
+}
+@keyframes steam{
+  0%,100%{opacity:.32;transform:translateY(6px) scale(.88)}
+  50%{opacity:.85;transform:translateY(-13px) scale(1.14)}
+}
+.watch-food{
+  position:absolute;left:50%;top:57%;width:26px;height:15px;margin-left:-13px;
+  border-radius:50%;background:#a95a20;
+  box-shadow:24px -9px 0 -2px #94491a, -27px 7px 0 -3px #b3661f,
+             7px 18px 0 -4px #7c3b14, -14px -15px 0 -5px #8f4517;
+}
+.watch-quiet{margin:15px 0 0;padding-left:39px;font-size:12.6px;line-height:1.78;color:var(--ink-2);}
+.watch-quiet b{color:var(--ink);}
+.sec-head p b{color:var(--ink);}
+
+/* 智能体形象：站在屏幕里陪你做饭的小厨师 */
+.watch-bot{
+  position:absolute;top:52px;right:8px;width:70px;z-index:3;
+  animation:bob 2.9s ease-in-out infinite;
+  filter:drop-shadow(0 7px 12px rgba(0,0,0,.45));
+}
+.watch-bot img{display:block;width:100%;height:auto;}
+@keyframes bob{
+  0%,100%{transform:translateY(0) rotate(-1.4deg)}
+  50%{transform:translateY(-8px) rotate(1.4deg)}
+}
+.watch-eq{position:absolute;left:-13px;top:52%;display:flex;align-items:center;gap:2.5px;}
+.watch-eq i{
+  display:block;width:2.5px;height:9px;border-radius:2px;background:#ffd166;
+  animation:eq .9s ease-in-out infinite;
+}
+.watch-eq i:nth-child(2){height:15px;animation-delay:.15s;}
+.watch-eq i:nth-child(3){height:7px;animation-delay:.3s;}
+@keyframes eq{0%,100%{transform:scaleY(.4);opacity:.5}50%{transform:scaleY(1);opacity:1}}
+
+.bot-row{display:flex;gap:16px;align-items:center;margin-top:18px;}
+.bot-row .cost-note{margin-top:0;flex:1;}
+.bot-avatar{
+  flex:none;width:92px;animation:bob 3.6s ease-in-out infinite;
+  filter:drop-shadow(0 6px 10px rgba(64,41,27,.16));
+}
+@media(max-width:640px){
+  .bot-row{gap:11px;}
+  .bot-avatar{width:64px;}
+}
+.watch-hud{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  justify-content:space-between;padding:13px 12px;
+}
+.watch-pill{
+  align-self:flex-start;display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px;border-radius:var(--pill);
+  background:rgba(18,12,9,.72);color:#f7e7d3;font-size:11.4px;font-weight:800;
+}
+.watch-pill i{width:6px;height:6px;border-radius:50%;background:#7ee08a;animation:blip 1.4s infinite;}
+@keyframes blip{0%,100%{opacity:1}50%{opacity:.2}}
+.watch-now{
+  align-self:flex-start;margin-top:8px;
+  font-size:12px;font-weight:800;color:#f7e7d3;
+  background:rgba(18,12,9,.72);border-radius:8px;padding:5px 9px;
+}
+.watch-speak{
+  display:flex;align-items:center;gap:6px;margin:2px 0 1px;
+  font-size:11px;font-weight:800;color:#f7e7d3;
+  text-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+.watch-speak i{
+  width:9px;height:9px;border-radius:50%;background:#ffd166;
+  box-shadow:0 0 0 0 rgba(255,209,102,.7);animation:wave 1.5s infinite;
+}
+@keyframes wave{
+  0%{box-shadow:0 0 0 0 rgba(255,209,102,.65)}
+  70%{box-shadow:0 0 0 11px rgba(255,209,102,0)}
+  100%{box-shadow:0 0 0 0 rgba(255,209,102,0)}
+}
+.watch-bubs{display:flex;flex-direction:column;gap:7px;}
+.watch-bub{
+  max-width:97%;padding:8px 11px;border-radius:12px 12px 12px 4px;
+  background:#fff8ee;color:#40291b;font-size:12.2px;font-weight:700;line-height:1.5;
+  border:2px solid var(--ink);box-shadow:2px 2px 0 rgba(0,0,0,.28);
+  animation:pop .55s ease-out both;
+}
+.watch-bub:nth-child(2){
+  animation-delay:.55s;align-self:flex-end;
+  border-radius:12px 12px 4px 12px;background:#ffe4c4;
+}
+@keyframes pop{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+
+.watch-steps{display:flex;flex-direction:column;gap:14px;}
+.watch-step{display:flex;gap:12px;align-items:flex-start;}
+.watch-step>b{
+  flex:none;width:27px;height:27px;border-radius:50%;display:grid;place-items:center;
+  background:var(--brand-soft);border:2px solid var(--ink);
+  font-size:12.5px;font-weight:900;
+}
+.watch-step div{font-size:13.4px;line-height:1.76;color:var(--ink-2);}
+.watch-step strong{display:block;color:var(--ink);font-size:14.2px;margin-bottom:2px;}
+@media(max-width:840px){
+  .watch-grid{grid-template-columns:1fr;gap:26px;}
+  .watch-phone{max-width:268px;}
+  .watch-bot{width:58px;top:50px;right:6px;}
+}
+
 /* ---------- 和别处比 ---------- */
 .cmps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:stretch;}
 .cmp{
@@ -696,6 +825,7 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       <a href="#features" data-only="user" data-page-node-id="tQvetm1Grs8z7YJF4SpTUv">功能</a>
       <a href="#real" data-only="user">真实饭帖</a>
       <a href="#ai" data-only="user">AI 助手</a>
+      <a href="#watch" data-only="user">盯着锅</a>
       <a href="#play" data-only="user" data-page-node-id="36nUFQc8u9t7gWxLBUv7JN">体验</a>
       <a href="#flow" data-page-node-id="hPgkBY74NF4jJWoCQ78dDz">运作方式</a>
       <a href="#rules" data-only="user">规则</a>
@@ -983,6 +1113,68 @@ h1,h2,h3{line-height:1.28;margin:0;letter-spacing:-.2px;}
       <li>看不清就说明看不清，不做猜测。此条已写入它的规则。</li>
     </ul>
     <p class="disc">AI 的判断可能出错，不能当作食品安全依据。生食、孕妇、婴幼儿、过敏人群，请以专业意见为准。</p>
+  </div>
+</section>
+
+<!-- ========== 实时盯锅 ========== -->
+<section class="sec wrap" id="watch" data-only="user">
+  <div class="sec-head reveal">
+    <span class="kicker">🔥 实时盯锅 · 原型阶段</span>
+    <h2>不用一直盯着锅，<br class="br-desk">它盯着，还会出声</h2>
+    <p>手机往灶台边一架，镜头对着锅。锅里一变，它会<b>直接说话</b>——不用你拍一张去问，也不用一直看屏幕。</p>
+  </div>
+  <div class="watch-grid">
+    <div class="watch-phone reveal">
+      <div class="watch-scr">
+        <div class="watch-cam"><i class="watch-food"></i></div>
+        <div class="watch-bot">
+          <span class="watch-eq"><i></i><i></i><i></i></span>
+          <img src="/assets/mascot-cut.webp" alt="陪着做饭的小厨师">
+        </div>
+        <div class="watch-hud">
+          <div>
+            <span class="watch-pill"><i></i>正在看着 · 第 47 秒</span>
+            <div class="watch-now">肉色比刚才深了一档</div>
+          </div>
+          <div class="watch-speak"><i></i>正在说给你听</div>
+          <div class="watch-bubs">
+            <div class="watch-bub">底下的汁开始收了，火可以再小一点</div>
+            <div class="watch-bub">颜色比刚才深，翻个面吧</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="reveal">
+      <div class="watch-steps">
+        <div class="watch-step">
+          <b>1</b>
+          <div><strong>每 0.8 秒看一眼，这一步不花钱</strong>把画面缩成一小块格子，只比明暗和颜色，算完就丢。不联网，也不调模型。</div>
+        </div>
+        <div class="watch-step">
+          <b>2</b>
+          <div><strong>真变了，才发出去问</strong>冒烟、热气、肉在变色，画面动了才把这一帧发出去。锅里没动静的时候，它一分钱不花。</div>
+        </div>
+        <div class="watch-step">
+          <b>3</b>
+          <div><strong>跟「刚才」比着说</strong>「比刚才深了一档」「汁开始收了」——它记着上一眼看到什么。同一件事 18 秒内不重复念。</div>
+        </div>
+      </div>
+      <p class="watch-quiet"><b>它是用说的，不是弹一行字。</b>手上沾着油、腾不开手的时候，听就行。也不需要你先开口问：该翻面、该调小火，它自己会讲；没事的时候它安静看着，不叨叨。</p>
+    </div>
+  </div>
+  <div class="ai-bound reveal">
+    <h3>它只说看见了什么，不说熟没熟</h3>
+    <ul>
+      <li>「颜色深了」「汤收了一半」可以讲；「可以吃了」不讲。这条写死在它的规则里，不靠自觉。</li>
+      <li>镜头被挡住、画面糊了，它会直接说「看不见了」，不硬凑一句。</li>
+      <li>现在它只在原型里跑：一个独立页面，还没进 App，也没进正式站。等它稳到不误报，才会搬到手机上。</li>
+    </ul>
+  </div>
+  <div class="bot-row reveal">
+    <img class="bot-avatar" src="/assets/mascot-cut.webp" alt="陪着做饭的小厨师">
+    <div class="cost-note">
+      <b>屏幕里那个小厨师，就是它现在的样子。再往后，它会变成一个陪着做饭的智能体。</b>不只是报状态，而是能接话——「这汁收到什么程度算好」「现在能下菜了吗」，边做边问，它记得你前面几步干了什么。这块还只是个想法，没动手。
+    </div>
   </div>
 </section>
 
