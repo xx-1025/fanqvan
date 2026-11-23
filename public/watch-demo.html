@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#12100e">
+<title>小饭盯着 · 实时盯锅</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #12100e; color: #f2e9dd;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  body { overflow: hidden; }
+
+  /* ---------------- 开始前 ---------------- */
+  .setup {
+    position: absolute; inset: 0;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 22px 18px calc(168px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+  /* margin: auto 0 而不是 align-items:center —— 内容比屏幕高的时候（小屏 + 展开高级设置），
+     center 会把顶部裁掉且滚不上去，auto margin 会自动退化成贴着顶部。 */
+  .setup-card { width: 100%; max-width: 430px; margin: auto 0; }
+  .setup-em {
+    font-size: 12px; letter-spacing: .08em; color: #e0a04a;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  h1 { font-size: 27px; font-weight: 600; margin: 0 0 10px; letter-spacing: -.01em; }
+  .lead { font-size: 14px; line-height: 1.7; color: #a89c8c; margin: 0 0 22px; }
+
+  .field { display: block; margin-bottom: 14px; }
+  .field > span { display: block; font-size: 12px; color: #6e6459; margin-bottom: 7px; }
+  .field input, .field select {
+    width: 100%; height: 48px; padding: 0 14px;
+    font-size: 16px; font-family: inherit;
+    color: #f2e9dd; background: #1c1814;
+    border: 1px solid #2e2823; border-radius: 11px;
+    outline: none; -webkit-appearance: none; appearance: none;
+  }
+  .field input:focus, .field select:focus { border-color: #e0a04a; }
+  .field select {
+    background-image: linear-gradient(45deg, transparent 50%, #6e6459 50%), linear-gradient(135deg, #6e6459 50%, transparent 50%);
+    background-position: calc(100% - 19px) 21px, calc(100% - 14px) 21px;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .field.half { flex: 1; }
+
+  .adv { margin: 0 0 16px; }
+  .adv summary {
+    font-size: 12px; color: #6e6459; cursor: pointer; list-style: none;
+    padding: 6px 0; user-select: none;
+  }
+  .adv summary::-webkit-details-marker { display: none; }
+  .adv summary::after { content: " ▾"; }
+  .adv[open] summary::after { content: " ▴"; }
+  .adv input[type=range] {
+    width: 100%; margin: 10px 0 5px; accent-color: #e0a04a; height: 26px;
+  }
+  .sens-v { font-size: 12px; color: #6e6459; font-variant-numeric: tabular-nums; }
+  .sens-v b { color: #a89c8c; font-weight: 500; }
+
+  .btn-start {
+    width: 100%; height: 54px; margin-top: 6px;
+    font-size: 16px; font-weight: 600; font-family: inherit;
+    color: #171310; background: #e0a04a;
+    border: 0; border-radius: 13px; cursor: pointer;
+  }
+  .btn-start:active { background: #c98c3a; }
+  .btn-ghost {
+    width: 100%; height: 44px; margin-top: 10px;
+    font-size: 13px; font-family: inherit;
+    color: #a89c8c; background: transparent;
+    border: 1px solid #2e2823; border-radius: 11px; cursor: pointer;
+  }
+  .btn-ghost:active { background: #1c1814; }
+  /* 表单标签、高级设置入口、灵敏度说明原来都是 #6e6459 ——
+     在 #12100e 上几乎读不出来。统一提一档：还是次要文字，
+     但不用凑近屏幕看。 */
+  .field > span, .adv summary, .sens-v { color: #8b8175; }
+  .fine {
+    /* 11.5px / #6e6459 在深底上实测很难读，而这两段恰恰是最该被看见的提示
+       （「不告诉你熟没熟」「它现在只说不听」）。提到 12.5px / #8b8175，
+       仍然明显弱于正文，但不用凑近了看。 */
+    font-size: 12.5px; line-height: 1.75; color: #8b8175;
+    margin: 18px 0 0; padding-top: 15px; border-top: 1px solid #241f1b;
+  }
+  .fine strong { color: #d9c9b2; font-weight: 600; }
+
+  /* ---------------- 盯锅画面 ---------------- */
+  .stage { position: absolute; inset: 0; background: #000; }
+  #cam {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; background: #000;
+  }
+
+  .hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: calc(12px + env(safe-area-inset-top)) 14px 34px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+    background: linear-gradient(180deg, rgba(0,0,0,.88), rgba(0,0,0,.42) 62%, rgba(0,0,0,0));
+    pointer-events: none;
+  }
+  .pill {
+    align-self: flex-start; max-width: 100%;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 13px 8px 11px;
+    font-size: 13.5px; line-height: 1.35;
+    background: rgba(20,16,13,.78);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 999px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .pill i {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #7fa86a; flex: none;
+    box-shadow: 0 0 0 0 rgba(127,168,106,.6);
+    animation: breathe 2.2s ease-out infinite;
+  }
+  @keyframes breathe {
+    0% { box-shadow: 0 0 0 0 rgba(127,168,106,.55); }
+    70% { box-shadow: 0 0 0 7px rgba(127,168,106,0); }
+    100% { box-shadow: 0 0 0 0 rgba(127,168,106,0); }
+  }
+  .pill b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill.thinking i { background: #d9a441; animation-duration: 1.1s; }
+  .pill.notice i { background: #d9a441; }
+  .pill.danger i { background: #e8613f; animation-duration: .8s; }
+  .pill.danger { border-color: rgba(232,97,63,.45); }
+  .pill.err i { background: #e8613f; animation: none; }
+  .pill.muted i { background: #8b8175; animation: none; }
+  /* 画面上一共只留两层字：
+     ① 药丸 —— 它现在在干什么（盯着 / 看一眼 / 提醒 / 注意），四个字以内
+     ② 一行灰字 —— 它这一眼看到了什么，不是它说的话
+     真正「说话」只发生在人像头顶那个气泡里。
+     统计数字（发了几次、省了几次、色差几度）全收起来，只在 ?debug=1 时给。 */
+  .see {
+    align-self: flex-start; max-width: 100%;
+    /* 13px / .86：这行是「它这一眼看到了什么」，是页面上的提示性文字，
+       原来 12.5px + .74 压在摄像头画面上几乎读不出来（白天灶台反光更糟）。 */
+    font-size: 13px; line-height: 1.55;
+    color: rgba(255,255,255,.86);
+    text-shadow: 0 1px 4px rgba(0,0,0,.85);
+    padding: 0 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .see:empty { display: none; }
+  .see.danger { color: #ffc9b8; }
+
+  .stat {
+    align-self: flex-start;
+    display: none;              /* 默认不给人看，body.debug 才出现 */
+    font-size: 11.5px; color: rgba(255,255,255,.72);
+    font-variant-numeric: tabular-nums;
+    padding: 4px 9px; border-radius: 7px;
+    background: rgba(12,10,8,.55);
+  }
+  .stat.trend { color: #d9b98a; }
+  .stat.trend:empty { display: none !important; }
+  body.debug .stat { display: inline-block; }
+
+  .dock {
+    position: absolute; left: 0; right: 0;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    padding: 0 14px;
+    display: flex; gap: 10px;
+  }
+  .btn-peek, .btn-stop {
+    height: 56px; border-radius: 14px; border: 0; cursor: pointer;
+    font-family: inherit; font-size: 16px; font-weight: 500;
+  }
+  .btn-peek {
+    flex: 1;
+    color: #f2e9dd;
+    background: rgba(28,24,20,.82);
+    border: 1px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .btn-peek:active { background: rgba(46,40,34,.9); }
+  .btn-peek[disabled] { opacity: .45; }
+  .btn-stop {
+    width: 96px; flex: none;
+    color: #ffd9cd; background: rgba(110,36,22,.66);
+    border: 1px solid rgba(232,97,63,.4);
+  }
+  .btn-stop:active { background: rgba(130,44,26,.8); }
+  /* ---------------- 形象 ----------------
+     静态图没有分层素材，做不了眨眼和真嘴型。所以走身体语言：
+     待机呼吸、想的时候左右摇、说话时点头带并排声波、危险时跳两下。
+     比「整张贴纸晃来晃去」诚实的部分是：每个动作都对应一个真实状态。 */
+  .chef {
+    /* 形象尺寸：开始页 96、盯锅页 116。太小就只是个图标，
+       站不进画面里，也就谈不上「陪着做菜」。
+       --tail 是气泡小尾巴的横坐标，得跟着宽度走（人像脑袋在 46% 处）。 */
+    --tail: 51px;
+    position: fixed; right: 14px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    width: 111px; z-index: 30;
+    opacity: .9; cursor: grab;
+    filter: drop-shadow(0 8px 16px rgba(0,0,0,.55));
+    transition: opacity .3s, width .3s, transform .12s ease-out;
+    /* 拖它的时候手指不能顺带滚页面，也不能选中图片 */
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chef.dragging { cursor: grabbing; opacity: 1; }
+  /* 进了盯锅画面就移到左边 —— 那里通常是台面，压不到锅心 */
+  body.on-stage .chef {
+    --tail: 61px;
+    left: 11px; top: 30%; right: auto; bottom: auto; width: 134px;
+  }
+  /* 横屏时画面高度不够：站左边会同时压住顶部状态行和底部那条记录（实测都压到了），
+     干脆换到右上角 —— 那里只有空白画面，气泡也会自动往左长，两边都不挡 */
+  @media (max-height: 520px) {
+    body.on-stage .chef { --tail: 46px; width: 101px; left: auto; right: 26px; top: 24%; }
+  }
+  /* 脚下那团影子：没有它，人像会像浮在画面中间的一张贴纸 */
+  .chef::after {
+    content: ""; position: absolute; left: 50%; bottom: -7px;
+    width: 74%; height: 13px; margin-left: -37%; border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,.55), rgba(0,0,0,0) 72%);
+    z-index: -1;
+    /* 滑行时影子收一下（.chef.rolling），是唯一不动机身也能看出「在动」的办法 */
+    transition: transform .18s ease-out, opacity .18s ease-out;
+  }
+  .chef img {
+    display: block; width: 100%; height: auto;
+    transform-origin: 50% 94%;
+    will-change: transform;
+    /* 鼠标按在 <img> 上会启动浏览器原生的「拖图片」，指针事件被它接管，
+       于是 pointermove 收不到 —— 手机摸不出来（触摸不触发原生拖拽），
+       只有电脑端整张图拖不动。事件一律落到 .chef 上。 */
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+  .chef[data-st="idle"] img { animation: ch-breathe 4.6s ease-in-out infinite; }
+  .chef[data-st="think"] img { animation: ch-think 1.5s ease-in-out infinite; }
+  .chef[data-st="talk"] img { animation: ch-talk .46s ease-in-out infinite; }
+  .chef.jump img { animation: ch-jump .48s ease-in-out 2; }
+  .chef[data-st="talk"], .chef.jump { opacity: 1; }
+
+  @keyframes ch-breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-2px) scale(1.014); }
+  }
+  @keyframes ch-think {
+    0%, 100% { transform: rotate(-2.4deg) translateY(0); }
+    50%      { transform: rotate(2.4deg) translateY(-2px); }
+  }
+  @keyframes ch-talk {
+    0%, 100% { transform: translateY(0) scale(1.03); }
+    50%      { transform: translateY(-4px) scale(1.05); }
+  }
+  @keyframes ch-jump {
+    0%, 100% { transform: translateY(0) scale(1.02); }
+    32%      { transform: translateY(-10px) scale(1.08); }
+    66%      { transform: translateY(0) scale(1.0); }
+  }
+
+  /* ---------------- 撞边 ----------------
+     这里原来是一整套「贴边靠墙」：倾斜 7.2° + 支点挪到贴墙那只脚。
+     用户的原话是「边缘他动作好奇怪」，而且说得对 —— 以脚为轴转上半身，
+     贴左墙时半个脑袋直接转出屏幕被裁掉，越靠越像摔倒在墙角。
+     现在换成台球的做法：不靠墙、不吸附，撞上去弹回来，
+     只在接触的那一下压一压。形状不变，所以不会「变怪」。
+     挤压的支点在被撞那条边上（JS 内联写 transform-origin）：
+     支点留在中心的话，人像会整体缩小，像被抽掉一截。 */
+  .chef.rolling::after { transform: scaleX(.82); opacity: .55; }
+
+  .chef-wave {
+    /* 挂在嘴边（top 26%），不是腰上。原来在 51% —— 三条竖线长在人像肚子旁边，
+       读起来像「设备在工作」，不像「他在跟你说话」。 */
+    position: absolute; right: -14px; top: 24%;
+    display: none; align-items: flex-end; gap: 3px; height: 24px;
+  }
+  .chef[data-st="talk"] .chef-wave { display: flex; }
+  /* 人在右半屏（气泡也得往左长）时，声波一起翻到内侧，
+     否则三根竖条会长在屏幕外面。原先靠「贴右边」判断，现在没有贴边了，
+     直接跟着气泡的翻边走。 */
+  .chef.bub-left .chef-wave { right: auto; left: -14px; }
+  .chef-wave i {
+    width: 3px; height: 11px; border-radius: 2px;
+    background: #efb45c; box-shadow: 0 0 6px rgba(224,160,74,.55);
+    animation: cw .72s ease-in-out infinite;
+  }
+  .chef-wave i:nth-child(2) { height: 24px; animation-delay: .14s; }
+  .chef-wave i:nth-child(3) { height: 15px; animation-delay: .28s; }
+  @keyframes cw {
+    0%, 100% { transform: scaleY(.32); opacity: .45; }
+    50%      { transform: scaleY(1); opacity: 1; }
+  }
+
+  /* ---------------- 说话气泡 ----------------
+     之前它一开口，那句话是冒在左上角那行状态里的，人像在旁边干站着 ——
+     用户的要求是「说话要有聊天框，不是左上角冒字」。所以话挂在形象身上，
+     状态栏只留极短的当前状态，不再重复整句。 */
+  .chef-bub {
+    position: absolute; left: 0; bottom: calc(100% + 10px);
+    /* 宽度必须给死：绝对定位只写了 left/right 时，宽度会被父级那 72px 卡住，
+       实测整句话被压成一条竖着排的窄条。max-content 才不受父级宽度限制。 */
+    width: max-content; min-width: 62px; max-width: 200px;
+    padding: 8px 11px; border-radius: 12px;
+    background: rgba(26,21,17,.95);
+    border: 1px solid rgba(224,160,74,.42);
+    color: #f7eee2; font-size: 13.5px; line-height: 1.55; text-align: left;
+    white-space: normal; word-break: break-word;
+    box-shadow: 0 8px 20px rgba(0,0,0,.45);
+    opacity: 0; pointer-events: none;
+    transform: translateY(5px) scale(.95);
+    transform-origin: 30px 100%;
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .chef-bub.on { opacity: 1; transform: translateY(0) scale(1); }
+  /* 小尾巴指着脚下的人，不然会像飘在旁边的一块牌子 */
+  .chef-bub::after {
+    content: ""; position: absolute; left: var(--tail, 44px); bottom: -5px;
+    width: 9px; height: 9px; background: rgba(26,21,17,.95);
+    border-right: 1px solid rgba(224,160,74,.42);
+    border-bottom: 1px solid rgba(224,160,74,.42);
+    transform: rotate(45deg);
+  }
+  .chef-bub.danger { border-color: rgba(232,97,63,.66); color: #ffd9cd; }
+  .chef-bub.danger::after { border-color: rgba(232,97,63,.66); }
+  /* ---- 操作提示（教人怎么用它）----
+     用户原话「提示用户的字也要明显」。原来这条提示和「它说的话」是同一个样子：
+     深底浅字、细琥珀边、3.4 秒就没了 —— 等于把说明书和台词做成一样的东西。
+     而台球模式下「能甩」这件事，不教就没人会去试。
+     现在两套视觉彻底分开：话是深底浅字（像从嘴里出来的），
+     提示是暖金实底深字（像贴在它身上的条子），外加一圈慢慢扩开的金边，
+     眼睛会先落到它身上。 */
+  .chef-bub.tip {
+    background: #f0b45f; border-color: #ffd79a; color: #2a1d0f;
+    font-size: 14px; font-weight: 600; line-height: 1.5;
+    padding: 9px 12px;
+    animation: tip-pulse 1.7s ease-in-out infinite;
+  }
+  .chef-bub.tip::after { background: #f0b45f; border-color: #ffd79a; }
+  @keyframes tip-pulse {
+    0%, 100% { box-shadow: 0 8px 22px rgba(240,180,95,.3), 0 0 0 3px rgba(240,180,95,.18); }
+    50%      { box-shadow: 0 8px 22px rgba(240,180,95,.3), 0 0 0 7px rgba(240,180,95,.07); }
+  }
+  /* 人在屏幕右半边时气泡往左长，否则直接出屏 */
+  .chef.bub-left .chef-bub { left: auto; right: 0; transform-origin: calc(100% - 30px) 100%; }
+  .chef.bub-left .chef-bub::after { left: auto; right: var(--tail, 44px); }
+  /* 贴近顶部时翻到脚下 */
+  .chef.bub-down .chef-bub { bottom: auto; top: calc(100% + 10px); transform-origin: 30px 0; }
+  .chef.bub-down .chef-bub::after { bottom: auto; top: -5px; left: var(--tail, 44px); transform: rotate(225deg); }
+  .chef.bub-down.bub-left .chef-bub::after { left: auto; right: var(--tail, 44px); }
+
+  /* 静音不是「消失」。压到 .2 会让人以为长按把它删掉了 ——
+     以为坏了就会关掉整个功能。留一个看得见的淡影，只是不说话。 */
+  .chef.mute { opacity: .5; filter: grayscale(.35); }
+  .chef.mute img { animation: none; }
+  .chef.mute .chef-wave { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chef img, .chef-wave i { animation: none; }
+  }
+
+</style>
+</head>
+<body>
+
+<div id="setup" class="setup">
+  <div class="setup-card">
+    <div class="setup-em">饭圈 · 实验功能</div>
+    <h1>小饭盯着</h1>
+    <p class="lead">手机架在灶台边，后置镜头对准锅。它一秒扫一眼画面，看见动静才仔细看、才开口 —— 没事的时候不出声。</p>
+
+    <label class="field">
+      <span>在做什么（填了它心里有数）</span>
+      <input id="dish" type="text" maxlength="20" placeholder="比如：可乐鸡翅" autocomplete="off">
+    </label>
+
+    <div class="row" style="display:flex;gap:12px;">
+      <label class="field half">
+        <span>最久多久看一次</span>
+        <select id="every">
+          <option value="10">10 秒</option>
+          <option value="15" selected>15 秒</option>
+          <option value="20">20 秒</option>
+          <option value="30">30 秒</option>
+        </select>
+      </label>
+    </div>
+
+    <details class="adv">
+      <summary>灵敏度 · 多小的动静算有事</summary>
+      <input id="sens" type="range" min="0.4" max="10" step="0.2" value="3">
+      <div class="sens-v">现在 <b id="sens-v">3.0</b> · 越小越敏感，连一点点变化都会仔细看。画面真的在动时它随时会问，最快 3.5 秒一次；上面那个「最久多久看一次」只是画面一直没动静时的保底，不是它的反应速度。</div>
+    </details>
+
+    <button id="start" class="btn-start">开始盯着</button>
+    <button id="tts" class="btn-ghost">先试一下它说话</button>
+
+    <p class="fine">
+      它只讲画面上看得见的东西和现在能做的动作，<strong>不会告诉你熟没熟、能不能吃</strong> —— 那个得你自己用筷子戳、用刀切开看。
+      摄像头只在这次盯着的时候开，点「停下」就关。
+    </p>
+    <p class="fine">
+      <strong>它现在只说不听</strong>：全程不打开麦克风，你说话它听不见 —— 想要「你问它答」，得再单独做一版。
+    </p>
+  </div>
+</div>
+
+<div id="stage" class="stage" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <div class="hud">
+    <span class="pill" id="pill"><i></i><b id="st">准备中</b></span>
+    <div class="see" id="see"></div>
+    <span class="stat" id="stat"></span>
+    <span class="stat trend" id="trend" hidden></span>
+  </div>
+  <div class="dock">
+    <button id="peek" class="btn-peek">现在看一眼</button>
+    <button id="stop" class="btn-stop">停下</button>
+  </div>
+</div>
+
+  <div class="chef" id="chef" data-st="idle">
+    <div class="chef-bub" id="cbub" aria-live="polite"></div>
+    <img src="/assets/chef/stand.webp?v=3" alt="" onerror="this.parentNode.style.display='none'">
+    <span class="chef-wave"><i></i><i></i><i></i></span>
+  </div>
+
+<script src="/watch-demo.js?v=11"></script>
+</body>
+</html>

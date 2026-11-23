@@ -2469,6 +2469,11 @@ function cookHtml() {
       '</div>' +
       '<button class="cook-read" data-action="cook-speak" title="朗读这一步"' +
         (c.loading || c.err || c.done || !total ? ' disabled' : '') + '>' + icon('volume') + '<span>读一遍</span></button>' +
+      /* 小饭：另一个功能，不是一个更聪明的朗读键。
+         开着的时候按钮变实心，用户一眼知道摄像头在跑。 */
+      '<button class="cook-chef-btn' + (c.chefOn ? ' on' : '') + '" data-action="cook-chef"' +
+        ' title="' + (c.chefOn ? '小饭正在看，点一下关掉' : '让小饭看着锅做') + '">' +
+        icon('chef') + '</button>' +
     '</div>' +
     '<div class="cook-prog"><i style="width:' +
       (c.done ? 100 : (total ? Math.round(((c.i + 1) / total) * 100) : 0)) + '%"></i></div>';
@@ -2579,8 +2584,26 @@ function cookHtml() {
         (c.i >= total - 1 ? '做好了' : '下一步') + '</button>' +
     '</div>';
 
+  /* 第一次进来问一句。只在本次做饭里问一次：
+     「先不用」之后不再弹，想开顶上那个厨师键随时能开 —— 所以不留遗憾。 */
+  const intro = (!c.chefOn && !c.chefAsked && !c.loading && !c.err && !c.done && total)
+    ? '<div class="cook-chef-intro">' +
+        '<div class="cook-chef-in">' +
+          '<div class="cook-chef-ico">' + icon('chef') + '</div>' +
+          '<div class="cook-chef-txt">' +
+            '<b>要不要让小饭盯着锅？</b>' +
+            '<span>开了它用摄像头看着锅里，该翻面、该关火会说一句。<b>只说不听</b>，不开麦克风。</span>' +
+          '</div>' +
+          '<div class="cook-chef-btns">' +
+            '<button class="cook-chef-yes" data-action="cook-chef">开着</button>' +
+            '<button class="cook-chef-no" data-action="cook-chef-skip">不用</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    : '';
+
   return '<div class="cook-ov" role="dialog" aria-modal="true">' +
-      '<div class="cook-shell">' + head + stage + foot + '</div>' +
+      '<div class="cook-shell">' + head + intro + stage + foot + '</div>' +
     '</div>';
 }
 
@@ -2719,6 +2742,8 @@ async function openCook(postId) {
     dish: (p && p.content ? String(p.content).split('\n')[0].slice(0, 24) : ''),
     provider: '', approx: false, steps: [], i: 0, done: false,
     timerEnd: 0, timerSec: 0, timerDone: false,
+    /* 小饭陪着做：和「照着做一遍」并列的另一件事，默认关，用户自己选 */
+    chefOn: false, chefAsked: false,
     askOpen: false, asking: false, draftQ: '', answer: '', answerProvider: '', askErr: '',
     // 拍给我看：photo 是压缩后的 data URL，一直留在 state 里（paintCook 会重绘整屏，
     // 放 DOM 里会被抹掉）；looking 期间按钮显示「在看…」
@@ -2727,6 +2752,8 @@ async function openCook(postId) {
   paintCook();
   setModalLock(true);
   cookWakeOn();
+  /* 用户从小窗上那个 × 关掉时，把顶部的按钮一起改回来（不重绘整屏） */
+  try { if (window.FQChef) window.FQChef.onClose = function () { cookChefPaint(false); }; } catch (e) { /* 忽略 */ }
 
   try {
     const d = await cookStepsRequest(Number(postId) || 0);
@@ -2745,6 +2772,8 @@ async function openCook(postId) {
 
 function closeCook() {
   if (!state.cook.open) return;
+  /* 先收摄像头：这一步不停流，退出后系统状态栏的绿点会一直亮着 */
+  try { if (window.FQChef) window.FQChef.close(); } catch (e) { /* 忽略 */ }
   stopCookTick();
   if (cookTapT) { clearTimeout(cookTapT); cookTapT = 0; }
   try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* 忽略 */ }
@@ -2782,6 +2811,9 @@ function cookWakeOff() {
 function cookSpeak() {
   const s = cookStep();
   if (!s) return;
+  /* 小饭可能正在说话。两个 TTS 抢音频焦点，结果是谁都听不清，
+     所以点「读一遍」＝ 先让它闭嘴，再念这一屏。 */
+  try { if (window.FQChef) window.FQChef.hush(); } catch (e) { /* 忽略 */ }
   try {
     const app = nativeApp();
     if (app) { app.speak(s.t + '。' + (s.d || '')); return; }
@@ -2797,6 +2829,62 @@ function cookSpeak() {
     u.rate = 0.95;
     window.speechSynthesis.speak(u);
   } catch (e) { toast('朗读没启动起来', 'err'); }
+}
+
+/* ---------------- 小饭 · 陪着做（可选功能） ----------------
+   和「照着做一遍」是并列的两件事：步骤、计时、食谱归 cook 层，
+   看和说归 fq-chef.js（它在 body 下另起一层，不受 paintCook 重绘影响）。
+   这里只管三件事：什么时候开、开的时候带着第几步、关的时候同步按钮。 */
+function cookStepPayload() {
+  const c = state.cook;
+  const s = cookStep();
+  if (!s) return null;
+  return { i: c.i, of: c.steps.length, t: s.t, d: s.d || '', w: s.w || '' };
+}
+
+/* 只动那个按钮，不重绘整屏 —— 重绘会让 video 之外的东西跟着闪 */
+function cookChefPaint(on) {
+  const c = state.cook;
+  c.chefOn = !!on;
+  const b = document.querySelector('.cook-chef-btn');
+  if (!b) return;
+  b.classList.toggle('on', c.chefOn);
+  b.title = c.chefOn ? '小饭正在看，点一下关掉' : '让小饭看着锅做';
+}
+
+async function cookChefToggle() {
+  const c = state.cook;
+  if (c.chefOn) { cookChefClose(false); return; }
+  if (!window.FQChef) { toast('这个版本还没有小饭，刷新一下再试', 'err'); return; }
+  c.chefAsked = true;
+  try {
+    await window.FQChef.open({ dish: c.dish || '', step: cookStepPayload() });
+    /* 摄像头授权弹窗可能停很久。等回来时用户可能已经把做饭模式关了 ——
+       那就别再留一个没人管的预览窗在后台耗电。 */
+    if (!state.cook.open) { window.FQChef.close(); return; }
+    cookChefPaint(true);
+    /* 这里原来还有一条 toast「小饭看着了」。屏幕上已经有一句气泡了，
+       再说一遍是重复，而且 toast 停在顶部会压住「读一遍」。 */
+  } catch (e) {
+    cookChefPaint(false);
+    toast(e.message || '摄像头打不开', 'err');
+  }
+  /* 引导条只在「没问过」的时候出现，开完要走一次重绘让它收掉 */
+  if (state.cook.open) paintCook();
+}
+
+function cookChefClose(silent) {
+  try { if (window.FQChef) window.FQChef.close(); } catch (e) { /* 忽略 */ }
+  cookChefPaint(false);
+  if (!silent && state.cook.open) {
+    paintCook();
+    toast('小饭不看了，步骤照旧。', 'ok');
+  }
+}
+
+function cookChefSkip() {
+  state.cook.chefAsked = true;
+  paintCook();
 }
 
 function cookGo(i) {
@@ -2819,11 +2907,23 @@ function cookGo(i) {
   paintCook();
   const stage = document.querySelector('.cook-stage');
   if (stage) stage.scrollTop = 0;
+  /* 翻步是「最该说一句」的时刻，画面也一定变了 —— 不用等像素比对，立刻看一眼。
+     小窗没开就什么都不做，别替用户做主。 */
+  try {
+    if (window.FQChef && window.FQChef.isOpen()) window.FQChef.setStep(cookStepPayload());
+  } catch (e) { /* 忽略 */ }
 }
 
 function cookNext() {
   const c = state.cook;
-  if (c.i >= c.steps.length - 1) { c.done = true; paintCook(); return; }
+  if (c.i >= c.steps.length - 1) {
+    c.done = true;
+    /* 做完了就别再拍着了：这是别人家的厨房，任务结束还在取画面最招人烦，
+       而且系统状态栏那个绿点会一直亮。 */
+    cookChefClose(true);
+    paintCook();
+    return;
+  }
   cookGo(c.i + 1);
 }
 
@@ -5175,6 +5275,8 @@ document.addEventListener('click', (e) => {
     case 'cook-prev': cookGo(state.cook.i - 1); break;
     case 'cook-timer': cookTimerTap(Number(el.getAttribute('data-sec')) || 0); break;
     case 'cook-speak': cookSpeak(); break;
+    case 'cook-chef': cookChefToggle(); break;
+    case 'cook-chef-skip': cookChefSkip(); break;
     case 'cook-ask-open': {
       state.cook.askOpen = true;
       state.cook.askErr = '';

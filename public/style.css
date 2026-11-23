@@ -695,15 +695,21 @@ img { display: block; }
 
 /* 顶部 */
 .cook-top { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 0 10px; }
-.cook-x, .cook-read {
+.cook-x, .cook-read, .cook-chef-btn {
   height: 40px; flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   background: var(--paper); border: var(--bw) solid var(--line); border-radius: var(--pill);
   color: var(--ink); font-family: inherit; font-size: 13px; font-weight: 900; cursor: pointer;
   box-shadow: var(--sh-sm);
 }
 .cook-x { width: 40px; font-size: 15px; }
+/* 小饭的开关：和「读一遍」并排，但语义完全不同 ——
+   一个是「念给我听」，一个是「让另一个东西开始看」。
+   开着时实心橙，用户抬头就能确认摄像头在跑。 */
+.cook-chef-btn { width: 40px; padding: 0; color: var(--ink-3); }
+.cook-chef-btn .ic { width: 18px; height: 18px; }
+.cook-chef-btn.on { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: 0 0 0 3px rgba(232, 97, 63, .16); }
 .cook-read { padding: 0 12px; }
-.cook-x:active, .cook-read:active { transform: none; box-shadow: none; }
+.cook-x:active, .cook-read:active, .cook-chef-btn:active { transform: none; box-shadow: none; }
 .cook-read:disabled { opacity: .35; box-shadow: none; cursor: default; }
 .cook-title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .cook-title b {
@@ -713,6 +719,33 @@ img { display: block; }
 
 .cook-prog { flex: none; height: 8px; border-radius: 8px; background: #f1e2ce; overflow: hidden; }
 .cook-prog i { display: block; height: 100%; border-radius: 8px; background: var(--brand); transition: width .35s ease; }
+
+/* 第一次进做饭模式时问一句：要不要让小饭盯着锅。
+   它是一件「用户可选」的事，所以给一个明确的说不用的地方，
+   而不是默认开摄像头 —— 那会吓到人，也会白耗电。 */
+.cook-chef-intro {
+  flex: none; margin: 0 0 12px; padding: 12px 14px;
+  background: var(--brand-soft); border: var(--bw) solid var(--line); border-radius: 16px;
+}
+.cook-chef-in { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cook-chef-ico {
+  width: 34px; height: 34px; flex: none; display: grid; place-items: center;
+  background: var(--paper); color: var(--brand-2); border-radius: 11px;
+  border: var(--bw) solid var(--line);
+}
+.cook-chef-ico .ic { width: 19px; height: 19px; }
+.cook-chef-txt { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cook-chef-txt b { font-size: 14px; }
+.cook-chef-txt span { font-size: 12px; line-height: 1.55; color: var(--ink-2); }
+.cook-chef-btns { display: flex; gap: 8px; flex: none; }
+.cook-chef-yes, .cook-chef-no {
+  height: 36px; padding: 0 14px; border-radius: var(--pill); cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 900;
+  border: var(--bw) solid var(--line); box-shadow: var(--sh-sm);
+}
+.cook-chef-yes { background: var(--brand); border-color: var(--brand); color: #fff; }
+.cook-chef-no { background: var(--paper); color: var(--ink-2); }
+.cook-chef-yes:active, .cook-chef-no:active { transform: none; box-shadow: none; }
 
 /* 步骤区：一屏一步，长内容自己滚。
    中间套一层 .cook-inner 做「内容少时垂直居中、内容多时从顶部开始」：
@@ -931,6 +964,191 @@ img { display: block; }
   .cook-timer-wrap { margin-top: 12px; }
 }
 
+/* =========================================================
+   小饭 · 陪着做（可选功能层）
+   ---------------------------------------------------------
+   和「照着做一遍」并列的另一个功能：用户自己决定开不开。
+   它是一扇能拖的小窗（摄像头）+ 一个站在窗沿上的形象 + 一句一句的话。
+
+   这一层挂在 body 下（#app 与 #cook-root 之外）：
+   paintCook() 翻一步就整屏重绘，视频进了那棵树会黑一下再回来。
+   ========================================================= */
+#fq-chef { position: fixed; inset: 0; z-index: 970; pointer-events: none; display: none; }
+#fq-chef.on { display: block; }
+
+.fqc-win {
+  /* 形象尺寸算成变量：气泡和声波都要按它的宽高贴上去，
+     三处各写一个数迟早对不齐（改高度忘了改气泡的 right，就又会飘远）。 */
+  --chef-h: 84px;
+  /* 动作帧统一画布 460×577，宽度跟着高度走（460/577 = .797） */
+  --chef-w: 67px;
+  position: absolute; right: 12px; bottom: 96px;
+  width: 156px; height: 206px;
+  pointer-events: auto; touch-action: none;
+}
+.fqc-shot {
+  position: absolute; inset: 0; overflow: hidden;
+  border-radius: 16px; background: #17120e;
+  border: 2px solid #2c231a;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .34);
+}
+.fqc-win.drag .fqc-shot { box-shadow: 0 16px 34px rgba(0, 0, 0, .44); }
+.fqc-v { width: 100%; height: 100%; object-fit: cover; display: block; background: #17120e; }
+
+/* 常驻的「它看到什么」。12px 在灶台边一米外还是看不清（用户第二次提这事），
+   现在是 15px —— 这一层宁可占掉画面三分之一，也不能让人读不出来。 */
+.fqc-see {
+  position: absolute; left: 0; right: 0; top: 0;
+  padding: 6px 9px 14px;
+  background: linear-gradient(to bottom, rgba(10, 8, 6, .92), rgba(10, 8, 6, .55) 62%, rgba(10, 8, 6, 0));
+  color: #fffaf0; font-size: 15px; line-height: 1.32; font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .9);
+  /* 一行装不下模型那半句话（「画面糊成一片绿，看不清锅和肉」19 个字），
+     截成「画面糊成一片绿，看…」等于没说。给两行，多的才省。 */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  opacity: 0; transition: opacity .25s;
+  pointer-events: none;
+}
+.fqc-see.on { opacity: 1; }
+
+/* 底部一条压暗的窄栏：状态 + 静音 + 关掉。
+   手指在灶台边是油的，26px 高已经是极限，再大就挡画面了。 */
+.fqc-bar {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 34px; display: flex; align-items: center; gap: 3px; padding: 0 4px 0 9px;
+  background: linear-gradient(to top, rgba(12, 9, 6, .94), rgba(12, 9, 6, .5));
+  color: #f4ece0;
+}
+.fqc-st {
+  flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fqc-st.danger { color: #ffb9a2; }
+.fqc-st.notice { color: #ffd79b; }
+.fqc-st.think, .fqc-st.err, .fqc-st.muted { color: rgba(244, 236, 224, .68); }
+.fqc-ic {
+  flex: none; width: 22px; height: 22px; display: grid; place-items: center;
+  border: 0; border-radius: 7px; padding: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .14); color: #f4ece0;
+  font: inherit;
+}
+.fqc-ic:active { background: rgba(255, 255, 255, .3); }
+
+/* 站在窗沿上：底边贴着窗口顶边，不进画面 */
+.fqc-chef {
+  position: absolute; right: -2px; bottom: 100%;
+  height: var(--chef-h); width: auto; margin-bottom: -3px;
+  pointer-events: none; user-select: none;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .42));
+  transform-origin: 50% 96%;
+  animation: fqc-breathe 4.6s ease-in-out infinite;
+}
+.fqc-chef[data-st="think"] { animation: fqc-think 1.5s ease-in-out infinite; }
+.fqc-chef[data-st="talk"] { animation: fqc-talk .46s ease-in-out infinite; }
+.fqc-chef[data-st="danger"] { animation: fqc-jump .42s ease-in-out 3; }
+/* 招手：整张图轻轻左右摆，手已经在图里举着，摆起来才像在挥 */
+.fqc-chef[data-st="greet"] { animation: fqc-greet 1.05s ease-in-out infinite; }
+/* 指锅：小幅度前倾下压，像「你来看这儿」 */
+.fqc-chef[data-st="notice"] { animation: fqc-point 1.6s ease-in-out infinite; }
+#fq-chef.mute .fqc-chef { opacity: .58; filter: grayscale(.4) drop-shadow(0 3px 6px rgba(0, 0, 0, .3)); }
+
+@keyframes fqc-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.015); }
+}
+@keyframes fqc-think {
+  0%, 100% { transform: rotate(-2.2deg); }
+  50% { transform: rotate(2.2deg); }
+}
+@keyframes fqc-talk {
+  0%, 100% { transform: translateY(0) scale(1.02); }
+  50% { transform: translateY(-3px) scale(1.04); }
+}
+@keyframes fqc-jump {
+  0%, 100% { transform: translateY(0); }
+  34% { transform: translateY(-9px) scale(1.05); }
+  68% { transform: translateY(0) scale(.99); }
+}
+@keyframes fqc-greet {
+  0%, 100% { transform: rotate(-2.4deg) translateY(0); }
+  50% { transform: rotate(2.6deg) translateY(-2px); }
+}
+@keyframes fqc-point {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(4px) rotate(-2.2deg); }
+}
+
+/* 气泡贴在形象嘴边，不从窗口左边飘出去。
+   原来它挂在窗口左侧、离底 52px —— 窗口高 206，人站在窗口上沿，
+   两者隔了 150px，看起来是「屏幕上弹了条字幕」，不是这个人在说话。
+   现在：右边缘贴着人像左肩外 4px，垂直跟嘴同高，尾巴指向脑袋。
+   width:max-content 不能省：只给 left/right 时会被父级 132px 卡成竖条。 */
+.fqc-bub {
+  --bub-bg: #2a2018;
+  --bub-bd: transparent;
+  position: absolute;
+  /* --chef-w 是人像宽度；人像 right:-2，所以左肩距窗口右边 = chef-w - 2 */
+  right: calc(var(--chef-w) + 2px);
+  bottom: calc(100% + 28px);
+  width: max-content; min-width: 62px; max-width: 190px;
+  padding: 8px 12px; border-radius: 13px; border-bottom-right-radius: 4px;
+  background: var(--bub-bg); color: #fdf4e6;
+  border: 1.5px solid var(--bub-bd);
+  font-size: 15px; line-height: 1.42; font-weight: 600;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .3);
+  opacity: 0; pointer-events: none;
+  /* 从尾巴那个角弹开：像话是从嘴里递出来的，不是屏幕中间刷出来一块 */
+  transform-origin: calc(100% - 12px) 100%;
+  transform: translateY(4px) scale(.9);
+  transition: opacity .18s, transform .18s;
+}
+/* 尾巴：指向人像脑袋的小三角（贴着气泡右下角，尖正好落在脸侧） */
+.fqc-bub::after {
+  content: ''; position: absolute; right: 2px; bottom: -5.5px;
+  width: 10px; height: 10px;
+  background: var(--bub-bg);
+  border-right: 1.5px solid var(--bub-bd);
+  border-bottom: 1.5px solid var(--bub-bd);
+  transform: rotate(45deg);
+}
+/* 窗口贴着屏幕左边时，气泡翻到人像右边 —— 否则整句被屏幕左缘切掉。
+   由 fitBub() 按气泡真实宽度决定，不再按窗口中心估。 */
+.fqc-win.bub-right .fqc-bub {
+  right: auto; left: calc(100% + 4px);
+  border-bottom-right-radius: 13px; border-bottom-left-radius: 4px;
+  transform-origin: 12px 100%;
+}
+.fqc-win.bub-right .fqc-bub::after {
+  right: auto; left: 9px;
+  border-right: 0; border-bottom: 0;
+  border-left: 1.5px solid var(--bub-bd); border-top: 1.5px solid var(--bub-bd);
+}
+.fqc-bub.on { opacity: 1; transform: translateY(0) scale(1); }
+.fqc-bub.danger { --bub-bg: #3a1a12; --bub-bd: rgba(232, 97, 63, .7); color: #ffd9cd; }
+/* 「教你怎么用」和「它说的话」必须是两套视觉。
+   混成一样，这句提示就变成它随口说的一句话，没人会照着做。 */
+.fqc-bub.tip {
+  --bub-bg: #f0b45f; --bub-bd: #ffd79a;
+  color: #2a1d0f; font-weight: 600;
+  box-shadow: 0 6px 18px rgba(240, 180, 95, .42), 0 0 0 0 rgba(240, 180, 95, .5);
+  animation: fqc-tip-pulse 1.9s ease-out 2;
+}
+@keyframes fqc-tip-pulse {
+  0% { box-shadow: 0 6px 18px rgba(240, 180, 95, .42), 0 0 0 0 rgba(240, 180, 95, .5); }
+  70% { box-shadow: 0 6px 18px rgba(240, 180, 95, .42), 0 0 0 9px rgba(240, 180, 95, 0); }
+  100% { box-shadow: 0 6px 18px rgba(240, 180, 95, .42), 0 0 0 0 rgba(240, 180, 95, 0); }
+}
+.fqc-bub.notice { --bub-bd: rgba(240, 180, 95, .55); }
+
+/* 桌面：窗口离卡片太远就只剩一个浮块，放大一点、往中间收 */
+@media (min-width: 720px) {
+  .fqc-win {
+    --chef-h: 104px; --chef-w: 83px;
+    width: 178px; height: 234px; right: 24px; bottom: 40px;
+  }
+  .fqc-bub { max-width: 230px; font-size: 15.5px; }
+}
 
 /* =========================================================
    帖子卡片

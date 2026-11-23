@@ -1430,7 +1430,11 @@ function securityHeaders(req, extra) {
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'no-referrer',
-    'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=(), usb=()',
+    /* camera 从 2.44 起对全站放行：做饭模式是 SPA 里的一个层，
+       没有独立路径可以单独放行（#/... 不会到达服务端），
+       所以只能按源放开 —— script-src 'self' 已经保证跑的都是自己的脚本。
+       microphone 仍然全站关死：这一版只说不听，页面从不申请音频。 */
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=(self), payment=(), usb=()',
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
     // Flash/PDF 之类插件不许跨域加载本站资源
@@ -2167,6 +2171,75 @@ const COOK_HELP_LIMIT = 40;         // 急诊：40 次/天
 const LOOK_LIMIT = 30;              // 拍给我看：30 张/天（看图比纯文本贵，单独一条线）
 const COOK_CACHE_MAX = 200;
 const cookCache = new Map();        // 'p<帖子id>' / 'h<文本哈希>' -> 拆好的步骤
+
+/* ============ 实时盯锅 ============
+   两块东西，现在归两个不同的开关管：
+     · 页面 /watch-demo.html + watch-demo.js —— 独立原型，只在 FQ_WATCH_DEMO=1 时存在。
+     · 接口 /api/watch/frame —— 2.44 起是做饭模式里一个可选功能，**常开但要登录**。
+   分开的原因：原型页是拿去灶台边试节奏的，不该出现在线上文件列表里；
+   而「小饭陪着做」是产品里的功能，用户点开就该能用，不能要求站长设环境变量。
+   成本靠下面两层限流兜住（按人按天 + 按 IP 按小时）。 */
+const WATCH_DEMO = process.env.FQ_WATCH_DEMO === '1';
+/* 900 帧/小时。别把它当成「上限」用 —— 前端有更严的预算控制（一分钟最多 12 帧，
+   超了自动降到 12 秒一帧），正常做饭二十分钟也就发二三十帧。
+   这里留宽是因为加速之后「有动静就立刻问」会短时成簇，
+   真实值比 900 低得多；卡在 240 反而会让连续冒烟那几分钟被限流打断。 */
+const WATCH_LIMIT = 900;
+/* 按人按天的硬顶。一顿饭二十分钟、平均十来秒一帧大概一百多帧，
+   800 够「一晚上做三道菜、来回试」。
+   按人而不是按 IP：一家人共用出口 IP，按 IP 会互相拖累，而钱是按人头花的。 */
+const WATCH_USER_DAY = 800;
+
+/* 和 LOOK_SYSTEM 最大的差别是第 5 条：这里必须把「不许判熟」写死。
+   一次性问答里用户拍到什么算什么，AI 是顾问；主动提醒里 AI 一开口就是结论，
+   一句「可以出锅了」真出了事，性质完全不一样。所以只允许描述现象 + 给动作。 */
+const WATCH_SYSTEM = [
+  '你是「饭圈」美食社区的小饭，此刻站在一个厨友的灶台边看着锅。',
+  '每隔十几二十秒你会看到一张这一秒的锅里画面。看一眼，确实有事就提醒一句，没事就别说话。',
+  '要求：',
+  '1. see 只写这一帧真有把握看见的：颜色深浅、汤汁多少、有没有上色或焦边、气泡状态、烟、火苗大小。',
+  '   画面糊了、没对准锅、被手挡住、根本不像在做饭 —— 就直说看不清，绝不猜。',
+  '2. tip 只在「现在就该动手」时给动作，而且必须能直接照着做：调小火、翻面、加水、关火、盖上、收汁。',
+  '   一句话，20 字以内，只讲一个动作，量要具体（几档火、几分钟）。',
+  '   这是站在灶台边听的一句话，不是菜谱：说完人就该动手。超过 20 字的解释一律删掉，',
+  '   想讲原因留到下一次开口，别一次说完 —— 人在炒菜，听不完长句。',
+  '3. 看着正常、没有该做的动作，就把 level 给 quiet、tip 留空字符串。别为了说话而说话。',
+  '4. level 只有三档：',
+  '   danger = 冒烟、干锅、油面大量起烟、明火窜起、明显糊底 —— tip 第一句先说「先把火关了」再讲别的；',
+  '   notice = 该动手了（翻面、调火、加水、收汁）；',
+  '   quiet  = 不用管。',
+  '   拿不准的时候按重的报：煎、炸、炒这类不怎么加水的东西，颜色明显变深、边缘开始发黑、',
+  '   刚冒起一丝烟，就按 danger 说，动作给「转小火」或「先关火」—— 这几秒还救得回来，',
+  '   再等一步就是糊。宁可早一句被嫌啰嗦，也不要晚一句看着它糊。',
+  '5. 不许判断熟没熟、能不能吃、卫不卫生。「熟了」「可以出锅」「没问题」这类评判一律不许说 ——',
+  '   那得做菜的人自己用筷子戳、用刀切开看。你只讲看见的现象，只给动作建议。',
+  '6. 口语，像旁边站着的人。不提 AI、不用列表、不用 emoji。',
+  '7. 如果给了「上一次你看的时候」，先跟它比一比。颜色更深了、更黄了、汤汁更少了、烟更多了 ——',
+  '   see 里就把变化说出来（「比刚才深了一档，边上开始发黑」）。真没变化就别提对比，更不要编一个变化出来。',
+  '8. 如果给了「像素测量」，那只是别人替你做的一次数值记录，以你实际看到的为准。',
+  '   两者打架的时候（数值说变了、你看着没变），照实说你看到的，不要拿数字当自己的观察。',
+  '9. 如果给了「这顿饭的记录」，那是你真说过的话。同一个动作已经说过了、画面又没有新变化，',
+  '   就不要再重复一遍 —— 但可以往前推一步：「该翻面了」说过了还没翻，就问一句「翻了吗」；',
+  '   说过的现象现在更严重了，就说「比刚才更……」而不是当成第一次发现。',
+  '10. 如果给了「他正停在第几步」，这条比前面几条都优先：你只对着这一步说话。',
+  '   先看这一步做到位没有 —— 到位了就说「这步行了，可以往下走」；没到位就只说这步还差什么。',
+  '   绝对不许跳到后面的步骤去指挥（他还在炒糖色，别喊他收汁）；',
+  '   也不许把「这步做完了」说成「熟了」—— 那还是评判，踩第 5 条。',
+  '11. 如果给了时间（这锅看了多久、这一步做了多久、距你上次开口多久），只用它判断两件事：',
+  '   一是变化有多快 ——「汁两分钟就收下去一半」比「汁在收」有用得多；',
+  '   二是该不该再开口 —— 刚说完十几秒就别重复；隔了几分钟还在恶化，就必须再说一次，',
+  '   并且要说出「比几分钟前更……」让他知道严重程度。时间只能引用给你的数字，不许自己编。',
+  '只输出 JSON：{"see":"看见了什么，30字内","tip":"要做什么，没动作就空串","level":"danger|notice|quiet"}'
+].join('\n');
+
+/* 一句话最多 26 个字。模型偶尔会写四十字，念出来快十秒 ——
+   人在灶台边听不完，前三个字没听清，后面全是废话。
+   在句读处截断，宁短不长：短句漏了细节，长句漏了全部。 */
+function clipTip(s) {
+  if (!s) return '';
+  const m = String(s).match(/^[^。！？!?；;\n]{4,26}[。！？!?]?/);
+  return (m ? m[0] : String(s).slice(0, 26)).replace(/[，,、：:]$/, '');
+}
 
 const COOK_SYSTEM = [
   '你是「饭圈」美食社区里的小饭，正在陪一个厨友站在灶台前做菜。',
@@ -3032,6 +3105,113 @@ async function handleApi(req, res, pathname, query) {
       uid: me ? me.id : 0
     });
     return drop();
+  }
+
+  /* ============ 实时盯锅：做饭模式里的可选功能 ============
+     原来这里是「FQ_WATCH_DEMO 才存在、故意不要登录」的原型接口。
+     现在它成了「照着做一遍」旁边一件可选的事，就按站内规矩来：
+     **必须登录**、按人按天限额。
+     注意它位置在下面的总门禁之前（历史原因），所以这里自己判一次 ——
+     不能指望后面那道门替它挡，那两段之间隔着几十行。 */
+  if (pathname === '/api/watch/frame' && method === 'POST') {
+    if (!me) return json(res, 401, { error: '登录后才能用', code: 'LOGIN_REQUIRED' });
+    const t0 = Date.now();
+    let b = {};
+    try { b = await readBody(req); } catch (e) { return json(res, 400, { error: '这张没传上来' }); }
+    const img = aiImageDataUrl(b.image);
+    if (!img) return json(res, 400, { error: '这张图没读出来，镜头对一下锅' });
+    if (aiGuard(res)) return;                 // 维护中不扣次数
+    if (!rateLimit('watch:' + ip, WATCH_LIMIT, 60 * 60 * 1000)) {
+      return json(res, 429, { error: '盯得够久啦，歇会儿再看', code: 'WATCH_LIMIT' });
+    }
+    if (!rateLimit('watchu:' + me.id, WATCH_USER_DAY, 24 * 60 * 60 * 1000)) {
+      return json(res, 429, { error: '今天盯得够久了，明天再来', code: 'WATCH_DAY_LIMIT' });
+    }
+
+    const dish = clean(b.dish, 60);
+    /* prev / trend 都是客户端回传的字符串，先压成一行再进提示词 ——
+       换行会被模型当成新的指令行，等于把提示词的边界让给客户端。 */
+    const oneLine = (v, n) => clean(v, n).replace(/\s+/g, ' ');
+    const prevSee = oneLine(b.prev, 120);
+    const trend = oneLine(b.trend, 80);
+    const deepen = b.deepen === true;
+
+    /* 时间和记忆。都是客户端回传的，一律先转整数、再压一行 ——
+       这两样能让它从「每帧重新看一次」变成「陪你做了十分钟」：
+       没有时间，它分不清刚下锅还是烧了四分钟；没有记录，同一句「翻面」会一直重复。 */
+    const clampSec = (v) => {
+      const n = Math.round(Number(v) || 0);
+      return n > 0 && n < 7200 ? n : 0;      // 超过两小时按 0 处理，别让异常值污染提示词
+    };
+    const elapsed = clampSec(b.elapsed);
+    const stepElapsed = clampSec(b.stepElapsed);
+    const since = clampSec(b.since);
+    const histIn = Array.isArray(b.hist) ? b.hist.slice(-3) : [];
+
+    /* 来自做饭模式的当前步骤（帖子拆出来的剧本）。
+       有了它，提醒才能落到「糖还没化开」，而不是「锅里有东西在动」。
+       这几个字段全部截断 + 压成一行：换行会被模型当成新的指令行。 */
+    const st = b.step && typeof b.step === 'object' ? b.step : null;
+    const stepNo = st ? Math.max(0, Math.round(Number(st.i) || 0)) + 1 : 0;
+    const stepOf = st ? Math.max(0, Math.round(Number(st.of) || 0)) : 0;
+    const stepTask = st ? oneLine(st.t, 40) : '';
+    const stepDesc = st ? oneLine(st.d, 120) : '';
+    const stepWhy = st ? oneLine(st.w, 60) : '';
+    const useStep = stepNo > 0 && !!stepTask;
+
+    let ctx = (dish ? '正在做的菜：' + dish + '\n' : '');
+    if (useStep) {
+      ctx += '他正停在第 ' + stepNo + (stepOf ? ' / ' + stepOf : '') + ' 步：' + stepTask + '\n';
+      if (stepDesc) ctx += '这一步要做的：' + stepDesc + '\n';
+      if (stepWhy) ctx += '这一步最容易翻车的地方：' + stepWhy + '\n';
+      ctx += '你的提醒要落在这一步上：先看这一步做到位了没有，再看有没有危险。\n';
+    }
+    if (prevSee) ctx += '上一次你看的时候：' + prevSee + '\n';
+    if (trend) ctx += '像素测量（只是参考，以你看到的为准）：' + trend + '\n';
+
+    /* 时间轴：给它「几分几秒」而不是时间戳 —— 模型换算不了时间戳，但会算时长。 */
+    const sec = (n) => (n >= 60 ? Math.floor(n / 60) + ' 分 ' + (n % 60) + ' 秒' : n + ' 秒');
+    if (elapsed >= 30) ctx += '这锅你已经看了 ' + sec(elapsed) + '。\n';
+    if (stepElapsed >= 30 && useStep) ctx += '这一步已经做了 ' + sec(stepElapsed) + '。\n';
+    if (since) ctx += '距你上次开口 ' + sec(since) + '。\n';
+    if (histIn.length) {
+      ctx += '这顿饭你真说过的话（从早到晚）：\n';
+      for (const h of histIn) {
+        const hs = oneLine(h && h.see, 40);
+        if (!hs) continue;
+        const ht = oneLine(h && h.tip, 26);
+        const ago = clampSec(h && h.ago);
+        const lv = h && h.level === 'danger' ? '危险' : h && h.level === 'notice' ? '提醒' : '只看着';
+        ctx += '- ' + (ago ? sec(ago) + '前' : '刚才') + '（' + lv + '）：' + hs + (ht ? ' → 说了「' + ht + '」' : '') + '\n';
+      }
+    }
+
+    ctx += '这是锅里的实时画面。';
+    if (deepen) {
+      ctx += '\n颜色在持续单向变化（可能是上色，也可能是菜在变黄）。' +
+        '如果你在画面里也看出来了，level 至少给 notice，主动说一句该翻面还是该调小火；' +
+        '如果画面里根本没有食材，或者只是灯和手机自动调色在变，就照实说，别硬提醒。';
+    }
+
+    const r = await aiRawVision(WATCH_SYSTEM, ctx, img, { maxTokens: 300, temperature: 0.2 });
+    if (!r) {
+      if (aiLastReason === 'novision') {
+        return json(res, 503, { error: '看图模型没开通', code: 'AI_NO_VISION' });
+      }
+      return aiDown(res);
+    }
+
+    /* 模型有时会把「没事」也写成一句「目前看着正常」，那不该念出来 ——
+       这里按 level 兜一道，quiet 一律清空 tip，宁可不吭声也别制造噪音。 */
+    const obj = aiJson(r.raw);
+    const see = obj && typeof obj.see === 'string' ? clean(obj.see, 80) : '';
+    let tip = obj && typeof obj.tip === 'string' ? clipTip(clean(obj.tip, 160)) : '';
+    let level = obj && typeof obj.level === 'string' ? String(obj.level).toLowerCase().trim() : '';
+    if (['danger', 'notice', 'quiet'].indexOf(level) < 0) level = tip ? 'notice' : 'quiet';
+    if (level === 'quiet') tip = '';
+    if (level !== 'quiet' && !tip) level = 'quiet';
+
+    return json(res, 200, { see, tip, level, provider: r.provider, ms: Date.now() - t0 });
   }
 
   /* ============ 未登录不给看内容 ============
@@ -5117,6 +5297,8 @@ async function serveStatic(req, res, pathname) {
   if (STATIC_DENY.test('/' + safe) || SCAN_DENY.test(safe) || SCAN_EXT.test(safe)) {
     return staticNotFound(res);
   }
+  // 实时盯锅演示页只在 FQ_WATCH_DEMO=1 时存在，线上默认 404
+  if ((safe === 'watch-demo.html' || safe === 'watch-demo.js') && !WATCH_DEMO) return staticNotFound(res);
 
   const ext = path.extname(file).toLowerCase();
   const type = MIME[ext] || 'application/octet-stream';
