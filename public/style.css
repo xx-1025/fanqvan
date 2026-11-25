@@ -1034,6 +1034,30 @@ img { display: block; }
   font: inherit;
 }
 .fqc-ic:active { background: rgba(255, 255, 255, .3); }
+/* 「立刻看」：三个按钮里唯一「你说什么它做什么」的那颗，
+   给它一点暖色，别和静音/关闭长得一样 —— 那两个是开关，这个是叫人。 */
+.fqc-ic.look {
+  width: 27px;
+  background: rgba(240, 180, 95, .26); color: #ffd79a;
+  box-shadow: inset 0 0 0 1px rgba(240, 180, 95, .35);
+}
+.fqc-ic.look:active { background: rgba(240, 180, 95, .5); }
+
+/* 延迟：窗口下沿一个小数。
+   慢的时候变暖色 —— 「是网慢还是镜头看不清」这个问题，
+   有这个数就不用猜：它大 = 网，它小 = 画面本身。 */
+.fqc-lat {
+  position: absolute; right: 2px; top: calc(100% + 4px);
+  padding: 1px 6px; border-radius: 7px;
+  background: rgba(22, 17, 12, .62);
+  font-size: 11px; font-weight: 700; line-height: 1.5;
+  color: #f2e8da;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0; transition: opacity .2s, color .2s;
+}
+.fqc-lat:not(:empty) { opacity: 1; }
+.fqc-lat.slow { color: #ffb07a; }
 
 /* 站在窗沿上：底边贴着窗口顶边，不进画面 */
 .fqc-chef {

@@ -27,6 +27,7 @@
             永远达不到阈值，人就只能等那条 20 秒的兜底 —— 肉早糊了。 */
   var STEP_DIFF = 3.4;
   var ACC_DIFF = 7;
+  var TAP_GAP = 1200;      // 「立刻看」连点的最小间隔，防止一秒钟打十个请求
 
   var S = {
     open: false,
@@ -50,11 +51,14 @@
     startedAt: 0,      // 这次开着的起点
     stepAt: 0,         // 当前这一步的起点
     spokeAt: 0,        // 上次真正开口（notice/danger）的时间
-    hist: []           // 最近三次观察，最多留三条
+    hist: [],          // 最近三次观察，最多留三条
+    tap: false         // 这一帧是不是用户亲手点的「立刻看」
   };
 
   var el = null, win = null, video = null, chefEl = null, bubEl = null, stEl = null, seeEl = null;
+  var latEl = null;
   var stream = null, snapCv = null, miniCv = null;
+  var cam = { w: 0, h: 0, facing: '', track: null };
   var voice = { busy: false, waiting: null, seq: 0 };
   var bubT = 0, chefT = 0;
 
@@ -100,12 +104,18 @@
           '<div class="fqc-see"></div>' +
           '<div class="fqc-bar">' +
             '<span class="fqc-st">盯着</span>' +
+            /* 自动看是「它自己觉得有事才开口」；这一颗是「你让它现在看」。
+               两件事都要有：前者省电省帧，后者是「我说了算」的那个按钮。 */
+            '<button class="fqc-ic look" data-fqc="look" title="立刻看一眼">' + iconEye() + '</button>' +
             '<button class="fqc-ic" data-fqc="mute" title="静音">' + iconMute() + '</button>' +
             '<button class="fqc-ic" data-fqc="off" title="不让它看">' + iconOff() + '</button>' +
           '</div>' +
         '</div>' +
         '<img class="fqc-chef" src="/assets/chef/stand.webp?v=3" alt="">' +
         '<div class="fqc-bub" id="fqc-bub"></div>' +
+        /* 延迟挂在窗口下沿：灶台边判断「是网慢还是镜头看不清」全靠这个数，
+           但它不是给用户读的诗，所以只占一行 11px，不给它抢画面。 */
+        '<div class="fqc-lat"></div>' +
       '</div>';
     document.body.appendChild(el);
 
@@ -115,6 +125,7 @@
     bubEl = el.querySelector('.fqc-bub');
     stEl = el.querySelector('.fqc-st');
     seeEl = el.querySelector('.fqc-see');
+    latEl = el.querySelector('.fqc-lat');
 
     el.addEventListener('click', function (e) {
       var b = e.target.closest ? e.target.closest('[data-fqc]') : null;
@@ -122,6 +133,7 @@
       var act = b.getAttribute('data-fqc');
       if (act === 'off') close();
       else if (act === 'mute') toggleMute();
+      else if (act === 'look') lookNow();
     });
 
     /* 拖动：手上有油、手机架得远，写死一个角必然挡到一部分人的锅。
@@ -139,6 +151,9 @@
     restorePos();
   }
 
+  function iconEye() {
+    return '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" fill="currentColor"/></svg>';
+  }
   function iconMute() {
     return '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8l5 8M21 8l-5 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>';
   }
@@ -226,7 +241,12 @@
   function idleSee() {
     if (!S.open) return '';
     if (S.mute) return '静音中，画面还在看';
-    if (S.sent === 0) return '刚开机，第一眼还没回来';
+    /* 第一眼之前把镜头参数亮出来：换设备之后「看不清、慢」到底是分辨率还是网络，
+       这一行就能分开。之后就不再占位，让给真正的观察。 */
+    if (S.sent === 0) {
+      return (cam.w ? (cam.w + '×' + cam.h + (cam.facing === 'user' ? ' 前置' : cam.facing ? ' 后置' : '') + ' · ') : '') +
+        '刚开机，第一眼还没回来';
+    }
     if (!S.lastSee) return S.step ? ('正在看第 ' + (S.step.i + 1) + ' 步') : '正在看锅里';
     return '没什么变化，我盯着';
   }
@@ -480,6 +500,28 @@
       video.srcObject = s;
       var p = video.play();
       if (p && p.catch) p.catch(function () {});
+
+      /* 把镜头实际给的参数记下来。
+         「换了个摄像头之后不准」这种事，靠猜没有意义 —— 有的 WebView 会
+         无视 facingMode 直接开前置，有的只肯给 640×480。
+         记下来之后，界面上能直接看到「多少像素、前后哪个」。 */
+      try {
+        var t = s.getVideoTracks()[0];
+        var st = (t && t.getSettings) ? t.getSettings() : {};
+        cam.track = t || null;
+        cam.w = st.width || video.videoWidth || 0;
+        cam.h = st.height || video.videoHeight || 0;
+        cam.facing = st.facingMode || '';
+      } catch (e) { cam.track = null; }
+
+      /* 近拍对焦：手机架在锅边十几厘米，固定焦距必然糊。
+         浏览器一般会自己连续对焦，WebView 里不一定 —— 要一次，失败就算了。 */
+      try {
+        if (cam.track && cam.track.applyConstraints) {
+          cam.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
+        }
+      } catch (e) {}
+
       return s;
     });
   }
@@ -497,7 +539,9 @@
   function snap() {
     var vw = video.videoWidth || 0, vh = video.videoHeight || 0;
     if (!vw || !vh || video.readyState < 2) return '';
-    var w = vw, h = vh, MAX = 896;
+    /* 上限 1024、质量 0.78：原来的 896/0.72 在「手机架得远、锅只占一小块」时，
+       模型看到的糖色和气泡已经是一条糊边了。这是「看得不准」里唯一能自己动手改的一半。 */
+    var w = vw, h = vh, MAX = 1024;
     if (Math.max(w, h) > MAX) {
       var k = MAX / Math.max(w, h);
       w = Math.round(w * k); h = Math.round(h * k);
@@ -505,7 +549,7 @@
     snapCv.width = w; snapCv.height = h;
     try {
       snapCv.getContext('2d').drawImage(video, 0, 0, w, h);
-      return snapCv.toDataURL('image/jpeg', 0.72);
+      return snapCv.toDataURL('image/jpeg', 0.78);
     } catch (e) { return ''; }
   }
 
@@ -557,9 +601,16 @@
   /* ---------------- 发帧 ---------------- */
 
   function fire(why) {
-    if (!S.open || S.inflight >= 2) return;
+    if (!S.open) return;
+    /* 自动看要节流（内存、流量、钱）；用户亲手点的那一下不能被他自己的
+       上一条请求挡掉 —— 他要的是「现在」，不是「等它忙完」。 */
+    if (S.inflight >= 2 && why !== 'tap') return;
+    var t0 = Date.now();
     var img = snap();
-    if (!img) return;
+    if (!img) {
+      if (why === 'tap') setSt('镜头还没好', 'err');
+      return;
+    }
     /* 基准跟着「真发出去的那一帧」走，不是跟着时间走。
        放在 snap 之后、发请求之前：只有确实发了才前移，
        否则被 inflight 挡掉的那些变化会被基准吃掉。 */
@@ -605,6 +656,13 @@
       });
     }).then(function (r) {
       if (!S.open) return;
+      var rtt = Date.now() - t0;
+      /* 这个数挂在窗口下沿。它同时回答两个问题：
+         是网慢（这个数大、服务端 ms 小），还是模型慢（两个都大）。 */
+      if (latEl) {
+        latEl.textContent = (rtt / 1000).toFixed(1) + 's';
+        latEl.classList.toggle('slow', rtt > 4000);
+      }
       if (!r.ok) {
         setSt(r.status === 429 ? '先歇会儿' : '没连上', 'err');
         /* 光在小窗里写「没连上」，灶台边看不见。开口说一句，
@@ -613,25 +671,30 @@
           : r.status === 401 ? '登录过期了，退出去重新登一下。'
           : '我连不上服务器，画面还在，但说不出话。', 'notice', 5200);
         setSee('连不上，只有画面');
+        S.tap = false;
         return;
       }
       S.sent++;
-      onFrame(r.d || {});
+      onFrame(r.d || {}, rtt);
     }).catch(function () {
       if (!S.open) return;
+      if (latEl) { latEl.textContent = '断'; latEl.classList.add('slow'); }
       setSt('网络断了', 'err');
       bubble('网断了，等它回来我接着看。', 'notice', 5200);
       setSee('网断了');
+      S.tap = false;
     }).then(function () {
       S.inflight--;
       if (S.open && chefEl && chefEl.getAttribute('data-st') === 'think') chefSet('idle');
     });
   }
 
-  function onFrame(d) {
+  function onFrame(d, rtt) {
     var level = d.level || 'quiet';
     var tip = String(d.tip || '').trim();
     var see = String(d.see || '').trim();
+    var tapped = !!S.tap;
+    S.tap = false;
     S.lastSee = see;
     /* 常驻那行永远有字：有观察就写观察，没有就回落到「在看第几步」。
        它是「它真的在干活」的唯一持续证据，不能空。 */
@@ -678,6 +741,9 @@
       }
     } else {
       setSt(S.step ? ('第 ' + (S.step.i + 1) + ' 步') : '盯着', '');
+      /* 他亲手点了「立刻看」，就要拿到一句回答。
+         只更新上面那行小字，等于问了他不说话。 */
+      if (tapped) say(see || '没看出变化，接着盯。');
     }
 
     /* 记一条「这顿饭它说过什么」。下次发帧时带上去，
@@ -716,6 +782,7 @@
     el.classList.add('on');
     el.classList.toggle('mute', S.mute);
     setSt('开机中…', 'think');
+    if (latEl) { latEl.textContent = ''; latEl.classList.remove('slow'); }
     warmFrames();
 
     return startCam().then(function () {
@@ -742,6 +809,19 @@
           bubble('按住这个小窗能挪开，别挡着步骤。', 'tip', 4200);
           chefSet('greet', 3200);   // 招手叫你注意这句提示
         }, 3000);
+
+        /* 「换了个摄像头之后就不准了」这类事，得有个当场能看见的证据。
+           只报一次，而且排在拖窗提示之后 —— 别一开机就三句话轰炸。 */
+        setTimeout(function () {
+          if (!S.open) return;
+          var cw = cam.w || (video && video.videoWidth) || 0;
+          var ch = cam.h || (video && video.videoHeight) || 0;
+          if (cam.facing === 'user') {
+            bubble('开的是前置镜头，画面是反的，我可能看不准。', 'tip', 5600);
+          } else if (cw && cw < 640) {
+            bubble('这个镜头只给到 ' + cw + '×' + ch + '，画面太小；手机往锅边挪近一点。', 'tip', 5600);
+          }
+        }, 7600);
       }, 700);
       S.tickTimer = setInterval(tick, PEEK_MS);
       return true;
@@ -764,6 +844,22 @@
     setSt(step ? ('第 ' + (step.i + 1) + ' 步') : '盯着', '');
     /* 翻步一定伴随画面变化，而且这是「最该说一句」的时刻，不等比对结果 */
     if (step) fire('step');
+  }
+
+  /* ---------------- 立刻看 ----------------
+     自动看是「它觉得有事才开口」，这一颗是「你说看就看」。
+     两条路共用同一套抓帧和提示词，只是这里不吃节流、而且要回一句话。 */
+  function lookNow() {
+    if (!S.open) return;
+    if (Date.now() - S.lastSentAt < TAP_GAP) {
+      setSt('马上就好', 'think');
+      chefSet('think', 900);
+      return;
+    }
+    S.tap = true;
+    setSt('看一眼…', 'think');
+    chefSet('think');
+    fire('tap');
   }
 
   function toggleMute() {
