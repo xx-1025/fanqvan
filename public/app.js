@@ -30,6 +30,8 @@ const state = {
   pageTrail: [],
   fbPage: '',            // 反馈里手选的页面 hash，''=跟最新一页，'none'=不带
   fbText: '',            // 反馈正文草稿：切换「问题出在」时整页重绘也不丢字
+  fbImages: [],          // 反馈里已经传好的截图（/uploads/...），最多 3 张
+  fbUploading: 0,        // 正在传的张数，用来显示「x 张上传中」并挡住提前提交
   // 主页的页签：饭帖 / 相册 / 收藏（收藏只有自己主页有；切换只重画列表，不重新拉数据）
   profileTab: 'posts',
   draft: '',
@@ -3702,6 +3704,11 @@ function reviewFeedback() {
             (done ? '<span class="badge badge-approved">' + icon('check') + '已处理</span>' : '') +
           '</div>' +
           '<div class="fb-row-body">' + esc(f.text) + '</div>' +
+          ((f.images || []).length
+            ? '<div class="fb-row-imgs">' + f.images.map((u) =>
+                '<img src="' + esc(u) + '" data-zoom="' + esc(u) + '" loading="lazy" alt="反馈截图">').join('') +
+              '</div>'
+            : '') +
           (f.page ? '<div class="fb-row-page">' + icon('eye') + '提交位置 ' + fbPageText(f.page) + '</div>' : '') +
           (done && f.reply ? '<div class="fb-row-reply">' + icon('chat') + '你回的：' + esc(f.reply) + '</div>' : '') +
           (done
@@ -4085,6 +4092,23 @@ function fbPageRowHtml() {
       (pick ? esc(pick.label + ' ' + pick.hash) : '') + '</div>';
 }
 
+function fbImagesHtml() {
+  const imgs = state.fbImages || [];
+  const upN = state.fbUploading || 0;
+  const full = imgs.length + upN >= 3;
+  return '<div class="fb-imgs">' +
+    imgs.map((u, i) =>
+      '<div class="fb-thumb">' +
+        '<img src="' + esc(u) + '" data-zoom="' + esc(u) + '" alt="截图">' +
+        '<button data-action="fb-img-del" data-i="' + i + '" aria-label="删掉这张">×</button>' +
+      '</div>').join('') +
+    (upN ? '<div class="fb-thumb fb-thumb-busy"><span>' + upN + ' 张上传中…</span></div>' : '') +
+    (full ? '' :
+      '<label class="fb-add">' + icon('image') + '<span>加截图</span>' +
+        '<input type="file" id="fb-file" accept="image/*" multiple hidden></label>') +
+  '</div>';
+}
+
 function feedbackCardHtml() {
   const t = state.fbType || 'bug';
   return '<div class="card edit-card">' +
@@ -4097,12 +4121,35 @@ function feedbackCardHtml() {
     '</div>' +
     '<textarea id="fb-text" maxlength="1000" class="fb-text" ' +
       'placeholder="说清三件事就够了：你在做什么、期望是什么、实际发生了什么。">' + esc(state.fbText || '') + '</textarea>' +
+    fbImagesHtml() +
     fbPageRowHtml() +
     '<div class="fb-foot">' +
-      '<span class="edit-hint">会把你从哪一页点进来的告诉管理员，只是方便定位，不改任何内容。</span>' +
+      '<span class="edit-hint">截图最多 3 张；会把你从哪一页点进来的告诉管理员，只是方便定位，不改任何内容。</span>' +
       '<button class="btn-primary" data-action="fb-send">提交反馈</button>' +
     '</div>' +
   '</div>';
+}
+
+/* 选完图就传，传完进 state.fbImages。传一张刷一次 —— 用户要看着进度走，
+   而不是点完提交等三秒才告诉你「有一张失败了」。 */
+async function addFbImages(files) {
+  const list = Array.prototype.slice.call(files || []);
+  if (!list.length) return;
+  const room = 3 - (state.fbImages || []).length - (state.fbUploading || 0);
+  if (room <= 0) { toast('最多 3 张，先删掉一张再加', 'err'); return; }
+  const take = list.slice(0, room);
+  if (list.length > room) toast('最多 3 张，先传前 ' + room + ' 张', 'err');
+  state.fbUploading = (state.fbUploading || 0) + take.length;
+  render();
+  for (const f of take) {
+    try {
+      if (!/^image\//.test(f.type || '')) throw new Error('选一张图片吧');
+      const url = await uploadImage(f);
+      state.fbImages.push(url);
+    } catch (e) { toast(e.message, 'err'); }
+    state.fbUploading = Math.max(0, (state.fbUploading || 1) - 1);
+    render();
+  }
 }
 
 function passwordCardHtml() {
@@ -5041,6 +5088,7 @@ async function submitReport(postId) {
 async function submitFeedback() {
   const ta = $('#fb-text');
   const text = (ta ? ta.value : (state.fbText || '')).trim();
+  if (state.fbUploading) { toast('截图还在传，等一秒再提交', 'err'); return; }
   if (text.length < 5) { toast('再多写两句，我们才好定位问题', 'err'); return; }
   const btn = $('[data-action="fb-send"]');
   if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
@@ -5053,11 +5101,13 @@ async function submitFeedback() {
       body: {
         type: state.fbType || 'bug',
         text: text,
-        page: pg ? pg.label + ' ' + pg.hash : ''
+        page: pg ? pg.label + ' ' + pg.hash : '',
+        images: state.fbImages || []
       }
     });
     if (ta) ta.value = '';
     state.fbText = '';
+    state.fbImages = [];
     state.fbType = 'bug';
     state.fbPage = '';
     toast('收到了，管理员处理完会给你回消息', 'ok', 'check');
@@ -5502,6 +5552,8 @@ async function doLogout() {
   state.pageTrail = [];
   state.fbPage = '';
   state.fbText = '';
+  state.fbImages = [];
+  state.fbUploading = 0;
   stopMsgPoll();
   localStorage.removeItem('fq_token');
   toast('已退出登录');
@@ -5865,6 +5917,15 @@ document.addEventListener('click', (e) => {
       if (line) {
         line.style.display = pg ? '' : 'none';
         line.textContent = pg ? pg.label + ' ' + pg.hash : '';
+      }
+      break;
+    }
+    /* 删掉一张截图：整页 render 也行 —— 正文在 state.fbText 里，回来还是那些字 */
+    case 'fb-img-del': {
+      const i = Number(el.getAttribute('data-i'));
+      if (state.fbImages && i >= 0) {
+        state.fbImages.splice(i, 1);
+        render();
       }
       break;
     }
@@ -6246,6 +6307,8 @@ document.addEventListener('change', (e) => {
     return;
   }
   if (e.target.id === 'file-input') { onFiles(e.target.files); e.target.value = ''; }
+  // 问题反馈的截图：选完就传，传一张刷一次进度
+  if (e.target.id === 'fb-file') { addFbImages(e.target.files); e.target.value = ''; return; }
   if (e.target.id === 'avatar-input') {
     const f = e.target.files && e.target.files[0];
     if (!f) return;

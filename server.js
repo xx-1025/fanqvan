@@ -583,6 +583,8 @@ function migrate(d) {
   d.sessions = d.sessions || {};
   // 用户反馈（2.48）：普通厨友提，管理员在审核中心里处理
   d.feedback = d.feedback || [];
+  // 截图（2.48.2）：老数据没有这个字段，补空数组，前端就不用到处判空
+  for (const f of d.feedback) if (!Array.isArray(f.images)) f.images = [];
   // 称号（2.48）：只能由管理员颁发，一人可有多条，展示最新那条
   d.titles = d.titles || [];
   d.seq = d.seq || 1;
@@ -4562,6 +4564,12 @@ async function handleApi(req, res, pathname, query) {
     const type = FB_TYPES.includes(b.type) ? b.type : 'other';
     const text = clean(b.text, 1000);
     if (text.length < 5) return json(res, 400, { error: '再多写两句，我们才好定位问题' });
+    /* 截图是白送的证据：报「按钮点了没反应」时，一张图胜过三十个字。
+       只收站内上传过的路径（/api/upload 返回的那种），并且限 3 张 ——
+       反馈是工单不是相册，多了管理员也看不完，还白占空间。 */
+    const images = Array.isArray(b.images)
+      ? b.images.slice(0, 3).filter((s) => typeof s === 'string' && /^\/uploads\/[a-zA-Z0-9._-]+$/.test(s))
+      : [];
     const item = {
       id: db.seq++,
       userId: me.id,
@@ -4569,6 +4577,7 @@ async function handleApi(req, res, pathname, query) {
       text: text,
       // 从哪一页提的：修 bug 时这一行比正文还值钱（「做饭模式点第 3 步白屏」）
       page: clean(b.page, 120),
+      images: images,
       status: 'open',
       createdAt: nowMs(),
       handledBy: 0, handledAt: 0, reply: ''
@@ -4593,7 +4602,7 @@ async function handleApi(req, res, pathname, query) {
     return json(res, 200, {
       items: list.slice(0, 200).map((x) => ({
         id: x.id, type: x.type, typeText: FB_TYPE_TEXT[x.type] || '其他',
-        text: x.text, page: x.page || '', status: x.status,
+        text: x.text, page: x.page || '', images: x.images || [], status: x.status,
         createdAt: x.createdAt, handledAt: x.handledAt || 0, reply: x.reply || '',
         user: briefUser(db.users.find((u) => u.id === x.userId)),
         by: x.handledBy ? briefUser(db.users.find((u) => u.id === x.handledBy)) : null
