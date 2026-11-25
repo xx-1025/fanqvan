@@ -127,6 +127,11 @@
     /* 拖动：手上有油、手机架得远，写死一个角必然挡到一部分人的锅。
        这里只挪位置，不做甩动 —— 小窗是「窗户」，不是玩具。 */
     dragWin();
+    /* 横竖屏切换、地址栏收起都会改视口高度；气泡是按视口算的，得跟着重算，
+       否则一句正挂着的话会被挪到屏幕外 */
+    window.addEventListener('resize', function () {
+      if (bubEl && bubEl.classList.contains('on')) layoutBub();
+    });
 
     snapCv = document.createElement('canvas');
     miniCv = document.createElement('canvas');
@@ -165,13 +170,8 @@
     win.style.top = y + 'px';
     win.style.right = 'auto';
     win.style.bottom = 'auto';
-    /* 气泡贴在形象嘴边，默认往左长。窗口靠屏幕左边时整句会被屏幕左缘切掉，
-       这时翻到人像右边。这里只用窗口位置粗估（拖动中每帧都读气泡宽度会掉帧），
-       真开口时 bubble() 里还会按真实宽度再校一次。 */
-    var chefW = (chefEl && chefEl.offsetWidth) || 58;
-    var leftRoom = x + w - chefW - 8 - 190;
-    var rightRoom = vw - (x + w + 4 + 190);
-    win.classList.toggle('bub-right', leftRoom < 0 && rightRoom > leftRoom);
+    /* 气泡的位置不在这里算：它是按视口固定的（layoutBub），窗口挪动不影响它。
+       拖完如果正好还有话挂着，松手后重算一次就够。 */
   }
 
   function dragWin() {
@@ -269,30 +269,133 @@
     });
   }
 
-  /* 气泡贴在人像嘴边，但「说得长」和「窗口靠边」会打架：
-     气泡宽最多 190，靠左时左侧放不下就翻边。按真实宽度算一次，
-     比按窗口中心猜准 —— 猜错的代价是整句话被屏幕切掉一半。 */
-  function fitBub() {
-    if (!win || !bubEl) return;
+  /* 气泡按**视口**定位，不跟窗口绑死。
+     窗口为了不挡步骤，常被拖到屏幕上方；气泡要是还挂在窗口上沿，
+     长句子往上长，第一行直接长到屏幕外（实测 top = -75）。
+     用户的原话就是「字多时会看不到字」。
+     顺序：贴头顶往上长 → 上方放不下转到脸的一侧 → 侧边也不够就缩字号 → 最后才夹进屏幕。
+     无论哪种，「字一个都不能少」优先于「字号好看」。 */
+  var BUB_PAD = 8;
+  function layoutBub() {
+    if (!bubEl || !chefEl || !win) return;
     var vw = window.innerWidth || 360;
-    var r = win.getBoundingClientRect();
-    var bw = bubEl.offsetWidth || 120;
-    var cw = (chefEl && chefEl.offsetWidth) || 58;
-    var leftRoom = (r.right - cw - 2) - bw - 6;   // 往左长时，气泡左边缘到屏幕左缘的余量
-    var rightRoom = vw - (r.right + 4 + bw);      // 往右长时，气泡右边缘到屏幕右缘的余量
-    var toRight = leftRoom < 0 && (rightRoom >= 0 || rightRoom > leftRoom);
-    win.classList.toggle('bub-right', toRight);
+    var vh = window.innerHeight || 640;
+    var cr = chefEl.getBoundingClientRect();
+    /* 脸的位置：横向偏右一点（尾巴落点），纵向在头的中部偏下 */
+    var faceX = cr.left + cr.width * 0.58;
+    var faceY = cr.top + cr.height * 0.5;
+
+    bubEl.style.width = 'auto';
+    bubEl.style.minHeight = '0';
+    bubEl.style.maxHeight = 'none';
+    bubEl.classList.remove('below', 'bub-right');
+
+    var maxW = Math.min(300, Math.max(160, Math.round(vw * 0.72)));
+    var sizes = [15, 14.5, 14, 13.5, 13];
+    var room = vh - BUB_PAD * 2;
+    /* 超过半屏的框会把人埋了：宁可字号小一档，也不能让一屏有半屏是气泡 */
+    var soft = Math.round(vh * 0.52);
+    var bw = 0, bh = 0, x = 0, y = 0, right = false, below = false, side = false;
+
+    function measure() {
+      bw = bubEl.offsetWidth || 120;
+      bh = bubEl.offsetHeight || 36;
+    }
+
+    for (var si = 0; si < sizes.length; si++) {
+      bubEl.style.fontSize = sizes[si] + 'px';
+      bubEl.style.maxWidth = maxW + 'px';
+      measure();
+      below = false; right = false; side = false;
+
+      var upTop = cr.top - 8 - bh;                 // 头顶往上
+      if (upTop >= BUB_PAD) {
+        x = faceX + 8 - bw;                        // 气泡右缘越过脸一点，尾巴落在脸侧
+        if (x < BUB_PAD) { x = faceX - 8; right = true; }
+        y = upTop;
+      } else {
+        var roomL = cr.left - BUB_PAD - 6;
+        var roomR = vw - cr.right - BUB_PAD - 6;
+        if (roomL >= 110 || roomR >= 110) {
+          /* 站到脸的一侧，和嘴同高。宽度必须收到那一侧真正剩下的空间里 ——
+             否则一夹回屏幕内，气泡就压在脸上（62 个字时实测压住半个头）。 */
+          right = roomR > roomL;
+          bubEl.style.maxWidth = Math.min(maxW, Math.max(110, right ? roomR : roomL)) + 'px';
+          measure();
+          x = right ? (cr.right + 6) : (cr.left - 6 - bw);
+          y = Math.round(faceY - bh / 2);
+          side = true;
+        } else {
+          /* 两侧都塞不下：放到人下方，尾巴朝上 */
+          x = faceX + 8 - bw;
+          if (x < BUB_PAD) { x = faceX - 8; right = true; }
+          y = cr.bottom + 4;
+          below = true;
+        }
+      }
+      /* 夹进视口。尾巴跟着挪，别让它离开脸那一列，否则指向就假了 */
+      var cx = Math.min(Math.max(BUB_PAD, x), Math.max(BUB_PAD, vw - bw - BUB_PAD));
+      var cy = Math.min(Math.max(BUB_PAD, y), Math.max(BUB_PAD, vh - bh - BUB_PAD));
+      if (bh <= Math.min(room, soft)) { x = cx; y = cy; break; }
+    }
+
+    bubEl.classList.toggle('bub-right', right);
+    bubEl.classList.toggle('below', below);
+    bubEl.classList.toggle('side', side);
+    if (side) {
+      /* 尾巴横向没有意义（气泡在脸的一侧），按脸的高度定竖向位置 */
+      var ty = Math.round(faceY - y);
+      bubEl.style.setProperty('--tail-y', Math.min(Math.max(14, ty), Math.max(14, bh - 14)) + 'px');
+    } else {
+      /* 尾巴水平位置：让它尽量指着脸，但别落到圆角外 */
+      var tail = right ? (faceX - x) : (x + bw - faceX);
+      tail = Math.min(Math.max(12, tail), Math.max(12, bw - 12));
+      bubEl.style.setProperty('--tail-x', Math.round(tail) + 'px');
+    }
+    bubEl.style.left = Math.round(x) + 'px';
+    bubEl.style.top = Math.round(y) + 'px';
+    /* 量完就按这个宽度定死。后面逐字填字时盒子不再变 —— 既不会抖，
+       也不会有「量的时候 280、真显示 272，靠右那句被挤到屏幕边上」的偏差。 */
+    bubEl.style.width = bw + 'px';
+    bubEl.style.minHeight = bh + 'px';
+  }
+
+  /* 一句一句往外蹦，像说出来，而不是整段刷在屏幕上。
+     字号、宽度先按整句量好并冻住，再逐字填 —— 否则每加一个字都要重排，
+     气泡会一边抖一边长。危险的句子不做打字机：救命的话必须一眼看完。 */
+  var typeT = 0;
+  function typewrite(text, speed) {
+    if (typeT) { clearInterval(typeT); typeT = 0; }
+    var i = 0;
+    bubEl.textContent = '';
+    typeT = setInterval(function () {
+      i += 1;
+      bubEl.textContent = text.slice(0, i);
+      if (i >= text.length) { clearInterval(typeT); typeT = 0; }
+    }, speed);
   }
 
   function bubble(text, level, ms) {
     if (!bubEl || !text) return;
-    bubEl.textContent = text;
+    if (typeT) { clearInterval(typeT); typeT = 0; }
     var lv = (level === 'danger' || level === 'notice' || level === 'tip') ? level : '';
-    bubEl.className = 'fqc-bub on' + (lv ? ' ' + lv : '');
-    fitBub();
+    /* 先按整句量：宽度定死、最小高度定死，逐字填的时候盒子不动 */
+    bubEl.className = 'fqc-bub' + (lv ? ' ' + lv : '');
+    bubEl.textContent = text;
+    bubEl.classList.add('on');
+    /* layoutBub 会把宽度和高度按整句量好并定死，所以这里可以放心逐字填 */
+    layoutBub();
+    if (!lv) {
+      typewrite(text, Math.max(24, Math.min(58, Math.round(1800 / Math.max(4, text.length)))));
+    }
     if (bubT) clearTimeout(bubT);
     var dur = Math.max(2400, (ms || Math.min(9000, 900 + text.length * 180)));
-    bubT = setTimeout(function () { bubEl.classList.remove('on'); }, dur + 500);
+    bubT = setTimeout(function () {
+      bubEl.classList.remove('on');
+      if (typeT) { clearInterval(typeT); typeT = 0; }
+      bubEl.style.width = 'auto';
+      bubEl.style.minHeight = '0';
+    }, dur + 500);
   }
 
   /* ---------------- 说话 ----------------

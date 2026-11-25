@@ -1079,50 +1079,72 @@ img { display: block; }
   50% { transform: translateY(4px) rotate(-2.2deg); }
 }
 
-/* 气泡贴在形象嘴边，不从窗口左边飘出去。
-   原来它挂在窗口左侧、离底 52px —— 窗口高 206，人站在窗口上沿，
-   两者隔了 150px，看起来是「屏幕上弹了条字幕」，不是这个人在说话。
-   现在：右边缘贴着人像左肩外 4px，垂直跟嘴同高，尾巴指向脑袋。
-   width:max-content 不能省：只给 left/right 时会被父级 132px 卡成竖条。 */
+/* 气泡是「它说的话」，位置按**视口**算，不跟窗口绑死。
+   窗口能被拖到屏幕上方（为了不挡步骤，用户常这么干）。气泡要是还挂在窗口上沿，
+   长句子往上长，第一行就整行长到屏幕外 —— 用户原话「字多时会看不到字」。
+   坐标由 fq-chef.js 的 layoutBub() 写 left/top，这里只管长相。 */
 .fqc-bub {
   --bub-bg: #2a2018;
   --bub-bd: transparent;
-  position: absolute;
-  /* --chef-w 是人像宽度；人像 right:-2，所以左肩距窗口右边 = chef-w - 2 */
-  right: calc(var(--chef-w) + 2px);
-  bottom: calc(100% + 28px);
-  width: max-content; min-width: 62px; max-width: 190px;
+  --tail-x: 12px;          /* 尾巴离气泡右边的距离，由 layoutBub 按脸的位置改 */
+  position: fixed;
+  left: 0; top: 0;
+  width: max-content; min-width: 62px; max-width: 240px;
   padding: 8px 12px; border-radius: 13px; border-bottom-right-radius: 4px;
   background: var(--bub-bg); color: #fdf4e6;
   border: 1.5px solid var(--bub-bd);
   font-size: 15px; line-height: 1.42; font-weight: 600;
+  /* 长句不能横着撑出去：中文靠这两个，英文长单词靠 break-word */
+  overflow-wrap: break-word; word-break: break-word;
   box-shadow: 0 6px 16px rgba(0, 0, 0, .3);
   opacity: 0; pointer-events: none;
   /* 从尾巴那个角弹开：像话是从嘴里递出来的，不是屏幕中间刷出来一块 */
-  transform-origin: calc(100% - 12px) 100%;
+  transform-origin: var(--tail-x) 100%;
   transform: translateY(4px) scale(.9);
   transition: opacity .18s, transform .18s;
 }
-/* 尾巴：指向人像脑袋的小三角（贴着气泡右下角，尖正好落在脸侧） */
+/* 尾巴：指向人像脑袋的小三角，横坐标跟着 --tail-x 走，永远对着脸 */
 .fqc-bub::after {
-  content: ''; position: absolute; right: 2px; bottom: -5.5px;
+  content: ''; position: absolute; right: calc(var(--tail-x) - 5px); bottom: -5.5px;
   width: 10px; height: 10px;
   background: var(--bub-bg);
   border-right: 1.5px solid var(--bub-bd);
   border-bottom: 1.5px solid var(--bub-bd);
   transform: rotate(45deg);
 }
-/* 窗口贴着屏幕左边时，气泡翻到人像右边 —— 否则整句被屏幕左缘切掉。
-   由 fitBub() 按气泡真实宽度决定，不再按窗口中心估。 */
-.fqc-win.bub-right .fqc-bub {
-  right: auto; left: calc(100% + 4px);
+/* 翻到人像右边：尾巴改到左下角 */
+.fqc-bub.bub-right {
   border-bottom-right-radius: 13px; border-bottom-left-radius: 4px;
-  transform-origin: 12px 100%;
+  transform-origin: var(--tail-x) 100%;
 }
-.fqc-win.bub-right .fqc-bub::after {
-  right: auto; left: 9px;
+.fqc-bub.bub-right::after {
+  right: auto; left: calc(var(--tail-x) - 5px);
   border-right: 0; border-bottom: 0;
   border-left: 1.5px solid var(--bub-bd); border-top: 1.5px solid var(--bub-bd);
+}
+/* 只能放在头顶上方以外的地方时（贴脸一侧、或人已经在屏幕最上方），尾巴朝上 */
+.fqc-bub.below { border-bottom-right-radius: 13px; border-top-right-radius: 4px; }
+.fqc-bub.below::after {
+  bottom: auto; top: -5.5px;
+  border-right: 0; border-bottom: 0;
+  border-left: 1.5px solid var(--bub-bd); border-top: 1.5px solid var(--bub-bd);
+}
+.fqc-bub.below.bub-right { border-top-right-radius: 13px; border-top-left-radius: 4px; }
+
+/* 侧放：气泡在人像的一侧（窗口被拖到屏幕上方时走这条）。
+   尾巴不能还在底部 —— 那会朝下指着空气。改成朝脸那条边的中段。 */
+.fqc-bub.side::after { bottom: auto; top: calc(var(--tail-y, 50%) - 5px); }
+.fqc-bub.side.bub-right::after {          /* 气泡在脸右侧 → 尾巴长在左边缘 */
+  right: auto; left: -5.5px;
+  border-right: 0; border-bottom: 0;
+  border-left: 1.5px solid var(--bub-bd);
+  border-top: 1.5px solid var(--bub-bd);
+}
+.fqc-bub.side:not(.bub-right)::after {    /* 气泡在脸左侧 → 尾巴长在右边缘 */
+  left: auto; right: -5.5px;
+  border-left: 0; border-top: 0;
+  border-right: 1.5px solid var(--bub-bd);
+  border-bottom: 1.5px solid var(--bub-bd);
 }
 .fqc-bub.on { opacity: 1; transform: translateY(0) scale(1); }
 .fqc-bub.danger { --bub-bg: #3a1a12; --bub-bd: rgba(232, 97, 63, .7); color: #ffd9cd; }
@@ -1147,7 +1169,7 @@ img { display: block; }
     --chef-h: 104px; --chef-w: 83px;
     width: 178px; height: 234px; right: 24px; bottom: 40px;
   }
-  .fqc-bub { max-width: 230px; font-size: 15.5px; }
+  /* 气泡宽度/字号由 layoutBub() 按视口算（会写 inline style），这里不覆盖 */
 }
 
 /* =========================================================
