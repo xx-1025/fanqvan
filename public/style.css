@@ -5419,3 +5419,37 @@ html[data-theme=dark] .vis-chip-u button { background: rgba(255, 255, 255, .12);
 @media (max-width: 760px) {
   .fb-foot .btn-primary { flex: 1 0 100%; }
 }
+
+/* ---- 反馈「问题出在哪一页」（2.48.1）----
+   一排小胶囊，选中的只有一个；下面那行灰字把真正会上报的 hash 写出来，
+   免得用户以为「报的是反馈页」。 */
+.fb-page-pick {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin: 10px 0 0;
+}
+.fb-page-lb { font-size: 12.5px; color: var(--ink-3); }
+.fb-pg {
+  border: 1px solid var(--line-2); background: var(--paper);
+  color: var(--ink-2); font-size: 12.5px; line-height: 1;
+  padding: 6px 10px; border-radius: 999px; cursor: pointer;
+}
+.fb-pg:hover { border-color: var(--brand); color: var(--brand); }
+.fb-pg.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.fb-page-hash {
+  margin-top: 5px; font-size: 11.5px; color: var(--ink-3);
+  font-family: ui-monospace, Consolas, monospace;
+}
+.fb-page-a { color: var(--brand); text-decoration: none; }
+.fb-page-a:hover { text-decoration: underline; }
+
+/* 用户管理顶上的「称号怎么用」说明 */
+.u-hint {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 10px 18px 14px; font-size: 12.5px; line-height: 1.7;
+  color: var(--ink-3);
+}
+.u-hint svg { flex: 0 0 auto; width: 17px; height: 17px; margin-top: 3px; color: var(--ink-3); }
+.u-hint b { color: var(--ink-2); font-weight: 600; }
+@media (max-width: 760px) {
+  .u-hint { padding: 8px 14px 12px; }
+}

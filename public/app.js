@@ -25,6 +25,11 @@ const state = {
   postFrom: '',          // 进详情页之前在哪，用来让「返回」回到原页面
   userFrom: '',          // 进别人主页之前在哪（信息流 / 热门 / 搜索），返回时回原页
   data: {},
+  // 最近访问过的页（{hash,label}，新的在前）。问题反馈靠它说「问题出在哪一页」，
+  // 见 TRAIL_SKIP 那段注释：绝不能记反馈页自己。
+  pageTrail: [],
+  fbPage: '',            // 反馈里手选的页面 hash，''=跟最新一页，'none'=不带
+  fbText: '',            // 反馈正文草稿：切换「问题出在」时整页重绘也不丢字
   // 主页的页签：饭帖 / 相册 / 收藏（收藏只有自己主页有；切换只重画列表，不重新拉数据）
   profileTab: 'posts',
   draft: '',
@@ -645,6 +650,17 @@ async function router() {
   if (r.name === 'notifications') { state.loading = false; go('#/'); return; }
   // 收藏已经是主页的第三个页签，旧链接 #/favs 一律转到那儿，别留两套入口
   if (r.name === 'favs') { state.loading = false; go('#/mine?tab=favs'); return; }
+  /* 记住最近几页（2.48.1）：反馈要回答「问题出在哪一页」。
+     ⚠️ 不能把反馈页自己记进来 —— 表单住在 #/edit，记了它，管理员看到的永远
+     是「提交位置 #/edit」。所以 edit / login / review 三个入口页跳过。 */
+  if (!TRAIL_SKIP[r.name]) {
+    const item = { hash: hashNow, label: PAGE_NAME[r.name] || '页面' };
+    const trail = (state.pageTrail || []).filter((x) => x.hash !== item.hash);
+    trail.unshift(item);
+    if (trail.length > 5) trail.length = 5;
+    state.pageTrail = trail;
+    state.fbPage = '';                 // 换页后默认跟最新那页，之前手选的不再沿用
+  }
   state.loading = true;
   // 换一个人（或回自己主页）时回到「饭帖」页签，别把上一个人的「相册」带过去；
   // 「我的收藏」已经并进主页页签，`?tab=favs` 留给旧链接和外部跳转用
@@ -3658,6 +3674,18 @@ function viewReview() {
 
 /* 问题反馈列表（管理员）：左边是用户说的话，右边是处理动作。
    一次只处理一条，回一句就够 —— 反馈不需要工单系统那一套。 */
+/* 反馈里那条「提交位置」：新记录是「帖子详情 #/post/12」，老记录是裸 hash。
+   有 hash 就做成链接 —— 管理员点一下直接跳到出事那页，比照着文字找强。
+   （POST_SKIP 里有 a，点它不会触发「打开帖子」的卡片点击。） */
+function fbPageText(page) {
+  if (!page) return '';
+  const i = page.indexOf(' #/');
+  if (i < 0) return esc(page);
+  const label = page.slice(0, i);
+  const hash = page.slice(i + 1);
+  return esc(label) + ' <a class="fb-page-a" href="' + esc(hash) + '">' + esc(hash) + '</a>';
+}
+
 function reviewFeedback() {
   const tab = state.fbTab || 'open';
   const list = state.data.feedback || [];
@@ -3674,7 +3702,7 @@ function reviewFeedback() {
             (done ? '<span class="badge badge-approved">' + icon('check') + '已处理</span>' : '') +
           '</div>' +
           '<div class="fb-row-body">' + esc(f.text) + '</div>' +
-          (f.page ? '<div class="fb-row-page">' + icon('eye') + '提交位置 ' + esc(f.page) + '</div>' : '') +
+          (f.page ? '<div class="fb-row-page">' + icon('eye') + '提交位置 ' + fbPageText(f.page) + '</div>' : '') +
           (done && f.reply ? '<div class="fb-row-reply">' + icon('chat') + '你回的：' + esc(f.reply) + '</div>' : '') +
           (done
             ? '<div class="fb-row-act"><button class="btn-sm btn-ghost2" data-action="fb-reopen" data-id="' + f.id + '">重新打开</button></div>'
@@ -3834,6 +3862,11 @@ function reviewUsers() {
     '</div></div>').join('');
   return '<div class="card" style="overflow:hidden">' +
       '<div class="u-search"><input id="user-search" placeholder="搜索用户名 / 昵称" value="' + esc(state.keyword) + '"></div>' +
+      /* 称号的说明书放在表格顶上：按钮只有「称号」两个字，管理员第一次看到不知道是干什么的。
+         这段话解释了三件事：怎么发、发给谁、发错了怎么撤。 */
+      '<div class="u-hint">' + icon('medal') +
+        '<span>给谁发称号（比如「10 月优质创作者」）：点 TA 那一行右侧的<b>「称号」</b>，填个名字就行。' +
+        '只有管理员能发，一人最多 8 个，昵称后面只显示最新的一个；发错了点名字下面的 <b>×</b> 就能撤销。</span></div>' +
     '</div>' +
     (rows || '<div class="card empty"><img src="/assets/empty.webp" alt=""><div>没有找到用户</div></div>');
 }
@@ -4019,20 +4052,54 @@ const FB_TYPES = [
   ['other', '其他']
 ];
 
+/* 「当前页面」不能取 location.hash —— 反馈表单自己就住在 #/edit 里，
+   直接报 hash 的话管理员看到的永远是「提交位置 #/edit」，等于什么都没说。
+   所以路由每换一页就往 pageTrail 里记一条（编辑/登录/审核这些入口页不记），
+   提交时取最近的那一条；用户还能在表单里改选（问题是十分钟前在别的帖子上碰到的）。 */
+const TRAIL_SKIP = { edit: 1, login: 1, review: 1 };
+const PAGE_NAME = {
+  feed: '首页', post: '帖子详情', mine: '我的主页', user: 'TA 的主页',
+  messages: '私信', hot: '热门', search: '搜索', activity: '活动中心',
+  history: '浏览历史', requests: '我的申请', creator: '监控中心'
+};
+
+function fbPagePick() {
+  const trail = state.pageTrail || [];
+  if (state.fbPage === 'none') return null;            // 用户明确选了「不带」
+  const h = state.fbPage || (trail[0] && trail[0].hash);
+  return trail.find((x) => x.hash === h) || null;
+}
+
+function fbPageRowHtml() {
+  const trail = (state.pageTrail || []).slice(0, 4);
+  if (!trail.length) return '';
+  const pick = fbPagePick();
+  return '<div class="fb-page-pick">' +
+      '<span class="fb-page-lb">问题出在</span>' +
+      trail.map((x) => '<button class="fb-pg' + (pick && pick.hash === x.hash ? ' on' : '') +
+        '" data-action="fb-page" data-h="' + esc(x.hash) + '">' + esc(x.label) + '</button>').join('') +
+      '<button class="fb-pg' + (state.fbPage === 'none' ? ' on' : '') +
+        '" data-action="fb-page" data-h="none">不带</button>' +
+    '</div>' +
+    '<div class="fb-page-hash"' + (pick ? '' : ' style="display:none"') + '>' +
+      (pick ? esc(pick.label + ' ' + pick.hash) : '') + '</div>';
+}
+
 function feedbackCardHtml() {
   const t = state.fbType || 'bug';
   return '<div class="card edit-card">' +
     '<p class="edit-hint">用不了的地方、觉得该加的功能，都可以写在这里。' +
-      '管理员会在「审核中心 → 反馈」看到，处理完会给你回一条消息。</p>' +
+      '管理员会在「审核中心 → 问题反馈」看到，处理完会给你回一条消息。</p>' +
     '<div class="fb-types" id="fb-types">' +
       FB_TYPES.map(([k, label]) =>
         '<button class="fb-type' + (k === t ? ' on' : '') + '" data-action="fb-type" data-t="' + k + '">' +
         label + '</button>').join('') +
     '</div>' +
     '<textarea id="fb-text" maxlength="1000" class="fb-text" ' +
-      'placeholder="说清三件事就够了：你在做什么、期望是什么、实际发生了什么。"></textarea>' +
+      'placeholder="说清三件事就够了：你在做什么、期望是什么、实际发生了什么。">' + esc(state.fbText || '') + '</textarea>' +
+    fbPageRowHtml() +
     '<div class="fb-foot">' +
-      '<span class="edit-hint">会自动带上你当前所在的页面，方便定位问题。</span>' +
+      '<span class="edit-hint">会把你从哪一页点进来的告诉管理员，只是方便定位，不改任何内容。</span>' +
       '<button class="btn-primary" data-action="fb-send">提交反馈</button>' +
     '</div>' +
   '</div>';
@@ -4419,7 +4486,8 @@ function modalHtml() {
     return '<div class="modal-mask">' +
       '<div class="modal">' +
         '<h3>' + icon('medal') + '给「' + esc(t.nickname || '') + '」发称号</h3>' +
-        '<p class="modal-sub">称号会挂在 TA 的昵称后面，帖子和主页都能看到。只能由管理员颁发。</p>' +
+        '<p class="modal-sub">发完就挂在 TA 的昵称后面，帖子和主页都能看到，TA 也会收到一条通知。' +
+          '一个人最多 8 个，界面上只显示最新的一个；发错了在用户管理里点名字下面的 × 撤销。</p>' +
         '<div class="field"><label>称号名字</label>' +
           '<input id="tt-name" maxlength="14" placeholder="例如：10 月优质创作者"></div>' +
         '<div class="field"><label>说明（可选）</label>' +
@@ -4972,18 +5040,26 @@ async function submitReport(postId) {
 /* ---------- 问题反馈 ---------- */
 async function submitFeedback() {
   const ta = $('#fb-text');
-  const text = ta ? ta.value.trim() : '';
+  const text = (ta ? ta.value : (state.fbText || '')).trim();
   if (text.length < 5) { toast('再多写两句，我们才好定位问题', 'err'); return; }
   const btn = $('[data-action="fb-send"]');
   if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
   try {
-    // 带上当前页面：修 bug 时「做饭模式第 3 步」这种信息比正文还值钱
+    // 带上「问题出在哪一页」：修 bug 时「帖子详情 /post/12」这种信息比正文还值钱。
+    // 取的是 pageTrail 里最近一页，不是 location.hash —— 反馈表单自己也在 #/edit 下。
+    const pg = fbPagePick();
     await api('/api/feedback', {
       method: 'POST',
-      body: { type: state.fbType || 'bug', text: text, page: location.hash || '#/' }
+      body: {
+        type: state.fbType || 'bug',
+        text: text,
+        page: pg ? pg.label + ' ' + pg.hash : ''
+      }
     });
     if (ta) ta.value = '';
+    state.fbText = '';
     state.fbType = 'bug';
+    state.fbPage = '';
     toast('收到了，管理员处理完会给你回消息', 'ok', 'check');
     render();
   } catch (e) {
@@ -5421,6 +5497,11 @@ async function doLogout() {
   state.data.conversations = [];
   state.data.thread = null;
   state.msgDraft = '';
+  /* 「最近几页」是上一个人看过的页面，换账号后不能接着用：
+     一是没用（反馈不该顺手上报别人的浏览路径），二是那些 hash 对他可能是看不见的帖子。 */
+  state.pageTrail = [];
+  state.fbPage = '';
+  state.fbText = '';
   stopMsgPoll();
   localStorage.removeItem('fq_token');
   toast('已退出登录');
@@ -5773,6 +5854,20 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'fb-send': submitFeedback(); break;
+    /* 改选「问题出在哪一页」：只动选中态，不整页重绘 —— 重绘会把已经写好的正文清掉 */
+    case 'fb-page': {
+      state.fbPage = el.getAttribute('data-h');
+      Array.prototype.forEach.call(document.querySelectorAll('.fb-pg'), (b) => {
+        b.classList.toggle('on', b === el);
+      });
+      const line = document.querySelector('.fb-page-hash');
+      const pg = fbPagePick();
+      if (line) {
+        line.style.display = pg ? '' : 'none';
+        line.textContent = pg ? pg.label + ' ' + pg.hash : '';
+      }
+      break;
+    }
     case 'fb-done': handleFeedback(id, 'done', el); break;
     case 'fb-reopen': handleFeedback(id, 'open', el); break;
     /* ---- 可见范围 ---- */
@@ -6195,6 +6290,11 @@ document.addEventListener('input', (e) => {
     if (state.route.name === 'search') {
       window.__st = setTimeout(() => runSearch(val), 320);
     }
+    return;
+  }
+  // 问题反馈正文：记住草稿，改选「问题出在哪一页」时重绘不丢字
+  if (e.target.id === 'fb-text') {
+    state.fbText = e.target.value;
     return;
   }
   // 私信输入框：记住草稿，整页重渲染时不丢字
