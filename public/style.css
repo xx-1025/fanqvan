@@ -3813,7 +3813,7 @@ a:hover { color: var(--brand-2); }
   position: absolute; right: 0; top: -2px;
   width: 24px; height: 24px;
   border: 0; border-radius: 50%;
-  color: #c0c0c0;
+  color: #a6a6a6;
   display: grid; place-items: center;
 }
 .act-more:hover { background: var(--fill-3); color: #ff8140; }
@@ -5215,4 +5215,207 @@ html:not([data-theme="light"]) .rv-risk:has(input:checked) {
   .ad-sign { padding: 12px 14px 14px; }
   .af-2 { grid-template-columns: 1fr; }
   .af-cover img { width: 72px; height: 52px; }
+}
+
+/* =========================================================
+   2.48 新增：称号 / 可见范围 / 问题反馈 / 手机操作栏
+   全部追加在文件末尾，不改上面的皮肤段 —— 历史包袱太多，
+   在中间插一条很容易被后面的同名规则盖掉（踩过）。
+   ========================================================= */
+
+/* ---- 称号：挂在昵称后面。比角色徽标轻一档（角色是身份，称号是成绩） ---- */
+.u-title {
+  display: inline-flex; align-items: center;
+  height: 18px; max-width: 108px; padding: 0 6px; margin-left: 4px;
+  border: 1px solid #f3d0a2; border-radius: 3px;
+  background: linear-gradient(180deg, #fff6e8, #ffe8cc);
+  color: #a25a12;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  vertical-align: 1px;
+}
+html[data-theme=dark] .u-title {
+  background: rgba(255, 170, 80, .16);
+  border-color: rgba(255, 170, 80, .38);
+  color: #ffc078;
+}
+.u-titles { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.u-title-sm {
+  display: inline-flex; align-items: center; gap: 2px;
+  height: 18px; padding: 0 3px 0 6px; border-radius: 3px;
+  background: var(--brand-soft); color: var(--brand-2);
+  font-size: 11px; font-weight: 700;
+}
+.u-title-sm button {
+  width: 15px; height: 15px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: inherit; font-size: 13px; line-height: 1;
+  opacity: .55; cursor: pointer;
+}
+.u-title-sm button:hover { opacity: 1; background: rgba(0, 0, 0, .06); }
+
+/* ---- 可见范围标记：只有非公开时才出现 ---- */
+.vis-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  height: 18px; padding: 0 5px; margin-left: 2px;
+  border: 0; border-radius: 3px;
+  background: var(--fill-3); color: var(--ink-2);
+  font-size: 10.5px; font-weight: 600; cursor: pointer;
+}
+.vis-chip .ic { font-size: 11px; }
+.vis-chip[disabled] { cursor: default; }
+.vis-chip:hover:not([disabled]) { background: var(--brand-soft); color: var(--brand-2); }
+
+/* ---- 发帖框里的「谁能看到」 ---- */
+.vis-line {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  margin-top: 8px; padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--fill-1); color: var(--ink-2);
+  font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.vis-line b { color: var(--ink); font-weight: 700; }
+.vis-line .ic:last-child { margin-left: auto; color: var(--ink-4); }
+.vis-line:hover { border-color: var(--brand); color: var(--brand-2); }
+
+/* ---- 可见范围弹窗 ---- */
+.modal-vis { max-width: 430px; }
+.vis-opts { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+.vis-opt {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 12px; text-align: left; cursor: pointer;
+  border: 1.5px solid var(--line); border-radius: var(--r-sm);
+  background: var(--paper);
+}
+.vis-opt b { font-size: 13.5px; color: var(--ink); }
+.vis-opt span { font-size: 11.5px; color: var(--ink-3); }
+.vis-opt.on { border-color: var(--brand); background: var(--brand-soft); }
+.vis-opt.on b { color: var(--brand-2); }
+.vis-pick { border-top: 1px solid var(--line-2); padding-top: 10px; }
+.vis-search {
+  width: 100%; height: 36px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--paper); color: var(--ink); font-size: 13px;
+}
+.vis-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.vis-chip-u {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 26px; padding: 0 4px 0 9px; border-radius: var(--pill);
+  background: var(--fill-3); color: var(--ink);
+  font-size: 12px; font-weight: 600;
+}
+.vis-chip-u button {
+  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, .07); color: var(--ink-2);
+  font-size: 13px; line-height: 1; cursor: pointer;
+}
+html[data-theme=dark] .vis-chip-u button { background: rgba(255, 255, 255, .12); }
+.vis-empty { padding: 6px 2px; font-size: 12px; color: var(--ink-3); }
+.vis-res {
+  display: flex; flex-direction: column;
+  max-height: 180px; overflow: auto; margin-top: 6px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.vis-res-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; border: 0; border-bottom: 1px solid var(--line-2);
+  background: var(--paper); text-align: left; cursor: pointer;
+}
+.vis-res-row:last-child { border-bottom: 0; }
+.vis-res-row b { font-size: 13px; color: var(--ink); }
+.vis-res-row span { font-size: 11.5px; color: var(--ink-3); }
+.vis-res-row i { margin-left: auto; font-style: normal; font-size: 11px; color: var(--green); }
+.vis-res-row:hover { background: var(--fill-2); }
+.vis-res-row[disabled] { cursor: default; opacity: .55; }
+
+/* ---- 问题反馈（用户侧表单 + 管理员列表） ---- */
+.fb-types { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.fb-type {
+  height: 30px; padding: 0 11px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--pill);
+  background: var(--paper); color: var(--ink-2); font-size: 12.5px;
+}
+.fb-type.on {
+  border-color: var(--brand); background: var(--brand-soft);
+  color: var(--brand-2); font-weight: 700;
+}
+.fb-text {
+  width: 100%; min-height: 110px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--paper); color: var(--ink);
+  font: inherit; font-size: 13.5px; line-height: 1.6; resize: vertical;
+}
+.fb-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.fb-foot .edit-hint { flex: 1; margin: 0; }
+
+.fb-row {
+  padding: 14px 16px; margin-bottom: 10px;
+  background: var(--paper); border-radius: var(--r);
+}
+.fb-row.done { opacity: .74; }
+.fb-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fb-kind {
+  height: 18px; padding: 0 5px; border-radius: 3px;
+  background: var(--brand-soft); color: var(--brand-2);
+  font-size: 10.5px; font-weight: 700; line-height: 18px;
+}
+.fb-user { font-size: 13px; font-weight: 700; color: var(--ink); }
+.fb-row-body {
+  margin-top: 8px; font-size: 13.5px; line-height: 1.65; color: var(--ink);
+  white-space: pre-wrap; word-break: break-word;
+}
+.fb-row-page {
+  display: flex; align-items: center; gap: 4px; margin-top: 6px;
+  font-size: 11.5px; color: var(--ink-3);
+}
+.fb-row-reply {
+  margin-top: 8px; padding: 8px 10px; border-radius: var(--r-sm);
+  background: var(--fill-2); font-size: 12.5px; color: var(--ink-2);
+}
+.fb-row-act { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.fb-reply {
+  flex: 1; height: 32px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--paper); color: var(--ink); font-size: 12.5px;
+}
+
+/* =========================================================
+   手机端操作栏：只留图标 + 数字，文字全藏
+   原来五个按钮带文字要塞 320px，卡片里只有 277px，
+   只能把字号压到 11.5px，字顶到胶囊边上还是挤。
+   抖音/微博手机上都不写这几个字 —— 数字本身已经说明了。
+   ========================================================= */
+@media (max-width: 760px) {
+  .act-t { display: none; }
+  .post-bar { flex-wrap: nowrap; gap: 2px; justify-content: space-between; }
+  .post-bar .act {
+    flex: 0 0 auto; height: 32px; min-width: 34px;
+    padding: 0 6px; gap: 3px; justify-content: center; font-size: 12.5px;
+  }
+  .post-bar .act .ico { font-size: 16px; }
+  .post-bar .act-num { padding: 0 2px; }
+  .u-title { max-width: 112px; }
+  .fb-foot { flex-wrap: wrap; }
+  .fb-foot .edit-hint { flex: 1 0 100%; }
+  .fb-row-act { flex-wrap: wrap; }
+  .fb-reply { flex: 1 0 100%; }
+}
+.sk-block {
+  border-radius: 6px;
+  background: #f5e6d3;
+  background-size: 200% 100%;
+  animation: shimmer 1.3s infinite;
+}
+/* 骨架卡的卡片本身不要再加内边距：内层 .skeleton 已经有了 */
+.sk-card { padding: 0; overflow: hidden; }
+.sk-card .skeleton:last-child { border-bottom: 0; }
+
+/* 用户管理行：加了「称号」按钮后五个按钮一行放不下，
+   之前 flex-shrink:0 让最后一个「设为审核员」溢出到卡片外 */
+.u-act { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .u-act { justify-content: flex-start; }
+}
+.fb-foot .edit-hint { margin-top: 2px; line-height: 1.6; }
+@media (max-width: 760px) {
+  .fb-foot .btn-primary { flex: 1 0 100%; }
 }

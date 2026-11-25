@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>饭圈 · 安全控制台</title>
 <link rel="icon" href="/assets/mascot.webp">
-<link rel="stylesheet" href="/ops.css">
+<link rel="stylesheet" href="/ops.css?v=2">
 </head>
 <body>
 
@@ -34,11 +34,25 @@
   <b id="op-v-t">正在读取…</b>
   <span id="op-v-s"></span>
   <em class="op-help">这一页就看三件事：谁在访问、谁在可疑地翻、谁该被挡住。可疑度满 60 分系统会自己挡住，一般你只看上面这句话就够了。</em>
+  <!-- 今日简报：把四个数字胶囊翻译成结论。管理员要的是「今天有没有事」，
+       不是自己去比 47 和 53 哪个算多。 -->
+  <div class="op-brief" id="op-brief" hidden>
+    <b id="op-brief-head"></b>
+    <ul id="op-brief-pts"></ul>
+  </div>
 </div>
 
 <main class="op-wrap">
 
   <section class="op-main">
+
+    <div class="op-card">
+      <div class="op-head">
+        <h2>站里的内容</h2>
+        <span class="op-sub" id="op-c-sub">正在算…</span>
+      </div>
+      <div class="op-c" id="op-c"></div>
+    </div>
 
     <div class="op-card">
       <div class="op-head">
@@ -116,6 +130,6 @@
   <a class="op-btn" href="/">回首页</a>
 </div>
 
-<script src="/ops.js"></script>
+<script src="/ops.js?v=2"></script>
 </body>
 </html>

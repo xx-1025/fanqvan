@@ -682,11 +682,82 @@
       state.over = o;
       paintVerdict(o);
       paintPills(o);
+      paintBrief(o.brief);
       paintThreats(o.threats);
       paintNets(o.nets);
       paintBlocks(o.blocks);
       paintEvents(o.events);
       paintErrs(o.clientErr);
+    }).catch(function (e) {
+      if (e.status === 403) deny(e.message);
+    });
+  }
+
+  /* ---------------- 今日简报 ----------------
+     四个数字胶囊留给「要核对的人」，简报留给「就想知道有没有事的人」。
+     两句话必须能独立读懂：不出现分、请求、状态码。 */
+  function paintBrief(b) {
+    var box = $('#op-brief');
+    if (!box || !b) return;
+    box.hidden = false;
+    box.className = 'op-brief ' + (b.level === 'warn' ? 'warn' : 'ok');
+    var head = $('#op-brief-head');
+    if (head) head.textContent = b.head || '';
+    var ul = $('#op-brief-pts');
+    if (ul) {
+      ul.innerHTML = (b.points || []).map(function (p) {
+        return '<li>' + esc(p) + '</li>';
+      }).join('');
+    }
+  }
+
+  /* ---------------- 站里的内容（帖子 / 评论分析） ---------------- */
+  function paintContent(d) {
+    var box = $('#op-c');
+    if (!box || !d) return;
+    var sub = $('#op-c-sub');
+    if (sub) sub.textContent = d.today + ' · 每 20 秒更新';
+    var nums = [
+      ['今天新帖', d.posts.today, ''],
+      ['今天评论', d.comments.today, ''],
+      ['待审核', d.posts.pending, d.posts.pending ? 'warn' : ''],
+      ['近七天举报', d.reports7, d.reports7 ? 'warn' : '']
+    ];
+    var hot = (d.hot || []).length
+      ? '<ol class="op-c-hot">' + d.hot.map(function (p) {
+          return '<li><a href="/#/post/' + p.id + '" target="_blank" rel="noopener" title="' + esc(p.excerpt) + '">' +
+            esc(p.excerpt) + '</a>' +
+            '<span>' + esc(p.author) + ' · ' + p.likes + ' 赞 · ' + p.comments + ' 评 · ' + p.views + ' 看</span></li>';
+        }).join('') + '</ol>'
+      : '<div class="op-empty">近七天还没有新内容。</div>';
+    var kw = (d.keywords || []).length
+      ? d.keywords.map(function (x) {
+          return '<span class="op-kw">' + esc(x.w) + '<i>' + x.n + '</i></span>';
+        }).join('')
+      : '<span class="op-empty">今天还没有足够的评论可以统计。</span>';
+    var reasons = (d.reasons || []).length
+      ? d.reasons.map(function (r) {
+          return '<span class="op-kw warn">' + esc(r.r) + '<i>' + r.n + '</i></span>';
+        }).join('')
+      : '<span class="op-empty">近七天没有举报。</span>';
+    box.innerHTML =
+      '<div class="op-c-sum">' + (d.summary || []).map(function (s) {
+        return '<p>' + esc(s) + '</p>';
+      }).join('') + '</div>' +
+      '<div class="op-c-nums">' + nums.map(function (n) {
+        return '<div class="op-c-num ' + n[2] + '"><b>' + n[1] + '</b><span>' + n[0] + '</span></div>';
+      }).join('') + '</div>' +
+      '<div class="op-c-cols">' +
+        '<div class="op-c-col"><h3>近七天最热</h3>' + hot + '</div>' +
+        '<div class="op-c-col"><h3>今天评论里出现最多的词</h3><div class="op-kws">' + kw + '</div>' +
+          '<h3 style="margin-top:12px">被举报的原因</h3><div class="op-kws">' + reasons + '</div></div>' +
+      '</div>';
+  }
+
+  function refreshContent() {
+    return get('/api/ops/content').then(function (d) {
+      state.content = d;
+      paintContent(d);
     }).catch(function (e) {
       if (e.status === 403) deny(e.message);
     });
@@ -706,16 +777,20 @@
     });
   }
 
-  var t1 = null, t2 = null;
+  var t1 = null, t2 = null, t3 = null;
   function start() {
     stop();
     t1 = setInterval(refresh, 2500);
     t2 = setInterval(pullFeed, 1200);
+    // 内容统计要扫全站帖子，没必要跟 2.5 秒的实时流一样频；20 秒足够看出趋势
+    t3 = setInterval(refreshContent, 20000);
+    refreshContent();
   }
   function stop() {
     if (t1) clearInterval(t1);
     if (t2) clearInterval(t2);
-    t1 = t2 = null;
+    if (t3) clearInterval(t3);
+    t1 = t2 = t3 = null;
   }
 
   function setLive(on) {

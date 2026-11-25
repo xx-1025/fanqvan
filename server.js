@@ -549,6 +549,17 @@ function seed() {
   return d;
 }
 
+/* 帖子可见范围（2.48）。含义和抖音的「作品浏览权限」一致：
+   public  公开 —— 谁都能看（账号本身是私密号时仍受账号限制）
+   exclude 谁不可见 —— 除了名单里的人，别人都能看
+   include 只谁可见 —— 只有名单里的人（和作者、审核员）能看
+   private 私密 —— 只有自己（和审核员）能看
+   **一律在接口层过滤**，前端只负责显示标签；否则「设为私密」等于没设。 */
+const POST_VIS = ['public', 'exclude', 'include', 'private'];
+const POST_VIS_TEXT = {
+  public: '公开', exclude: '部分人不可见', include: '仅指定人可见', private: '仅自己可见'
+};
+
 function loadDB() {
   if (fs.existsSync(DB_FILE)) {
     try {
@@ -570,6 +581,10 @@ function migrate(d) {
   d.messages = d.messages || [];
   d.groups = d.groups || [];
   d.sessions = d.sessions || {};
+  // 用户反馈（2.48）：普通厨友提，管理员在审核中心里处理
+  d.feedback = d.feedback || [];
+  // 称号（2.48）：只能由管理员颁发，一人可有多条，展示最新那条
+  d.titles = d.titles || [];
   d.seq = d.seq || 1;
   for (const g of d.groups) {
     if (!Array.isArray(g.memberIds)) g.memberIds = [];
@@ -609,6 +624,11 @@ function migrate(d) {
     // 收藏：谁把这条收进了自己的收藏夹（只有本人能看到「我的收藏」列表）
     if (!Array.isArray(p.favs)) p.favs = [];
     if (!Array.isArray(p.images)) p.images = [];
+    /* 帖子级可见范围（2.48，跟抖音的作品权限一个意思）：
+       public 公开 / exclude 谁不可见（黑名单）/ include 只谁可见（白名单）/ private 私密。
+       老数据没有这个字段，一律按公开处理 —— 升级不能把已发的内容藏起来。 */
+    if (!POST_VIS.includes(p.visibility)) p.visibility = 'public';
+    if (!Array.isArray(p.visUsers)) p.visUsers = [];
     // 「评优」：审核员/管理员把别人的佳作挂进右栏「优秀饭帖」
     if (typeof p.featured !== 'boolean') p.featured = false;
     if (typeof p.featuredAt !== 'number') p.featuredAt = 0;
@@ -1016,12 +1036,25 @@ function currentUser(req) {
   return u;
 }
 
+/** 称号：只能由管理员颁发（2.48）。一人可以有多条历史，界面只展示最新一条。 */
+function titleOf(uid) {
+  const list = (db.titles || []).filter((t) => t.userId === uid);
+  if (!list.length) return '';
+  return list[list.length - 1].name || '';
+}
+function titlesOf(uid) {
+  return (db.titles || []).filter((t) => t.userId === uid)
+    .sort((a, b) => b.at - a.at)
+    .map((t) => ({ id: t.id, name: t.name, note: t.note || '', at: t.at, by: t.by || 0 }));
+}
+
 function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, username: u.username, nickname: u.nickname,
     role: u.role, bio: u.bio, avatar: u.avatar, cover: u.cover || '', createdAt: u.createdAt,
     frame: u.frame || '',
+    title: titleOf(u.id),
     private: !!u.private,
     followerCount: db.users.filter((x) => (x.follows || []).includes(u.id)).length,
     followingCount: (u.follows || []).length
@@ -1052,12 +1085,26 @@ function canSeeUserPosts(viewer, owner) {
 /** 列表里逐条判断；umap 是可选的 id→用户索引，避免每条都 find 一遍 */
 function canSeePost(viewer, p, umap) {
   const owner = umap ? umap.get(p.authorId) : db.users.find((u) => u.id === p.authorId);
-  return canSeeUserPosts(viewer, owner);
+  if (!canSeeUserPosts(viewer, owner)) return false;
+  /* 帖子自己的可见范围。作者和审核员永远能看自己那条 ——
+     否则「只谁可见」会把作者也挡在外面，改都改不了。 */
+  const vis = p.visibility || 'public';
+  if (vis === 'public') return true;
+  if (!viewer) return false;
+  if (viewer.id === p.authorId || rankOf(viewer) >= 1) return true;
+  const list = p.visUsers || [];
+  if (vis === 'private') return false;
+  if (vis === 'exclude') return !list.includes(viewer.id);
+  if (vis === 'include') return list.includes(viewer.id);
+  return true;
 }
 
 function briefUser(u) {
-  if (!u) return { id: 0, username: '', nickname: '已注销', role: 'user', avatar: '', frame: '' };
-  return { id: u.id, username: u.username, nickname: u.nickname, role: u.role, avatar: u.avatar, frame: u.frame || '' };
+  if (!u) return { id: 0, username: '', nickname: '已注销', role: 'user', avatar: '', frame: '', title: '' };
+  return {
+    id: u.id, username: u.username, nickname: u.nickname, role: u.role,
+    avatar: u.avatar, frame: u.frame || '', title: titleOf(u.id)
+  };
 }
 
 /** 两人之间的关系标签：互相关注 / 已关注 / 关注了你 / '' —— 聊天窗口顶部展示用 */
@@ -1242,6 +1289,13 @@ function serializePost(p, me, opts) {
     // 优秀饭帖：所有人可见的「优秀」徽标靠它
     featured: !!p.featured,
     featuredAt: p.featuredAt || 0,
+    /* 可见范围：标签所有人都看得到（「仅自己可见」这种要让作者自己心里有数）；
+       名单只回给作者和审核员 —— 把「谁被我屏蔽了」发给别人等于泄露。 */
+    visibility: p.visibility || 'public',
+    visCount: (p.visUsers || []).length,
+    visUsers: (me && (me.id === p.authorId || rankOf(me) >= 1))
+      ? (p.visUsers || []).map((id) => briefUser(db.users.find((u) => u.id === id))).filter(Boolean)
+      : [],
     reportCount: opts.withReports ? db.reports.filter((r) => r.targetType === 'post' && r.targetId === p.id && r.status === 'open').length : 0,
     comments: (p.comments || []).map((c) => ({
       id: c.id,
@@ -1256,6 +1310,21 @@ function serializePost(p, me, opts) {
     })),
     canDelete: me ? (me.id === p.authorId || rankOf(me) >= 1) : false
   };
+}
+
+/** 解析前端传来的可见范围。名单只收真实存在、不是自己的账号，最多 200 个；
+    只有黑/白名单两种模式才保存名单（切回公开时把旧名单留着也不会生效，
+    但为了不误伤，切走就清空 —— 否则下次切回名单模式会带上很久以前的人）。 */
+function readVis(b, me) {
+  const vis = POST_VIS.includes(b.visibility) ? b.visibility : 'public';
+  let ids = [];
+  if (vis === 'exclude' || vis === 'include') {
+    const raw = Array.isArray(b.visUsers) ? b.visUsers : [];
+    ids = [...new Set(raw.map((x) => Number(x && typeof x === 'object' ? x.id : x)))].filter((id) =>
+      Number.isInteger(id) && id > 0 && id !== (me ? me.id : -1) && db.users.some((u) => u.id === id));
+    ids = ids.slice(0, 200);
+  }
+  return { vis: vis, ids: ids };
 }
 
 /** 私信里「转发帖子」的卡片摘要：原帖被删了返回 null，前端据此显示「内容已不存在」 */
@@ -1334,7 +1403,12 @@ const NOTE_TEXT = {
   report: '你举报的内容已被处理',
   apply: '提交了审核员申请',
   applyResult: '你的审核员申请有结果了',
-  moderation: '有需要审核员处理的内容'
+  moderation: '有需要审核员处理的内容',
+  // 2.48：用户反馈（发给管理员）与管理员回复（发给反馈的人）
+  feedback: '提交了一条问题反馈',
+  feedbackReply: '你反馈的问题有回复了',
+  // 2.48：称号由管理员颁发
+  title: '获得了一个新称号'
 };
 
 function pushNote(userId, type, actorId, extra) {
@@ -3748,6 +3822,9 @@ async function handleApi(req, res, pathname, query) {
       rejected: db.posts.filter((p) => p.status === 'rejected').length,
       openReports: me && rankOf(me) >= 1
         ? db.reports.filter((r) => r.status === 'open').length : 0,
+      // 没处理的反馈数：只给管理员（审核员点了也进不去，别给个假入口）
+      openFeedback: me && me.role === 'admin'
+        ? db.feedback.filter((f) => f.status === 'open').length : 0,
       unreadNotes: me ? db.notifications.filter((n) => n.userId === me.id && !n.read).length : 0,
       unreadMessages: me ? unreadDmTotal(me) : 0
     });
@@ -4117,6 +4194,7 @@ async function handleApi(req, res, pathname, query) {
 
     if (!content && !images.length) return json(res, 400, { error: '写点什么再发吧' });
     if (content.length > 2000) return json(res, 400, { error: '正文最多 2000 字' });
+    const vis = readVis(b, me);
 
     const post = {
       id: db.seq++,
@@ -4125,6 +4203,9 @@ async function handleApi(req, res, pathname, query) {
       images,
       // 用过「AI 帮我写」就带一个标记，卡片上显示「AI 辅助」，不藏着
       aiAssisted: b.aiAssisted === true,
+      // 可见范围（2.48）：发布时就定下来，之后还能在详情页改
+      visibility: vis.vis,
+      visUsers: vis.ids,
       status: rankOf(me) >= 1 ? 'approved' : 'pending',  // 审核员发布免审
       rejectReason: '',
       createdAt: nowMs(),
@@ -4139,6 +4220,22 @@ async function handleApi(req, res, pathname, query) {
       }
     }
     notifyMentions(content, me, post.id, '在一条内容里');
+    saveDB();
+    return json(res, 200, { post: serializePost(post, me) });
+  }
+
+  /* 改可见范围：只有作者能改。审核员能「看」但不能替别人公开/隐藏 ——
+     这是作者对自己作品的决定权，不是管理权限。 */
+  const visMatch = /^\/api\/posts\/(\d+)\/visibility$/.exec(pathname);
+  if (visMatch && method === 'POST') {
+    if (!me) return json(res, 401, { error: '请先登录' });
+    const post = db.posts.find((x) => x.id === Number(visMatch[1]));
+    if (!post) return json(res, 404, { error: '帖子不存在' });
+    if (post.authorId !== me.id) return json(res, 403, { error: '只能改自己发的作品' });
+    const b = await readBody(req);
+    const v = readVis(b, me);
+    post.visibility = v.vis;
+    post.visUsers = v.ids;
     saveDB();
     return json(res, 200, { post: serializePost(post, me) });
   }
@@ -4449,6 +4546,120 @@ async function handleApi(req, res, pathname, query) {
     return json(res, 200, { ok: true });
   }
 
+  /* ============ 问题反馈（2.48） ============
+     普通厨友提，管理员在「审核中心 → 反馈」里处理。
+     为什么不用私信：私信是人和人聊，反馈是工单，要能标记「处理完了」，
+     否则管理员过两天就分不清哪条回过、哪条还没看。 */
+  const FB_TYPES = ['bug', 'idea', 'content', 'account', 'other'];
+  const FB_TYPE_TEXT = { bug: '用不了/报错', idea: '功能建议', content: '内容问题', account: '账号问题', other: '其他' };
+
+  if (pathname === '/api/feedback' && method === 'POST') {
+    if (!me) return json(res, 401, { error: '请先登录再反馈' });
+    if (!rateLimit('fb:' + me.id, 5, 60 * 60000)) {
+      return json(res, 429, { error: '反馈提交得太频繁了，一小时后再试' });
+    }
+    const b = await readBody(req);
+    const type = FB_TYPES.includes(b.type) ? b.type : 'other';
+    const text = clean(b.text, 1000);
+    if (text.length < 5) return json(res, 400, { error: '再多写两句，我们才好定位问题' });
+    const item = {
+      id: db.seq++,
+      userId: me.id,
+      type: type,
+      text: text,
+      // 从哪一页提的：修 bug 时这一行比正文还值钱（「做饭模式点第 3 步白屏」）
+      page: clean(b.page, 120),
+      status: 'open',
+      createdAt: nowMs(),
+      handledBy: 0, handledAt: 0, reply: ''
+    };
+    db.feedback.unshift(item);
+    if (db.feedback.length > 500) db.feedback.length = 500;
+    for (const a of db.users) {
+      if (a.role === 'admin' && !a.banned && a.id !== me.id) {
+        pushNote(a.id, 'feedback', me.id, { text: FB_TYPE_TEXT[type] + '：' + text.slice(0, 40) });
+      }
+    }
+    saveDB();
+    return json(res, 200, { ok: true, id: item.id });
+  }
+
+  if (pathname === '/api/admin/feedback' && method === 'GET') {
+    if (!me) return json(res, 401, { error: '请先登录' });
+    if (me.role !== 'admin') return json(res, 403, { error: '只有管理员可以查看反馈' });
+    const st = query.searchParams.get('status') || 'open';
+    let list = db.feedback.slice();
+    if (st !== 'all') list = list.filter((x) => x.status === st);
+    return json(res, 200, {
+      items: list.slice(0, 200).map((x) => ({
+        id: x.id, type: x.type, typeText: FB_TYPE_TEXT[x.type] || '其他',
+        text: x.text, page: x.page || '', status: x.status,
+        createdAt: x.createdAt, handledAt: x.handledAt || 0, reply: x.reply || '',
+        user: briefUser(db.users.find((u) => u.id === x.userId)),
+        by: x.handledBy ? briefUser(db.users.find((u) => u.id === x.handledBy)) : null
+      })),
+      openCount: db.feedback.filter((x) => x.status === 'open').length
+    });
+  }
+
+  const fbMatch = /^\/api\/admin\/feedback\/(\d+)$/.exec(pathname);
+  if (fbMatch && method === 'POST') {
+    if (!me) return json(res, 401, { error: '请先登录' });
+    if (me.role !== 'admin') return json(res, 403, { error: '只有管理员可以处理反馈' });
+    const it = db.feedback.find((x) => x.id === Number(fbMatch[1]));
+    if (!it) return json(res, 404, { error: '这条反馈不存在' });
+    const b = await readBody(req);
+    const done = b.status !== 'open';
+    it.status = done ? 'done' : 'open';
+    it.reply = clean(b.reply, 300);
+    it.handledBy = done ? me.id : 0;
+    it.handledAt = done ? nowMs() : 0;
+    if (done && it.userId) {
+      // 回给提反馈的人：正文就是管理员写的那句，通知里直接看得到，不用再点进去
+      pushNote(it.userId, 'feedbackReply', me.id, { text: it.reply || '你反馈的问题已经处理了' });
+    }
+    saveDB();
+    return json(res, 200, { ok: true });
+  }
+
+  /* ============ 称号（2.48）：只能管理员颁发 ============
+     跟「优秀饭帖」不一样：评优是给内容，称号是给人的（「10 月优质创作者」）。
+     一条称号 = 一个名字 + 一句说明 + 谁发的 + 什么时候发的，
+     这样半年后作者自己也知道这称号怎么来的，管理员也能解释清楚。 */
+  if (pathname === '/api/admin/titles' && method === 'POST') {
+    if (!me) return json(res, 401, { error: '请先登录' });
+    if (me.role !== 'admin') return json(res, 403, { error: '只有管理员可以颁发称号' });
+    const b = await readBody(req);
+    const u = db.users.find((x) => x.id === Number(b.userId));
+    if (!u) return json(res, 404, { error: '用户不存在' });
+    const name = clean(b.name, 14).replace(/[\r\n]/g, ' ').trim();
+    if (name.length < 2) return json(res, 400, { error: '称号至少 2 个字' });
+    const mine = db.titles.filter((t) => t.userId === u.id);
+    if (mine.length >= 8) return json(res, 400, { error: '一个人最多挂 8 个称号，先撤掉旧的' });
+    if (mine.some((t) => t.name === name)) return json(res, 400, { error: '这个称号已经发过了' });
+    const t = {
+      id: db.seq++, userId: u.id, name: name,
+      note: clean(b.note, 80), by: me.id, at: nowMs()
+    };
+    db.titles.push(t);
+    pushNote(u.id, 'title', me.id, { text: '「' + name + '」' });
+    saveDB();
+    return json(res, 200, { ok: true, title: t, titles: titlesOf(u.id) });
+  }
+
+  const titleMatch = /^\/api\/admin\/titles\/(\d+)$/.exec(pathname);
+  if (titleMatch && method === 'DELETE') {
+    if (!me) return json(res, 401, { error: '请先登录' });
+    if (me.role !== 'admin') return json(res, 403, { error: '只有管理员可以撤销称号' });
+    const id = Number(titleMatch[1]);
+    const i = db.titles.findIndex((t) => t.id === id);
+    if (i < 0) return json(res, 404, { error: '称号不存在' });
+    const uid = db.titles[i].userId;
+    db.titles.splice(i, 1);
+    saveDB();
+    return json(res, 200, { ok: true, titles: titlesOf(uid) });
+  }
+
   /* ============ 用户管理（管理员） ============ */
 
   if (pathname === '/api/admin/users' && method === 'GET') {
@@ -4464,6 +4675,7 @@ async function handleApi(req, res, pathname, query) {
       users: list.slice(0, 200).map((u) => ({
         ...publicUser(u),
         banned: !!u.banned,
+        titles: titlesOf(u.id),
         postCount: db.posts.filter((p) => p.authorId === u.id).length
       }))
     });
@@ -4700,7 +4912,9 @@ async function handleApi(req, res, pathname, query) {
     // 不能只靠前端遮罩，那样接口照样能把内容拉走
     const privateLocked = !!u.private && !isSelf && !canSeeUserPosts(me, u);
     const list = privateLocked ? [] : db.posts.filter((p) => p.authorId === u.id &&
-      (p.status === 'approved' || isSelf || (me && rankOf(me) >= 1)));
+      (p.status === 'approved' || isSelf || (me && rankOf(me) >= 1)) &&
+      // 帖子级可见范围（仅自己可见 / 名单）在这一层也要拦，主页列表是另一条入口
+      canSeePost(me, p));
     list.sort((a, b) => b.createdAt - a.createdAt);
     const likes = db.posts
       .filter((p) => p.authorId === u.id && p.status === 'approved')
@@ -4732,6 +4946,8 @@ async function handleApi(req, res, pathname, query) {
       : null;
     return json(res, 200, {
       user: publicUser(u),
+      // 称号历史：主页只显示最新一条，点开可以看「什么时候、因为什么」拿到的
+      titles: titlesOf(u.id),
       posts: list.slice(0, 30).map((p) => serializePost(p, me)),
       stats: {
         posts: db.posts.filter((p) => p.authorId === u.id && p.status === 'approved').length,
@@ -5724,6 +5940,10 @@ function noteAccess(req, pathname, code, ms) {
     if (w.s1 > 20) s += Math.min(40, (w.s1 - 20) * 2);
     if (w.s4 > 15) s += Math.min(50, (w.s4 - 15) * 4);              // 404 = 在猜路径
     if (w.s3 > 15) s += Math.min(50, (w.s3 - 15) * 4);              // 403 = 在探权限
+    /* 429 = 被限流还接着打。这一类以前完全没算分：它不扫路径、不点 404、不试权限，
+       看起来「一切正常」，实际上是在硬刷接口（撞验证码、撞发帖、撞搜索）。
+       门槛放到 30 次：正常人偶尔手快撞一两次，30 次说明是脚本在重试。 */
+    if (w.s2 > 30) s += Math.min(25, Math.round((w.s2 - 30) / 2));
     if (w.scan > 0) s += Math.min(60, w.scan * 30);                 // 一扫 /wp-admin 就基本实锤
     s += w.bot;
     w.score = Math.round(s);
@@ -5866,12 +6086,29 @@ function uaTag(ua) {
   return m ? m[1].toLowerCase() : '自动化工具';
 }
 
+/** 可疑地址的「标签」：控制台上比分数更好读。
+ *  看到「82 分」不知道要干嘛，看到「扫目录 + 猜路径」就知道这是在试站点。 */
+function threatTags(w) {
+  const t = [];
+  if (w.scan > 0) t.push('扫目录');
+  if (w.s4 > 15) t.push('猜路径');
+  if (w.s3 > 15) t.push('探权限');
+  if (w.s1 > 20) t.push('反复试接口');
+  if (w.ids.size > 8) t.push('翻主页');
+  if (w.qs.size > 8) t.push('扫搜索词');
+  if (w.s2 > 20) t.push('被限流');
+  if (w.bot) t.push('脚本');
+  if (!t.length && w.n > 120) t.push('请求太密');
+  return t.slice(0, 4);
+}
+
 /** 服务端自己也可以主动「看一眼」某个 IP —— 控制台详情页用 */
 function watchSummary(w) {
   return {
     ip: w.ip, net: netOf(w.ip), score: w.score, peak: w.peak, n: w.n, ids: w.ids.size, qs: w.qs.size,
     pids: w.pids.size, s401: w.s1, s429: w.s2, s403: w.s3, s404: w.s4, s5: w.s5,
     scan: w.scan, bot: w.bot > 0, ua: w.ua, last: w.last, first: w.first,
+    tags: threatTags(w), why: scoreWhy(w),
     lastPath: w.lastPath, paths: w.paths.slice(-12)
   };
 }
@@ -5930,6 +6167,151 @@ function validIpPattern(s) {
   return /^[0-9a-f:.]{3,45}$/i.test(v) && v.includes(':');
 }
 
+/* ============ 内容分析（监控中心用，2.48） ============
+   控制台原来只有「谁在打我们」，没有「站里发生了什么」。
+   管理员每天真正要看的是后者：今天有没有人发帖、评论在聊什么、哪条被举报。
+   全部用规则算（不调模型）：这些数字要能一眼核对，模型算错了没人看得出来。 */
+let contentCache = { at: 0, d: null };
+const KW_STOP = ('这个 那个 我们 你们 他们 就是 可以 没有 什么 感觉 还是 然后 真的 已经 比较 但是 '
+  + '因为 所以 不是 这样 时候 出来 一下 不能 觉得 知道 有点 自己 现在 第一 第二 还有 而且 其实 '
+  + '如果 就是 一个 两个 这么 那么 不过 只是 一直 应该 需要 东西 好吃 非常 特别 超级 哈哈哈 哈哈')
+  .split(' ').filter(Boolean);
+
+function cjkWords(text) {
+  const out = [];
+  const s = String(text || '');
+  // 只取连续中文段，按二元组切：中文没有空格，bigram 是零依赖里最实用的粗分词
+  const runs = s.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+  for (const r of runs) {
+    for (let i = 0; i + 2 <= r.length; i++) out.push(r.slice(i, i + 2));
+  }
+  return out;
+}
+
+function contentStats() {
+  const now = nowMs();
+  if (contentCache.d && now - contentCache.at < 15000) return contentCache.d;
+  const today = dayKey(now);
+  const week = [];
+  const wkMap = new Map();
+  for (let i = 6; i >= 0; i--) {
+    const k = dayKey(now - i * 86400000);
+    const row = { d: k, posts: 0, comments: 0, views: 0, likes: 0 };
+    week.push(row);
+    wkMap.set(k, row);
+  }
+  let postTotal = 0, approved = 0, pending = 0, rejected = 0, postsToday = 0, commentsTotal = 0;
+  const kw = new Map();
+  const todayTexts = [];
+  for (const p of db.posts) {
+    postTotal++;
+    if (p.status === 'approved') approved++;
+    else if (p.status === 'pending') pending++;
+    else if (p.status === 'rejected') rejected++;
+    const pd = dayKey(p.createdAt);
+    if (pd === today) {
+      postsToday++;
+      if (p.content) todayTexts.push(p.content);
+    }
+    if (wkMap.has(pd)) wkMap.get(pd).posts++;
+    const days = p.days || {};
+    for (const k of Object.keys(days)) {
+      if (wkMap.has(k)) {
+        wkMap.get(k).views += days[k].v || 0;
+        wkMap.get(k).likes += days[k].l || 0;
+      }
+    }
+    for (const c of (p.comments || [])) {
+      commentsTotal++;
+      const cd = dayKey(c.createdAt || p.createdAt);
+      if (cd === today) {
+        if (c.content) todayTexts.push(c.content);
+      }
+      if (wkMap.has(cd)) wkMap.get(cd).comments++;
+    }
+  }
+  for (const t of todayTexts) {
+    for (const w of cjkWords(t)) {
+      if (KW_STOP.includes(w)) continue;
+      kw.set(w, (kw.get(w) || 0) + 1);
+    }
+  }
+  const keywords = [...kw.entries()].filter((x) => x[1] >= 2)
+    .sort((a, b) => b[1] - a[1]).slice(0, 8).map(([w, n]) => ({ w: w, n: n }));
+
+  // 近 7 天最热的 5 条：赞 2 分、评论 3 分（评论比点赞费劲），浏览量只作参考
+  const weekAgo = now - 7 * 86400000;
+  const hot = db.posts.filter((p) => p.status === 'approved' && p.createdAt >= weekAgo)
+    .map((p) => ({
+      id: p.id,
+      excerpt: String(p.content || '').replace(/\s+/g, ' ').trim().slice(0, 40) || '（图片帖）',
+      author: (db.users.find((u) => u.id === p.authorId) || {}).nickname || '已注销',
+      likes: (p.likes || []).length,
+      comments: (p.comments || []).length,
+      views: p.views || 0,
+      featured: !!p.featured
+    }))
+    .sort((a, b) => (b.likes * 2 + b.comments * 3) - (a.likes * 2 + a.comments * 3) || b.views - a.views)
+    .slice(0, 5);
+
+  // 举报原因分布（近 7 天）：判断「是内容烂还是有人恶意举报」靠它
+  const reasonMap = new Map();
+  let reports7 = 0;
+  for (const r of db.reports) {
+    if ((r.createdAt || 0) < weekAgo) continue;
+    reports7++;
+    const k = r.reason || '其他';
+    reasonMap.set(k, (reasonMap.get(k) || 0) + 1);
+  }
+  const reasons = [...reasonMap.entries()].sort((a, b) => b[1] - a[1])
+    .slice(0, 5).map(([r, n]) => ({ r: r, n: n }));
+
+  // 最老的待审内容等了多久：积压比数量更能说明「审核员是不是不在」
+  let oldestPending = 0;
+  for (const p of db.posts) {
+    if (p.status !== 'pending') continue;
+    const h = now - p.createdAt;
+    if (h > oldestPending) oldestPending = h;
+  }
+
+  const y = week[5] || { posts: 0, comments: 0 };   // 昨天
+  const summary = [];
+  const dPosts = postsToday - (y.posts || 0);
+  summary.push('今天新增 ' + postsToday + ' 条饭帖、' +
+    (week[6] ? week[6].comments : 0) + ' 条评论' +
+    (dPosts === 0 ? '，和昨天一样' : (dPosts > 0 ? '，比昨天多 ' + dPosts + ' 帖' : '，比昨天少 ' + (-dPosts) + ' 帖')) + '。');
+  if (pending) {
+    summary.push('还有 ' + pending + ' 条在等审核' +
+      (oldestPending > 3600000 ? '，最久的已经等了 ' + Math.round(oldestPending / 3600000) + ' 小时。' : '。'));
+  } else {
+    summary.push('没有待审内容，审核队列是空的。');
+  }
+  if (reasons.length) {
+    summary.push('近七天被举报 ' + reports7 + ' 次，最多的是「' + reasons[0].r + '」（' + reasons[0].n + ' 次）。');
+  } else {
+    summary.push('近七天没有新的举报。');
+  }
+  if (keywords.length) {
+    summary.push('今天大家聊得最多的词是「' + keywords.slice(0, 3).map((x) => x.w).join('」「') + '」。');
+  }
+
+  const d = {
+    today: today,
+    posts: { total: postTotal, approved: approved, pending: pending, rejected: rejected, today: postsToday },
+    comments: { total: commentsTotal, today: week[6] ? week[6].comments : 0 },
+    engagementToday: week[6] ? { views: week[6].views, likes: week[6].likes } : { views: 0, likes: 0 },
+    week: week,
+    hot: hot,
+    keywords: keywords,
+    reasons: reasons,
+    reports7: reports7,
+    oldestPending: oldestPending,
+    summary: summary
+  };
+  contentCache = { at: now, d: d };
+  return d;
+}
+
 async function handleOps(req, res, pathname, query, me) {
   me = me || currentUser(req);
   if (!me || rankOf(me) < 2) {
@@ -5977,6 +6359,38 @@ async function handleOps(req, res, pathname, query, me) {
       ips: ipWatch.size,
       blocked: active.length,
       seq: accessSeq,
+      /* 今日简报：控制台第一屏原来只有四个数字胶囊，管理员得自己拼出结论。
+         这里直接给「一句话 + 三条要点」，数字放后面当证据。 */
+      content: (function () {
+        const c = contentStats();
+        return {
+          postsToday: c.posts.today, commentsToday: c.comments.today,
+          pending: c.posts.pending, oldestPending: c.oldestPending, reports7: c.reports7
+        };
+      })(),
+      brief: (function () {
+        const cs = contentStats();
+        const pts = [];
+        pts.push('最近一分钟 ' + rate + ' 次访问' +
+          (overloaded ? '，服务器已经排队了' : (lagP95 > 300 ? '，服务器有点吃力' : '，一切正常')));
+        pts.push(active.length
+          ? '正挡着 ' + active.length + ' 个地址（越界行为自动挡 15 分钟起）'
+          : '现在没有挡任何人');
+        if (threats.length) {
+          pts.push('有 ' + threats.length + ' 个地址看着可疑，最像的是 ' +
+            threats[0].ip + '：' + (threats[0].tags.join('、') || threats[0].why));
+        } else {
+          pts.push('没有被怀疑的地址');
+        }
+        if (cs.posts.pending) pts.push('内容侧：' + cs.posts.pending + ' 条在等审核');
+        return {
+          level: (overloaded || active.length > 20 || (threats[0] && threats[0].score >= 60)) ? 'warn' : 'ok',
+          head: (overloaded || active.length > 20 || (threats[0] && threats[0].score >= 60))
+            ? '有点情况，先看「可疑的人」那一栏'
+            : '今天一切正常，没有需要你动手的事',
+          points: pts.slice(0, 4)
+        };
+      })(),
       stats: {
         users: db.users.length,
         posts: db.posts.length,
@@ -5993,6 +6407,10 @@ async function handleOps(req, res, pathname, query, me) {
         hits: b.hits || 0, at: b.at
       })).sort((a, b) => b.hits - a.hits || b.until - a.until).slice(0, 60)
     });
+  }
+
+  if (pathname === '/api/ops/content' && method === 'GET') {
+    return json(res, 200, contentStats());
   }
 
   if (pathname === '/api/ops/feed' && method === 'GET') {

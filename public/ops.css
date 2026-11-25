@@ -623,3 +623,70 @@ body {
   font-size: 11px;
   color: var(--ink-3);
 }
+
+/* =========================================================
+   2.48：今日简报 + 站里的内容
+   ========================================================= */
+
+.op-brief {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-left: 4px solid var(--ok);
+}
+.op-brief.warn { border-left-color: var(--warn); }
+.op-brief b { display: block; font-size: 15px; line-height: 1.4; }
+.op-brief.warn b { color: var(--warn); }
+.op-brief ul { margin: 6px 0 0; padding: 0; list-style: none; }
+.op-brief li {
+  position: relative; padding-left: 14px;
+  font-size: 12.5px; line-height: 1.85; color: var(--ink-2);
+}
+.op-brief li::before {
+  content: ''; position: absolute; left: 3px; top: 9px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--ink-4);
+}
+
+.op-c { padding: 12px 14px 14px; }
+.op-c-sum p { margin: 0 0 4px; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+.op-c-nums {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px; margin: 12px 0;
+}
+.op-c-num {
+  padding: 9px 10px; border-radius: var(--r-sm);
+  background: var(--fill-2); border: 1px solid var(--line);
+}
+.op-c-num b { display: block; font-size: 20px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.op-c-num span { font-size: 11.5px; color: var(--ink-3); }
+.op-c-num.warn b { color: var(--warn); }
+.op-c-cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; }
+.op-c-col h3 {
+  margin: 0 0 6px; font-size: 12px; font-weight: 700;
+  color: var(--ink-3); letter-spacing: .4px;
+}
+.op-c-hot { margin: 0; padding-left: 18px; }
+.op-c-hot li { margin-bottom: 8px; font-size: 12.5px; line-height: 1.5; color: var(--ink); }
+.op-c-hot a {
+  color: var(--ink); text-decoration: none; font-weight: 600;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.op-c-hot a:hover { color: var(--brand); }
+.op-c-hot span { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-3); }
+.op-kws { display: flex; flex-wrap: wrap; gap: 6px; }
+.op-kw {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 8px; border-radius: var(--pill);
+  background: var(--fill-3); color: var(--ink-2); font-size: 12px;
+}
+.op-kw i { font-style: normal; font-size: 10.5px; color: var(--ink-4); }
+.op-kw.warn { background: rgba(220, 120, 40, .12); color: var(--warn); }
+
+@media (max-width: 1000px) {
+  .op-c-cols { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}
+@media (max-width: 720px) {
+  .op-c-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

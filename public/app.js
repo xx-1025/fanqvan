@@ -274,6 +274,10 @@ const ICON_PATHS = {
   'star-fill': '<path d="M12 4.1l2.6 5.2 5.7.8-4.1 4 1 5.7-5.2-2.7-5.2 2.7 1-5.7-4.1-4 5.7-.8L12 4.1Z" fill="currentColor"/>',
   trash: '<path d="M4.8 6.9h14.4"/><path d="M9.5 6.9V5.3A1.5 1.5 0 0 1 11 3.8h2a1.5 1.5 0 0 1 1.5 1.5v1.6"/><path d="M6.7 6.9l.9 12.1a1.7 1.7 0 0 0 1.7 1.6h5.4a1.7 1.7 0 0 0 1.7-1.6l.9-12.1"/><path d="M10.4 11v5.6M13.6 11v5.6"/>',
   flag: '<path d="M6.1 20.7V4"/><path d="M6.1 5h10.7l-2 3.3 2 3.3H6.1"/>',
+  /* 举报：感叹号（抖音举报键那一路视觉）。
+     原来用一面小旗子，跟「收藏/评优」这些奖章类图标撞在一起，
+     用户认不出这是「这里有问题」。圆圈里的感叹号没有歧义。 */
+  alert: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.5v5.1"/><circle cx="12" cy="16.2" r="1.05" fill="currentColor" stroke="none"/>',
   sofa: '<path d="M4 12.4V9.2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3.2"/><path d="M2.9 12.4h18.2v4.4a2 2 0 0 1-2 2H4.9a2 2 0 0 1-2-2v-4.4Z"/><path d="M7.6 12.4v6.4M16.4 12.4v6.4"/>',
   wave: '<path d="M8.4 11.6V6.9a1.5 1.5 0 0 1 3 0"/><path d="M11.4 10.4V4.8a1.5 1.5 0 0 1 3 0v5.6"/><path d="M14.4 10.9V6.4a1.5 1.5 0 0 1 3 0v7.3c0 3.7-2.8 6.8-6.6 6.8-3.5 0-6.3-2.5-6.3-6.2V9.9a1.5 1.5 0 0 1 3 0v1.7"/>',
 
@@ -762,6 +766,10 @@ async function loadReview() {
   } else if (state.reviewMode === 'users') {
     const d = await api('/api/admin/users' + (state.keyword ? '?q=' + encodeURIComponent(state.keyword) : ''));
     state.data.users = d.users;
+  } else if (state.reviewMode === 'feedback') {
+    const d = await api('/api/admin/feedback?status=' + (state.fbTab || 'open'));
+    state.data.feedback = d.items;
+    state.data.fbOpenTotal = d.openCount;
   }
 }
 
@@ -778,14 +786,17 @@ function noteItemHtml(n) {
     feature: '把你的作品选进了「优秀饭帖」',
     activity: '发布了新活动', activity_join: '报名了你的活动',
     follow_request: '申请关注你', follow_accept: '通过了你的关注申请',
-    follow_reject: '拒绝了你的关注申请'
+    follow_reject: '拒绝了你的关注申请',
+    feedback: '提交了问题反馈', feedbackReply: '你反馈的问题有回复了',
+    title: '给你颁发了一个称号'
   }[n.type] || '有新消息';
   const ico = icon({
     like: 'heart-fill', comment: 'chat', follow: 'users', mention: 'at',
     approve: 'check', reject: 'ban', report: 'inbox', apply: 'clipboard',
     applyResult: 'medal', moderation: 'shield', feature: 'medal-fill',
     activity: 'calendar', activity_join: 'calendar',
-    follow_request: 'users', follow_accept: 'check', follow_reject: 'ban'
+    follow_request: 'users', follow_accept: 'check', follow_reject: 'ban',
+    feedback: 'alert', feedbackReply: 'chat', title: 'medal-fill'
   }[n.type] || 'bell');
   // 活动类通知优先跳活动：点「报名了你的活动」却落在个人主页，等于没跳
   const href = n.activityId ? '#/activity/' + n.activityId
@@ -1175,6 +1186,22 @@ function viewComposer() {
 
 /* ---------------------- 帖子卡片 ---------------------- */
 
+/** 可见范围的固定文案：后端有同名表（POST_VIS_TEXT），改一处要同步另一处 */
+function visText(v) {
+  return ({
+    public: '公开',
+    exclude: '部分人不可见',
+    include: '仅指定人可见',
+    private: '仅自己可见'
+  })[v || 'public'] || '公开';
+}
+
+/** 称号：管理员颁发，挂在昵称后面。空白就什么都不输出（不要占位、不要默认称号） */
+function titleChip(t) {
+  if (!t) return '';
+  return '<span class="u-title" title="官方颁发的称号">' + esc(String(t)) + '</span>';
+}
+
 function imgsHtml(images) {
   const n = Math.min(images.length, 9);
   return '<div class="post-imgs n' + n + '">' +
@@ -1187,19 +1214,28 @@ function postCard(p, opts) {
   // 评优入口只给审核员/管理员，且只能评别人的、已通过的作品（后端也会再拦一次）
   const canFeature = isMod() && !!state.me && p.status === 'approved' &&
     p.author && p.author.id !== state.me.id && !p.riskNote;
+  const mine = !!state.me && !!p.author && p.author.id === state.me.id;
+  const vis = p.visibility || 'public';
   return '<article class="post' + (opts.inDetail ? ' post-detail' : '') + '" data-post="' + p.id + '">' +
     avatarHtml(p.author, 44) +
     '<div class="post-body">' +
       '<div class="post-head">' +
         '<a class="post-name" href="#/user/' + p.author.id + '">' + esc(p.author.nickname) + '</a>' +
         roleBadge(p.author) +
+        titleChip(p.author.title) +
         (p.aiAssisted ? '<span class="badge badge-ai">' + icon('spark') + 'AI 辅助</span>' : '') +
         (p.featured ? '<span class="badge badge-feat">' + icon('medal-fill') + '优秀</span>' : '') +
         '<span class="post-meta">' + timeAgo(p.createdAt) + '</span>' +
+        // 可见范围不是公开时，作者自己必须一眼看到，否则会以为「发出去了没人理」
+        (vis !== 'public'
+          ? '<button class="vis-chip" data-action="vis-open" data-id="' + p.id + '"' +
+            (mine ? '' : ' disabled') + ' title="' +
+            (mine ? '改这条的可见范围' : '作者限制过可见范围') + '">' +
+            icon('lock') + visText(vis) + '</button>' : '') +
         ((opts.showStatus || p.status !== 'approved') ? statusBadge(p.status) : '') +
-        (p.reportCount ? '<span class="badge badge-pending">' + icon('flag') + p.reportCount + '</span>' : '') +
+        (p.reportCount ? '<span class="badge badge-pending">' + icon('alert') + p.reportCount + '</span>' : '') +
         (state.me && (!p.author || p.author.id !== state.me.id)
-          ? '<button class="act-more" data-action="report" data-id="' + p.id + '" title="举报">' + icon('flag') + '</button>' : '') +
+          ? '<button class="act-more" data-action="report" data-id="' + p.id + '" title="举报这条内容" aria-label="举报">' + icon('alert') + '</button>' : '') +
       '</div>' +
       (p.riskNote
         ? '<div class="risk-note">' + icon('warn') + '<span>' + esc(p.riskNote) + '</span></div>' : '') +
@@ -1213,25 +1249,37 @@ function postCard(p, opts) {
           '<span class="ico">' + icon('eye') + '</span>' +
           '<b data-views="' + p.id + '">' + fmtCnt(p.views || 0) + '</b>' +
         '</span>' +
+        /* 手机上五个按钮挤成一行是排不开的（实测 320 屏只剩 277px）。
+           所以文字都包进 .act-t，窄屏只留图标 + 数字（抖音/微博都是这个做法），
+           数字本来就在，不需要再写「点赞」两个字。 */
         '<button class="act" data-action="share" data-id="' + p.id + '" title="转发给厨友">' +
-          '<span class="ico">' + icon('repost') + '</span>转发</button>' +
-        '<button class="act" data-action="comment-toggle" data-id="' + p.id + '">' +
-          '<span class="ico">' + icon('comment') + '</span>' + (p.commentCount || '评论') + '</button>' +
+          '<span class="ico">' + icon('repost') + '</span>' +
+          '<span class="act-t">转发</span></button>' +
+        '<button class="act" data-action="comment-toggle" data-id="' + p.id + '" title="看评论">' +
+          '<span class="ico">' + icon('comment') + '</span>' +
+          (p.commentCount
+            ? '<span class="act-n">' + fmtCnt(p.commentCount) + '</span>'
+            : '<span class="act-t">评论</span>') + '</button>' +
         '<button class="act ' + (p.faved ? 'on' : '') + '" data-action="fav" data-id="' + p.id + '"' +
           ' title="' + (p.faved ? '取消收藏' : '收藏这条饭帖，之后在自己主页的「收藏」里找') + '">' +
           '<span class="ico">' + icon(p.faved ? 'star-fill' : 'star') + '</span>' +
-          (p.favCount || '收藏') + '</button>' +
-        '<button class="act ' + (p.liked ? 'on on-like' : '') + '" data-action="like" data-id="' + p.id + '">' +
-          '<span class="ico">' + icon(p.liked ? 'heart-fill' : 'heart') + '</span>' + (p.likeCount || '点赞') + '</button>' +
+          (p.favCount
+            ? '<span class="act-n">' + fmtCnt(p.favCount) + '</span>'
+            : '<span class="act-t">收藏</span>') + '</button>' +
+        '<button class="act ' + (p.liked ? 'on on-like' : '') + '" data-action="like" data-id="' + p.id + '" title="点赞">' +
+          '<span class="ico">' + icon(p.liked ? 'heart-fill' : 'heart') + '</span>' +
+          (p.likeCount
+            ? '<span class="act-n">' + fmtCnt(p.likeCount) + '</span>'
+            : '<span class="act-t">点赞</span>') + '</button>' +
         (canFeature
           ? '<button class="act ' + (p.featured ? 'on' : '') + '" data-action="feature" data-id="' + p.id + '"' +
             ' title="' + (p.featured ? '从「优秀饭帖」里撤下来' : '把这条作品挂进「优秀饭帖」') + '">' +
             '<span class="ico">' + icon(p.featured ? 'medal-fill' : 'medal') + '</span>' +
-            (p.featured ? '已评优' : '评优') + '</button>'
+            '<span class="act-t">' + (p.featured ? '已评优' : '评优') + '</span></button>'
           : '') +
         (p.canDelete
-          ? '<button class="act danger" data-action="delete" data-id="' + p.id + '" style="margin-left:auto">' +
-            '<span class="ico">' + icon('trash') + '</span>删除</button>' : '') +
+          ? '<button class="act danger" data-action="delete" data-id="' + p.id + '" style="margin-left:auto" title="删除这条">' +
+            '<span class="ico">' + icon('trash') + '</span><span class="act-t">删除</span></button>' : '') +
       '</div>' +
     '</div></article>';
 }
@@ -1675,6 +1723,7 @@ function profileHeadHtml(u, opts) {
           '<div class="profile-name">' +
             // 昵称单独一层 .pn：h2 改 flex 后省略号要挂在文字上，徽标才不会被一起裁掉
             '<h2><span class="pn">' + esc(u.nickname) + '</span>' + roleBadge(u) +
+              titleChip(u.title) +
               (u.private ? '<span class="pv-tag" title="私密账号：只有批准的粉丝能看到作品">' +
                 icon('lock') + '私密</span>' : '') + '</h2>' +
             '<p>@' + esc(u.username) + '</p>' +
@@ -1796,12 +1845,20 @@ function viewUser() {
 function viewPost() {
   const p = state.data.post;
   if (!p) return '<div class="card empty">加载中…</div>';
+  const mine = !!state.me && p.author && p.author.id === state.me.id;
   return '<div class="card page-head" style="padding:14px 20px">' +
       '<button type="button" class="btn-ghost" data-action="back-page" data-fallback="' +
         esc(state.postFrom || '#/') + '">' + icon('back') + '返回</button>' +
       '<div class="sub">帖子详情</div>' +
     '</div>' +
     cookCtaHtml(p) + postCard(p, { showStatus: true, inDetail: true }) +
+    /* 自己的帖子在详情页永远给一个「谁能看到」入口：
+       卡片上的标签只在非公开时出现，公开的帖子就再也找不到改权限的地方了。 */
+    (mine
+      ? '<button type="button" class="vis-line" data-action="vis-open" data-id="' + p.id + '" style="margin-top:10px">' +
+          icon('lock') + '<span>谁能看到这条：<b>' + visText(p.visibility) + '</b></span>' + icon('chev') +
+        '</button>'
+      : '') +
     // 评论区跟着内容一起往下滚（B 站）：一进来就看得见，不用再点开一个面板
     '<section class="card cmt-sec" id="cmt-sec">' + cmtSectionHtml(p) + '</section>';
 }
@@ -3575,10 +3632,13 @@ function viewReview() {
   const stats = state.data.stats || {};
 
   const modes = [['posts', '内容审核'], ['reports', '举报处理']];
-  if (isAdmin()) { modes.push(['apps', '审核员申请'], ['users', '用户管理']); }
+  // 反馈是「用户找管理员」，审核员管不了（要能回复），所以只给管理员
+  if (isAdmin()) { modes.push(['apps', '审核员申请'], ['users', '用户管理'], ['feedback', '问题反馈']); }
+  const fbOpen = stats.openFeedback || 0;
   const modeTabs = '<div class="review-modes">' + modes.map(([k, l]) =>
     '<button class="rm-tab' + (mode === k ? ' on' : '') + '" data-action="review-mode" data-tab="' + k + '">' + l +
     (k === 'reports' && stats.openReports ? '<span class="rm-badge">' + stats.openReports + '</span>' : '') +
+    (k === 'feedback' && fbOpen ? '<span class="rm-badge">' + fbOpen + '</span>' : '') +
     '</button>').join('') + '</div>';
 
   const head = '<div class="card" style="overflow:hidden">' +
@@ -3592,7 +3652,41 @@ function viewReview() {
   if (mode === 'posts') return head + reviewPosts();
   if (mode === 'reports') return head + reviewReports();
   if (mode === 'apps') return head + reviewApps();
+  if (mode === 'feedback') return head + reviewFeedback();
   return head + reviewUsers();
+}
+
+/* 问题反馈列表（管理员）：左边是用户说的话，右边是处理动作。
+   一次只处理一条，回一句就够 —— 反馈不需要工单系统那一套。 */
+function reviewFeedback() {
+  const tab = state.fbTab || 'open';
+  const list = state.data.feedback || [];
+  const tabBtn = (k, l) =>
+    '<button class="' + (tab === k ? 'on' : '') + '" data-action="fb-tab" data-tab="' + k + '">' + l + '</button>';
+  const rows = list.length
+    ? list.map((f) => {
+        const done = f.status === 'done';
+        return '<div class="fb-row' + (done ? ' done' : '') + '">' +
+          '<div class="fb-row-head">' +
+            '<span class="fb-kind">' + esc(f.typeText) + '</span>' +
+            '<a class="fb-user" href="#/user/' + f.user.id + '">' + esc(f.user.nickname) + '</a>' +
+            '<span class="post-meta">' + timeAgo(f.createdAt) + '</span>' +
+            (done ? '<span class="badge badge-approved">' + icon('check') + '已处理</span>' : '') +
+          '</div>' +
+          '<div class="fb-row-body">' + esc(f.text) + '</div>' +
+          (f.page ? '<div class="fb-row-page">' + icon('eye') + '提交位置 ' + esc(f.page) + '</div>' : '') +
+          (done && f.reply ? '<div class="fb-row-reply">' + icon('chat') + '你回的：' + esc(f.reply) + '</div>' : '') +
+          (done
+            ? '<div class="fb-row-act"><button class="btn-sm btn-ghost2" data-action="fb-reopen" data-id="' + f.id + '">重新打开</button></div>'
+            : '<div class="fb-row-act">' +
+                '<input class="fb-reply" data-reply-for="' + f.id + '" maxlength="300" placeholder="回一句（会发给 TA，可不填）">' +
+                '<button class="btn-sm btn-approve" data-action="fb-done" data-id="' + f.id + '">' + icon('check') + '处理完</button>' +
+              '</div>') +
+        '</div>';
+      }).join('')
+    : '<div class="card empty"><img src="/assets/empty.webp" alt=""><div>' +
+      (tab === 'open' ? '没有待处理的反馈，干净。' : '还没有处理过的反馈') + '</div></div>';
+  return '<div class="card review-tabs">' + tabBtn('open', '待处理') + tabBtn('done', '已处理') + '</div>' + rows;
 }
 
 function reviewPosts() {
@@ -3705,11 +3799,22 @@ function reviewUsers() {
   const list = state.data.users || [];
   const rows = list.map((u) => '<div class="u-row">' +
     avatarHtml(u, 38) +
+    // 称号在这张表里下面单独一行（带撤销叉），名字后面不再重复挂一次
     '<div class="u-info"><div class="u-name">' + esc(u.nickname) + roleBadge(u) +
       (u.banned ? '<span class="badge badge-rejected">已封禁</span>' : '') + '</div>' +
-      '<div class="u-sub">@' + esc(u.username) + ' · ' + (u.postCount || 0) + ' 篇 · 加入于 ' + timeAgo(u.createdAt) + '</div></div>' +
+      '<div class="u-sub">@' + esc(u.username) + ' · ' + (u.postCount || 0) + ' 篇 · 加入于 ' + timeAgo(u.createdAt) + '</div>' +
+      ((u.titles || []).length
+        ? '<div class="u-titles">' + u.titles.map((t) =>
+            '<span class="u-title-sm">' + esc(t.name) +
+            '<button data-action="title-del" data-id="' + t.id + '" title="撤销这个称号" aria-label="撤销">×</button>' +
+            '</span>').join('') + '</div>'
+        : '') +
+      '</div>' +
     '<div class="u-act">' +
       (u.id === state.me.id ? '<span class="u-self">你自己</span>' :
+        // 称号的入口放在封禁旁边：都是「对这个人的处置」，管理员不用另找地方
+        '<button class="btn-sm btn-ghost2" data-action="title-open" data-id="' + u.id + '"' +
+          ' data-n="' + esc(u.nickname) + '" title="给 TA 发一个称号">' + icon('medal') + '称号</button>' +
         (u.banned
           ? '<button class="btn-sm btn-ghost2" data-action="user-unban" data-id="' + u.id + '">解封</button>'
           : '<button class="btn-sm btn-reject" data-action="user-ban" data-id="' + u.id + '">封禁</button>') +
@@ -3784,6 +3889,7 @@ const EDIT_ITEMS = {
   cover:    ['主页封面', 'image', '主页最上面那张图'],
   privacy:  ['隐私', 'users', '私密账号与关注申请'],
   password: ['修改密码', 'lock', '换一个登录口令'],
+  feedback: ['问题反馈', 'alert', '用不了 / 有建议，跟管理员说'],
   reviewer: ['成为审核员', 'medal', '帮忙把关社区内容']
 };
 
@@ -3814,7 +3920,7 @@ function viewEditMenu() {
     '<div class="card edit-card edit-menu">' +
       '<h3>' + icon('user') + '资料</h3>' +
       editMenuRow('avatar', '', avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar }, 38)) +
-      editMenuRow('frame', esc(frameLabel(state.editFrame))) +
+      editMenuRow('frame', state.editFrame ? '已选' : '不戴') +
       editMenuRow('profile', esc(me.nickname)) +
       editMenuRow('cover', coverSrc() ? '已设置' : '默认插画') +
     '</div>' +
@@ -3822,6 +3928,7 @@ function viewEditMenu() {
       '<h3>' + icon('lock') + '账号</h3>' +
       editMenuRow('privacy', me.private ? '私密' : '公开') +
       editMenuRow('password', '') +
+      editMenuRow('feedback', '') +
       (rev ? editMenuRow('reviewer', rev) : '') +
     '</div>' +
     (isAdmin()
@@ -3858,18 +3965,19 @@ function avatarCardHtml() {
   '</div>';
 }
 
-/* 子页只有「挑框」一件事，不再折叠：进来就是网格 */
+/* 子页只有「挑框」一件事，不再折叠：进来就是网格。
+   用户 2026-11-25：「头像框取名暂不显示名字」——名字还没定稿，先只给图。
+   网格里一堆「花环/星星/节日」反而要读字才能选，看图更快。 */
 function frameCardHtml() {
   const me = state.me;
   return '<div class="card edit-card">' +
-    '<p class="edit-hint">当前：<b id="fr-name">' + esc(frameLabel(state.editFrame)) + '</b>。' +
-      '点一款立即换上，帖子和私信里都会显示。</p>' +
+    '<p class="edit-hint">点一款立即换上，帖子和私信里都会显示。</p>' +
     '<div class="frame-opts">' +
-      FRAMES.map(([k, label]) => k === ''
+      FRAMES.map(([k]) => k === ''
         ? '<button class="frame-opt none' + (state.editFrame === '' ? ' on' : '') +
-          '" data-action="pick-frame" data-frame="" title="' + label + '"><span class="frame-none">无</span></button>'
+          '" data-action="pick-frame" data-frame="" aria-label="不戴头像框"><span class="frame-none">无</span></button>'
         : '<button class="frame-opt' + (state.editFrame === k ? ' on' : '') +
-          '" data-action="pick-frame" data-frame="' + k + '" title="' + label + '">' +
+          '" data-action="pick-frame" data-frame="' + k + '" aria-label="换这款头像框">' +
           avatarHtml({ id: me.id, nickname: me.nickname, avatar: state.editAvatar, frame: k }, 40) +
           '</button>').join('') +
     '</div>' +
@@ -3897,6 +4005,36 @@ function coverCardHtml() {
       '</div>' +
     '</div>' +
     '<input type="file" id="cover-input" accept="image/*" hidden>' +
+  '</div>';
+}
+
+/* 问题反馈（2.48）：工单式，不是私信。
+   为什么单独做一页：私信是「找一个人聊天」，用户不知道发给谁；
+   反馈需要「选类型 + 说清在哪一页出问题 + 能标记处理完」。 */
+const FB_TYPES = [
+  ['bug', '用不了 / 报错'],
+  ['idea', '功能建议'],
+  ['content', '内容有问题'],
+  ['account', '账号问题'],
+  ['other', '其他']
+];
+
+function feedbackCardHtml() {
+  const t = state.fbType || 'bug';
+  return '<div class="card edit-card">' +
+    '<p class="edit-hint">用不了的地方、觉得该加的功能，都可以写在这里。' +
+      '管理员会在「审核中心 → 反馈」看到，处理完会给你回一条消息。</p>' +
+    '<div class="fb-types" id="fb-types">' +
+      FB_TYPES.map(([k, label]) =>
+        '<button class="fb-type' + (k === t ? ' on' : '') + '" data-action="fb-type" data-t="' + k + '">' +
+        label + '</button>').join('') +
+    '</div>' +
+    '<textarea id="fb-text" maxlength="1000" class="fb-text" ' +
+      'placeholder="说清三件事就够了：你在做什么、期望是什么、实际发生了什么。"></textarea>' +
+    '<div class="fb-foot">' +
+      '<span class="edit-hint">会自动带上你当前所在的页面，方便定位问题。</span>' +
+      '<button class="btn-primary" data-action="fb-send">提交反馈</button>' +
+    '</div>' +
   '</div>';
 }
 
@@ -3942,7 +4080,8 @@ function viewEdit() {
   else if (sub === 'cover') body = coverCardHtml();
   else if (sub === 'privacy') body = privacyCardHtml();
   else if (sub === 'password') body = passwordCardHtml();
-  else body = reviewerCardHtml();
+  else if (sub === 'feedback') body = feedbackCardHtml();
+  else if (sub === 'reviewer') body = reviewerCardHtml();
   return editSubHead(EDIT_ITEMS[sub][0]) + body;
 }
 
@@ -4023,18 +4162,66 @@ function viewLogin() {
   '</div>';
 }
 
-function viewMain() {
-  if (state.loading && state.route.name !== 'login') {
-    return '<div class="card"><div class="skeleton">' +
+/* 骨架屏：按页面给不同形状（用户 2026-11-25：「每个地方的骨架屏应该也不同吧」）。
+   以前不分页面，统一个「头像 + 两行字」的块，进主页、进详情、进私信看到的是同一个东西，
+   切完还得再跳一下变成真的版式 —— 比空白更晃眼。
+   现在只做「和真实版式同构」的几档，不追求像素级，够让眼睛知道要去哪就行。
+   首屏不经过这里：#boot 一直盖到第一版内容画完（见 hideBoot）。 */
+function skLine(w, mt) {
+  return '<div class="sk-line" style="width:' + w + '%;' + (mt ? 'margin-top:' + mt + 'px' : '') + '"></div>';
+}
+function skPostCard(withImg) {
+  return '<div class="card sk-card"><div class="skeleton">' +
       '<div class="sk-avatar"></div>' +
-      '<div style="flex:1"><div class="sk-line" style="width:26%"></div>' +
-      '<div class="sk-line" style="width:88%;margin-top:12px"></div>' +
-      '<div class="sk-line" style="width:64%;margin-top:8px"></div></div></div>' +
-      '<div class="skeleton">' +
-      '<div class="sk-avatar"></div>' +
-      '<div style="flex:1"><div class="sk-line" style="width:32%"></div>' +
-      '<div class="sk-line" style="width:76%;margin-top:12px"></div></div></div></div>';
+      '<div style="flex:1">' +
+        skLine(24) + skLine(86, 12) + skLine(62, 8) +
+        (withImg ? '<div class="sk-block" style="height:112px;margin-top:12px"></div>' : '') +
+        '<div class="sk-line" style="width:52%;margin-top:14px;height:12px"></div>' +
+      '</div></div></div>';
+}
+function skeletonFor(name) {
+  if (name === 'post') {
+    // 顶部那条「返回 / 帖子详情」也要占位，否则数据回来时整块往下跳一格
+    return '<div class="card sk-card" style="padding:15px 20px"><div class="sk-line" style="width:24%"></div></div>' +
+      '<div class="card sk-card"><div class="skeleton">' +
+        '<div class="sk-avatar"></div>' +
+        '<div style="flex:1">' + skLine(30) + skLine(94, 12) + skLine(88, 8) + skLine(56, 8) +
+          '<div class="sk-block" style="height:180px;margin-top:14px"></div></div>' +
+      '</div></div>' + skPostCard(false);
   }
+  if (name === 'mine' || name === 'user') {
+    return '<div class="card sk-card" style="padding:0;overflow:hidden">' +
+        '<div class="sk-block" style="height:132px;border-radius:0"></div>' +
+        '<div style="padding:0 20px 18px;margin-top:-26px">' +
+          '<div class="sk-line" style="width:76px;height:76px;border-radius:50%"></div>' +
+          skLine(30, 12) + skLine(18, 8) + skLine(64, 14) +
+        '</div></div>' + skPostCard(true);
+  }
+  if (name === 'messages') {
+    var rows = '';
+    for (var i = 0; i < 5; i++) {
+      rows += '<div class="skeleton" style="align-items:center">' +
+        '<div class="sk-avatar" style="width:40px;height:40px"></div>' +
+        '<div style="flex:1">' + skLine(28 + (i % 3) * 8) + skLine(66, 10) + '</div></div>';
+    }
+    return '<div class="card sk-card">' + rows + '</div>';
+  }
+  if (name === 'review' || name === 'creator' || name === 'history' ||
+      name === 'activity' || name === 'requests' || name === 'edit') {
+    var list = '';
+    for (var j = 0; j < 4; j++) {
+      list += '<div class="skeleton"><div style="flex:1">' +
+        skLine(34 + (j % 2) * 12) + skLine(72, 10) + '</div></div>';
+    }
+    return '<div class="card sk-card">' + list + '</div>';
+  }
+  return skPostCard(true) + skPostCard(false);
+}
+
+function viewMain() {
+  /* 切页时按目标页面给同构的骨架（见 skeletonFor）。
+     首屏不会看到它：#boot 盖着，直到第一版内容渲染完才撤。 */
+  if (state.loading && state.route.name !== 'login') return skeletonFor(state.route.name);
   switch (state.route.name) {
     case 'hot': return viewHot();
     case 'mine': return viewMine();
@@ -4069,6 +4256,10 @@ function modalHtml() {
           : '发布后会进入审核队列，通过后所有人可见。<b>你自己现在就能在首页看到它</b>（带「待审核」标记）。') + '</p>' +
         '<textarea id="compose-text" maxlength="2000" placeholder="今天做了什么好吃的？说说食材和做法吧… 用 @ 可以提到厨友">' + esc(state.draft) + '</textarea>' +
         (thumbs ? '<div class="composer-images">' + thumbs + '</div>' : '') +
+        /* 可见范围（2.48）：发之前就能定，不用发完再回头改 */
+        '<button type="button" class="vis-line" data-action="vis-open" data-id="0">' +
+          icon('lock') + '<span>谁能看到：<b>' + visText((state.composeVis || {}).v) + '</b></span>' + icon('chev') +
+        '</button>' +
         '<div class="modal-act compose-act">' +
           '<label class="file-label">' + icon('image') + '图片<input type="file" id="file-input" accept="image/*" multiple hidden></label>' +
           imgChipHtml() +
@@ -4201,13 +4392,41 @@ function modalHtml() {
       '<label class="rep-opt"><input type="radio" name="rep-reason" value="' + esc(r) + '"' + (i === 0 ? ' checked' : '') + '><span>' + esc(r) + '</span></label>').join('');
     return '<div class="modal-mask">' +
       '<div class="modal">' +
-        '<h3>' + icon('flag') + '举报这条内容</h3>' +
+        '<h3>' + icon('alert') + '举报这条内容</h3>' +
         '<p class="modal-sub">请选择举报原因，我们会尽快处理。</p>' +
         '<div class="rep-opts">' + opts + '</div>' +
         '<textarea id="rep-detail" placeholder="补充说明（可选）" maxlength="200"></textarea>' +
         '<div class="modal-act">' +
           '<button class="btn-ghost" data-action="modal-close">取消</button>' +
           '<button class="btn-primary" data-action="report-submit" data-id="' + m.postId + '">提交举报</button>' +
+        '</div>' +
+      '</div></div>';
+  }
+  if (m.type === 'vis') {
+    return '<div class="modal-mask">' +
+      '<div class="modal modal-vis">' +
+        '<h3>' + icon('lock') + '谁能看到这条</h3>' +
+        '<p class="modal-sub">发出去之后随时能改。改范围不会通知任何人。</p>' +
+        '<div id="vis-box">' + visBoxHtml() + '</div>' +
+        '<div class="modal-act">' +
+          '<button class="btn-ghost" data-action="modal-close">取消</button>' +
+          '<button class="btn-primary" data-action="vis-save">保存</button>' +
+        '</div>' +
+      '</div></div>';
+  }
+  if (m.type === 'title') {
+    const t = state.title || {};
+    return '<div class="modal-mask">' +
+      '<div class="modal">' +
+        '<h3>' + icon('medal') + '给「' + esc(t.nickname || '') + '」发称号</h3>' +
+        '<p class="modal-sub">称号会挂在 TA 的昵称后面，帖子和主页都能看到。只能由管理员颁发。</p>' +
+        '<div class="field"><label>称号名字</label>' +
+          '<input id="tt-name" maxlength="14" placeholder="例如：10 月优质创作者"></div>' +
+        '<div class="field"><label>说明（可选）</label>' +
+          '<input id="tt-note" maxlength="80" placeholder="例如：十月发了 12 篇原创菜谱"></div>' +
+        '<div class="modal-act">' +
+          '<button class="btn-ghost" data-action="modal-close">取消</button>' +
+          '<button class="btn-primary" data-action="title-send">颁发</button>' +
         '</div>' +
       '</div></div>';
   }
@@ -4366,12 +4585,21 @@ async function doPublish() {
   const btn = $('[data-action="publish"]');
   if (btn) { btn.disabled = true; btn.textContent = '发布中…'; }
   try {
-    const d = await api('/api/posts', { method: 'POST', body: { content, images: state.draftImages, aiAssisted: state.aiUsed } });
+    const cv = state.composeVis || { v: 'public', users: [] };
+    const d = await api('/api/posts', {
+      method: 'POST',
+      body: {
+        content, images: state.draftImages, aiAssisted: state.aiUsed,
+        visibility: cv.v || 'public',
+        visUsers: (cv.users || []).map((x) => x.id)
+      }
+    });
     const pending = d.post.status !== 'approved';
     state.draft = '';
     state.draftImages = [];
     state.uploadFailed = 0;
     state.aiUsed = false;
+    state.composeVis = { v: 'public', users: [] };
     state.ai = { open: false, loading: false, text: '', tags: [], err: '', n: 0 };
     state.modal = null;
     toast(pending
@@ -4738,6 +4966,187 @@ async function submitReport(postId) {
     state.modal = null;
     render();
     toast('举报已提交，感谢你的反馈', 'ok', 'check');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+/* ---------- 问题反馈 ---------- */
+async function submitFeedback() {
+  const ta = $('#fb-text');
+  const text = ta ? ta.value.trim() : '';
+  if (text.length < 5) { toast('再多写两句，我们才好定位问题', 'err'); return; }
+  const btn = $('[data-action="fb-send"]');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  try {
+    // 带上当前页面：修 bug 时「做饭模式第 3 步」这种信息比正文还值钱
+    await api('/api/feedback', {
+      method: 'POST',
+      body: { type: state.fbType || 'bug', text: text, page: location.hash || '#/' }
+    });
+    if (ta) ta.value = '';
+    state.fbType = 'bug';
+    toast('收到了，管理员处理完会给你回消息', 'ok', 'check');
+    render();
+  } catch (e) {
+    toast(e.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = '提交反馈'; }
+  }
+}
+
+async function handleFeedback(fid, status, el) {
+  const replyEl = $('[data-reply-for="' + fid + '"]');
+  const reply = replyEl ? replyEl.value.trim() : '';
+  const btn = el || null;
+  if (btn) btn.disabled = true;
+  try {
+    await api('/api/admin/feedback/' + fid, { method: 'POST', body: { status: status, reply: reply } });
+    toast(status === 'done' ? '已标记处理完，对方会收到通知' : '已重新打开', 'ok', 'check');
+    await loadReview();
+    render();
+  } catch (e) {
+    toast(e.message, 'err');
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ---------- 可见范围 ----------
+   抖音那套「作品浏览权限」：公开 / 谁不可见 / 只谁可见 / 私密。
+   选人用 @ 搜索（复用 /api/users/suggest），不自己造通讯录。 */
+function openVis(postId) {
+  // 详情页里的那份是最新的（可能刚改过），优先用它
+  const detail = state.data.post && state.data.post.id === postId ? state.data.post : null;
+  const p = postId
+    ? (detail || (state.data.posts || []).find((x) => x.id === postId) || {})
+    : {};
+  const cv = postId ? (p.visibility || 'public') : ((state.composeVis && state.composeVis.v) || 'public');
+  const cu = postId ? (p.visUsers || []) : ((state.composeVis && state.composeVis.users) || []);
+  state.vis = {
+    postId: postId || 0,
+    v: cv,
+    users: (cu || []).map((x) => (typeof x === 'object' ? { id: x.id, nickname: x.nickname || '' } : { id: x, nickname: '' })),
+    q: '', res: null
+  };
+  state.modal = { type: 'vis' };
+  render();
+}
+
+function visBoxHtml() {
+  const v = state.vis.v;
+  const need = v === 'exclude' || v === 'include';
+  const opts = [
+    ['public', '公开', '所有人都能看到'],
+    ['exclude', '谁不可见', '除了选中的几个人，其他人都能看到'],
+    ['include', '只谁可见', '只有选中的几个人能看到'],
+    ['private', '私密', '只有你自己能看到']
+  ];
+  return '<div class="vis-opts">' +
+      opts.map(([k, label, desc]) =>
+        '<button class="vis-opt' + (k === v ? ' on' : '') + '" data-action="vis-set" data-v="' + k + '">' +
+          '<b>' + label + '</b><span>' + desc + '</span>' +
+        '</button>').join('') +
+    '</div>' +
+    (need
+      ? '<div class="vis-pick">' +
+          '<div id="vis-people">' + visPeopleHtml() + '</div>' +
+          '<input id="vis-search" class="vis-search" autocomplete="off" spellcheck="false"' +
+            ' placeholder="搜昵称或用户ID，点一下加进来">' +
+          '<div id="vis-res"></div>' +
+        '</div>'
+      : '');
+}
+
+function visPeopleHtml() {
+  const list = state.vis.users || [];
+  if (!list.length) {
+    return '<div class="vis-empty">' +
+      (state.vis.v === 'include' ? '还没选人 —— 现在这条只有你自己能看到。' : '还没选人 —— 现在等于公开。') +
+      '</div>';
+  }
+  return '<div class="vis-chips">' + list.map((u) =>
+    '<span class="vis-chip-u">' + esc(u.nickname || ('用户' + u.id)) +
+      '<button data-action="vis-del" data-id="' + u.id + '" aria-label="移除">×</button></span>').join('') + '</div>';
+}
+
+function visResHtml() {
+  const r = state.vis.res;
+  if (r === null) return '';
+  if (!r.length) return '<div class="vis-empty">没找到这个人</div>';
+  const have = new Set((state.vis.users || []).map((x) => x.id));
+  return '<div class="vis-res">' + r.map((u) =>
+    '<button class="vis-res-row' + (have.has(u.id) ? ' on' : '') + '" data-action="vis-add"' +
+      ' data-id="' + u.id + '" data-n="' + esc(u.nickname) + '"' + (have.has(u.id) ? ' disabled' : '') + '>' +
+      '<b>' + esc(u.nickname) + '</b><span>@' + esc(u.username) + '</span>' +
+      (have.has(u.id) ? '<i>已加入</i>' : '') +
+    '</button>').join('') + '</div>';
+}
+
+/** 换可见范围类型时整块重画（哪种类型要显示选人区是结构变化）。
+ *  这时输入框还没聚焦，重画不会丢焦点；选人时用 paintVisPeople() 那套局部刷。 */
+function paintVis() { render(); }
+
+/** 只重画「已选的人 + 搜索结果」，不整块重绘：输入框要保持焦点，否则搜一个人焦点就丢了 */
+function paintVisPeople() {
+  const ppl = document.getElementById('vis-people');
+  if (ppl) ppl.innerHTML = visPeopleHtml();
+  const res = document.getElementById('vis-res');
+  if (res) res.innerHTML = visResHtml();
+}
+
+async function saveVis() {
+  const v = state.vis.v;
+  const ids = (state.vis.users || []).map((x) => x.id);
+  const btn = $('[data-action="vis-save"]');
+  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+  try {
+    if (state.vis.postId) {
+      const d = await api('/api/posts/' + state.vis.postId + '/visibility', {
+        method: 'POST', body: { visibility: v, visUsers: ids }
+      });
+      if (state.data.post && state.data.post.id === state.vis.postId) state.data.post = d.post;
+      state.data.posts = (state.data.posts || []).map((p) => (p.id === state.vis.postId ? d.post : p));
+      state.modal = null;
+      render();
+      toast('可见范围已更新', 'ok', 'check');
+    } else {
+      state.composeVis = { v: v, users: state.vis.users };
+      state.modal = { type: 'compose' };
+      render();
+    }
+  } catch (e) {
+    toast(e.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = '保存'; }
+  }
+}
+
+/* ---------- 称号（管理员） ---------- */
+function openTitle(uid, nickname) {
+  state.title = { uid: uid, nickname: nickname || '', name: '', note: '' };
+  state.modal = { type: 'title' };
+  render();
+}
+
+async function sendTitle() {
+  const nameEl = $('#tt-name');
+  const noteEl = $('#tt-note');
+  const name = nameEl ? nameEl.value.trim() : '';
+  if (name.length < 2) { toast('称号至少 2 个字', 'err'); return; }
+  try {
+    await api('/api/admin/titles', {
+      method: 'POST',
+      body: { userId: state.title.uid, name: name, note: noteEl ? noteEl.value.trim() : '' }
+    });
+    state.modal = null;
+    toast('称号已颁发，对方会收到通知', 'ok', 'medal');
+    await loadReview();
+    render();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function delTitle(id) {
+  try {
+    await api('/api/admin/titles/' + id, { method: 'DELETE' });
+    toast('已撤销', 'ok', 'check');
+    await loadReview();
+    render();
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -5353,7 +5762,58 @@ document.addEventListener('click', (e) => {
     case 'delete': doDelete(id); break;
     case 'report': state.modal = { type: 'report', postId: Number(id) }; render(); break;
     case 'report-submit': submitReport(id); break;
-    case 'modal-close': state.modal = null; state.ai.open = false; render(); break;
+    /* ---- 问题反馈 ---- */
+    case 'fb-type': {
+      const t = el.getAttribute('data-t');
+      state.fbType = t;
+      // 只换选中态，不整页重绘 —— 重绘会把用户已经写好的正文清掉
+      Array.prototype.forEach.call(document.querySelectorAll('.fb-type'), (b) => {
+        b.classList.toggle('on', b === el);
+      });
+      break;
+    }
+    case 'fb-send': submitFeedback(); break;
+    case 'fb-done': handleFeedback(id, 'done', el); break;
+    case 'fb-reopen': handleFeedback(id, 'open', el); break;
+    /* ---- 可见范围 ---- */
+    case 'vis-open': openVis(Number(id)); break;
+    case 'vis-set': {
+      const v = el.getAttribute('data-v');
+      state.vis.v = v;
+      state.vis.q = '';
+      state.vis.res = null;
+      paintVis();
+      break;
+    }
+    case 'vis-add': {
+      const uid = Number(id);
+      if (!uid || state.vis.users.some((x) => x.id === uid)) break;
+      state.vis.users.push({ id: uid, nickname: el.getAttribute('data-n') || '' });
+      state.vis.q = '';
+      state.vis.res = null;
+      paintVis();
+      break;
+    }
+    case 'vis-del': {
+      const uid = Number(id);
+      state.vis.users = state.vis.users.filter((x) => x.id !== uid);
+      paintVis();
+      break;
+    }
+    case 'vis-save': saveVis(); break;
+    /* ---- 称号（管理员） ---- */
+    case 'title-open': openTitle(Number(id), el.getAttribute('data-n') || ''); break;
+    case 'title-send': sendTitle(); break;
+    case 'title-del': delTitle(Number(id)); break;
+    case 'modal-close': {
+      // 从发帖框点进「可见范围」的，取消要退回发帖框，不能把整张草稿关掉
+      const was = state.modal && state.modal.type;
+      const back = was === 'vis' && state.vis && !state.vis.postId;
+      state.modal = back ? { type: 'compose' } : null;
+      state.ai.open = false;
+      render();
+      break;
+    }
     case 'approve': doReview(id, 'approve'); break;
     case 'reject-reason': {
       // 点预设理由 = 把理由填进输入框，人还能接着补一句；不上抛、不提交
@@ -5503,6 +5963,14 @@ document.addEventListener('click', (e) => {
     }
     case 'review-mode': {
       state.reviewMode = el.getAttribute('data-tab');
+      state.loading = true; render();
+      loadReview().then(() => { state.loading = false; render(); })
+        .catch((err) => { state.loading = false; render(); toast(err.message, 'err'); });
+      break;
+    }
+    case 'fb-tab': {
+      if (state.fbTab === el.getAttribute('data-tab')) break;
+      state.fbTab = el.getAttribute('data-tab');
       state.loading = true; render();
       loadReview().then(() => { state.loading = false; render(); })
         .catch((err) => { state.loading = false; render(); toast(err.message, 'err'); });
@@ -5757,6 +6225,25 @@ document.addEventListener('input', (e) => {
         } catch (err) { /* ignore */ }
       }, 260);
     }
+    return;
+  }
+  // 可见范围里搜人：复用 @ 补全那套接口，只重画结果区（输入框不重绘，焦点不丢）
+  if (e.target.id === 'vis-search') {
+    const val = e.target.value.trim();
+    if (!state.vis) return;
+    state.vis.q = val;
+    state.vis.res = null;
+    clearTimeout(window.__vst);
+    if (!val) { paintVisPeople(); return; }
+    window.__vst = setTimeout(async () => {
+      try {
+        const d = await api('/api/users/suggest?q=' + encodeURIComponent(val));
+        if (state.modal && state.modal.type === 'vis' && (state.vis.q || '') === val) {
+          state.vis.res = (d.users || []).filter((u) => !state.me || u.id !== state.me.id);
+          paintVisPeople();
+        }
+      } catch (err) { /* 搜不到就算了，别打断选人 */ }
+    }, 260);
     return;
   }
   // 活动表单：只记草稿、不整页重绘 —— 日期框一边调一边重绘会丢焦点，
