@@ -979,11 +979,13 @@ img { display: block; }
 .fqc-win {
   /* 形象尺寸算成变量：气泡和声波都要按它的宽高贴上去，
      三处各写一个数迟早对不齐（改高度忘了改气泡的 right，就又会飘远）。 */
-  --chef-h: 84px;
+  --chef-h: 96px;
   /* 动作帧统一画布 460×577，宽度跟着高度走（460/577 = .797） */
-  --chef-w: 67px;
+  --chef-w: 77px;
   position: absolute; right: 12px; bottom: 96px;
-  width: 156px; height: 206px;
+  /* 156×206 → 184×244：灶台边架着手机看，原来那块只够认出「有东西在动」，
+     看不清锅里到底什么样。窗口是这功能的全部证据，不能抠。 */
+  width: 184px; height: 244px;
   pointer-events: auto; touch-action: none;
 }
 .fqc-shot {
@@ -1190,8 +1192,8 @@ img { display: block; }
 /* 桌面：窗口离卡片太远就只剩一个浮块，放大一点、往中间收 */
 @media (min-width: 720px) {
   .fqc-win {
-    --chef-h: 104px; --chef-w: 83px;
-    width: 178px; height: 234px; right: 24px; bottom: 40px;
+    --chef-h: 118px; --chef-w: 94px;
+    width: 218px; height: 290px; right: 24px; bottom: 40px;
   }
   /* 气泡宽度/字号由 layoutBub() 按视口算（会写 inline style），这里不覆盖 */
 }
